@@ -275,6 +275,23 @@ export interface ImportRequest {
   monitoring_active: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Hot Company Search
+// ---------------------------------------------------------------------------
+
+export interface HotSearchHit {
+  name: string;
+  ats: string;
+  slug: string;
+  website: string | null;
+  total_jobs: number;
+  relevant_jobs: number;
+  top_jobs: JobPreview[];
+  source: string;
+  description: string;
+  match_reason: string;
+}
+
 export interface ImportResponse {
   company_id: string;
   company_name: string | null;

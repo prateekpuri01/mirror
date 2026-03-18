@@ -10,8 +10,10 @@ import {
   createColumnHelper,
 } from "@tanstack/react-table";
 import { Loader2, X, ChevronDown, ChevronRight } from "lucide-react";
-import { useDiscoverCompany, useImportCompany } from "@/hooks/use-companies";
+import { useImportCompany } from "@/hooks/use-companies";
 import { useJobProcessing } from "@/hooks/use-job-processing";
+import { useDiscoverFlow } from "@/hooks/use-discover-flow";
+import { useScrapeProgress } from "@/hooks/use-scrape-progress";
 import { DiscoverResponse, JobPreview } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -30,31 +32,43 @@ interface AddCompanyFlowProps {
 }
 
 export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
-  const [step, setStep] = useState<"url" | "review" | "importing">("url");
   const [url, setUrl] = useState("");
-  const [discovery, setDiscovery] = useState<DiscoverResponse | null>(null);
   const [selectedUrls, setSelectedUrls] = useState<Set<string>>(new Set());
   const [threshold, setThreshold] = useState(50);
+  const [importing, setImporting] = useState(false);
 
-  const discoverMutation = useDiscoverCompany();
+  const {
+    isDiscovering,
+    result: discovery,
+    error: discoverError,
+    startDiscover,
+    clearDiscover,
+  } = useDiscoverFlow();
   const importMutation = useImportCompany();
   const { startProcessing } = useJobProcessing();
+  const progressMessage = useScrapeProgress(isDiscovering);
+
+  // Derive step from persistent context state
+  const step = importing
+    ? "importing"
+    : discovery
+      ? "review"
+      : "url";
+
+  // Auto-select jobs above threshold when discovery completes
+  const prevDiscoveryRef = useState<DiscoverResponse | null>(null);
+  if (discovery && discovery !== prevDiscoveryRef[0]) {
+    prevDiscoveryRef[1](discovery);
+    const above = new Set(
+      discovery.jobs.filter((j) => j.relevance >= threshold).map((j) => j.url)
+    );
+    setSelectedUrls(above);
+  }
 
   // Step 1: Discover
   function handleDiscover() {
     if (!url.trim()) return;
-    discoverMutation.mutate(url.trim(), {
-      onSuccess: (data) => {
-        if (data.error) return; // stay on step 1, error shown
-        setDiscovery(data);
-        // Auto-select jobs above threshold
-        const above = new Set(
-          data.jobs.filter((j) => j.relevance >= threshold).map((j) => j.url)
-        );
-        setSelectedUrls(above);
-        setStep("review");
-      },
-    });
+    startDiscover(url.trim());
   }
 
   // Step 2: Threshold change
@@ -90,10 +104,15 @@ export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
     }
   }
 
+  function handleClose() {
+    clearDiscover();
+    onClose();
+  }
+
   // Step 3: Import
   function handleImport() {
     if (!discovery || !discovery.ats || !discovery.slug) return;
-    setStep("importing");
+    setImporting(true);
     importMutation.mutate(
       {
         name: discovery.company_name || discovery.slug,
@@ -108,9 +127,9 @@ export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
           if (response.job_ids?.length > 0) {
             startProcessing(response.job_ids);
           }
-          onClose();
+          handleClose();
         },
-        onError: () => setStep("review"),
+        onError: () => setImporting(false),
       }
     );
   }
@@ -121,7 +140,7 @@ export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-semibold">Add Company</h2>
         <button
-          onClick={onClose}
+          onClick={handleClose}
           className="p-1 rounded-md hover:bg-muted/50 text-muted-foreground"
         >
           <X className="h-4 w-4" />
@@ -147,23 +166,24 @@ export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
             />
             <button
               onClick={handleDiscover}
-              disabled={!url.trim() || discoverMutation.isPending}
+              disabled={!url.trim() || isDiscovering}
               className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors flex items-center gap-2"
             >
-              {discoverMutation.isPending && (
+              {isDiscovering && (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               )}
               Search
             </button>
           </div>
-          {discoverMutation.isError && (
-            <p className="text-sm text-red-600">
-              Error: {discoverMutation.error.message}
-            </p>
+          {isDiscovering && progressMessage && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground/70 animate-in fade-in duration-300">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>{progressMessage}</span>
+            </div>
           )}
-          {discoverMutation.data?.error && (
+          {discoverError && (
             <p className="text-sm text-red-600">
-              {discoverMutation.data.error}
+              {discoverError}
             </p>
           )}
         </div>
@@ -179,7 +199,7 @@ export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
           onToggleJob={toggleJob}
           onToggleSelectAll={toggleSelectAll}
           onImport={handleImport}
-          onCancel={onClose}
+          onCancel={handleClose}
         />
       )}
 
@@ -191,7 +211,7 @@ export function AddCompanyFlow({ onClose }: AddCompanyFlowProps) {
         </div>
       )}
 
-      {importMutation.isError && step === "review" && (
+      {importMutation.isError && !importing && discovery && (
         <p className="text-sm text-red-600 mt-2">
           Import failed: {importMutation.error.message}
         </p>

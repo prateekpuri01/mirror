@@ -88,8 +88,30 @@ async def refresh_company_endpoint(
     return RefreshResponse(**result)
 
 
+@router.get("/companies/scrape-progress")
+async def scrape_progress():
+    """Lightweight polling endpoint for real-time scrape progress."""
+    from app.services.scrape_progress import progress
+    return progress.to_dict()
+
+
 @router.post("/companies/discover", response_model=DiscoverResponse)
 async def discover(body: DiscoverRequest, session: AsyncSession = Depends(get_session)):
+    # Quick URL resolution first (no scraping) to check for duplicates
+    from app.services.company_discovery import resolve_job_url, _find_company_by_slug
+    resolution = await resolve_job_url(body.job_url)
+    if resolution.ats and resolution.slug:
+        existing = await _find_company_by_slug(session, resolution.ats, resolution.slug)
+        if existing:
+            return DiscoverResponse(
+                ats=resolution.ats,
+                slug=resolution.slug,
+                company_name=existing.name,
+                error=f'"{existing.name}" has already been added. '
+                      f"Use the Refresh button on the Companies page to check for new jobs.",
+            )
+
+    # Not a duplicate — proceed with full discover (scrape + score)
     result = await discover_company(session, body.job_url)
     return DiscoverResponse(**result)
 

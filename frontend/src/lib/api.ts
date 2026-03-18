@@ -259,6 +259,19 @@ export async function deleteCompany(companyId: string): Promise<void> {
   return apiFetch<void>(`/api/companies/${companyId}`, { method: "DELETE" });
 }
 
+export interface ScrapeProgress {
+  active: boolean;
+  company_name: string;
+  phase: string;
+  found: number;
+  total: number | null;
+  elapsed_seconds: number;
+}
+
+export async function getScrapeProgress(): Promise<ScrapeProgress> {
+  return apiFetch<ScrapeProgress>("/api/companies/scrape-progress");
+}
+
 export async function discoverCompany(jobUrl: string): Promise<DiscoverResponse> {
   return apiFetch<DiscoverResponse>("/api/companies/discover", {
     method: "POST",

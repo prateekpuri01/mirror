@@ -25,7 +25,8 @@ class GreenhouseScraper:
         return bool(company.greenhouse_slug)
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient
+        self, company: Company, http_client: httpx.AsyncClient,
+        *, known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]:
         url = GREENHOUSE_API.format(slug=company.greenhouse_slug)
         logger.info("Fetching Greenhouse jobs for %s (%s)", company.name, url)
@@ -34,9 +35,15 @@ class GreenhouseScraper:
         resp.raise_for_status()
         data = resp.json()
 
+        from app.services.scrape_progress import progress
+
+        raw_jobs = data.get("jobs", [])
+        progress.fetching(len(raw_jobs))
+
         jobs: list[ScrapedJob] = []
-        for entry in data.get("jobs", []):
+        for entry in raw_jobs:
             jobs.append(self._parse_job(entry, company))
+            progress.increment()
 
         logger.info("Found %d jobs for %s", len(jobs), company.name)
         return jobs

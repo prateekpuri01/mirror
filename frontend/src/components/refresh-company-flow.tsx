@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Loader2, X } from "lucide-react";
 import { useRefreshCompany, useImportCompany } from "@/hooks/use-companies";
 import { useJobProcessing } from "@/hooks/use-job-processing";
+import { useScrapeProgress } from "@/hooks/use-scrape-progress";
 import { CompanyListItem, RefreshResponse } from "@/lib/types";
 import { ReviewStep } from "@/components/add-company-flow";
 
@@ -21,6 +22,7 @@ export function RefreshCompanyFlow({ company, onClose }: RefreshCompanyFlowProps
   const refreshMutation = useRefreshCompany();
   const importMutation = useImportCompany();
   const { startProcessing } = useJobProcessing();
+  const progressMessage = useScrapeProgress(step === "loading");
 
   // Auto-trigger refresh on mount
   useEffect(() => {
@@ -107,9 +109,16 @@ export function RefreshCompanyFlow({ company, onClose }: RefreshCompanyFlowProps
 
       {/* Loading */}
       {step === "loading" && (
-        <div className="flex items-center justify-center py-8 gap-3 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-          <span>Scanning for new jobs...</span>
+        <div className="flex flex-col items-center justify-center py-8 gap-2 text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Scanning for new jobs...</span>
+          </div>
+          {progressMessage && (
+            <span className="text-xs text-muted-foreground/70 animate-in fade-in duration-300">
+              {progressMessage}
+            </span>
+          )}
         </div>
       )}
 

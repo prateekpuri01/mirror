@@ -103,6 +103,7 @@ interface CompaniesTableProps {
   onPageChange: (page: number) => void;
   onPerPageChange: (perPage: number) => void;
   onRefresh?: (company: CompanyListItem) => void;
+  disableRefresh?: boolean;
 }
 
 export function CompaniesTable({
@@ -115,6 +116,7 @@ export function CompaniesTable({
   onPageChange,
   onPerPageChange,
   onRefresh,
+  disableRefresh,
 }: CompaniesTableProps) {
   const totalPages = Math.ceil(total / perPage);
   const startItem = total > 0 ? (page - 1) * perPage + 1 : 0;
@@ -227,9 +229,9 @@ export function CompaniesTable({
                     e.stopPropagation();
                     if (canRefresh) onRefresh(c);
                   }}
-                  disabled={!canRefresh}
+                  disabled={!canRefresh || disableRefresh}
                   className="h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-blue-600 hover:bg-blue-50 transition-colors disabled:opacity-30 disabled:hover:text-muted-foreground disabled:hover:bg-transparent disabled:cursor-not-allowed"
-                  title={canRefresh ? "Refresh jobs" : "No jobs to discover ATS from"}
+                  title={disableRefresh ? "Another scrape is in progress" : canRefresh ? "Refresh jobs" : "No jobs to discover ATS from"}
                 >
                   <RefreshCw className="h-4 w-4" />
                 </button>
@@ -240,7 +242,7 @@ export function CompaniesTable({
         },
       }),
     ],
-    []
+    [onRefresh, disableRefresh]
   );
 
   const table = useReactTable({

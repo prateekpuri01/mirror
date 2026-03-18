@@ -24,7 +24,8 @@ class LeverScraper:
         return bool(company.lever_slug)
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient
+        self, company: Company, http_client: httpx.AsyncClient,
+        *, known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]:
         url = LEVER_API.format(slug=company.lever_slug)
         logger.info("Fetching Lever jobs for %s (%s)", company.name, url)
@@ -38,9 +39,13 @@ class LeverScraper:
             logger.warning("Unexpected Lever response for %s: not a list", company.name)
             return []
 
+        from app.services.scrape_progress import progress
+        progress.fetching(len(data))
+
         jobs: list[ScrapedJob] = []
         for entry in data:
             jobs.append(self._parse_job(entry, company))
+            progress.increment()
 
         logger.info("Found %d jobs for %s", len(jobs), company.name)
         return jobs

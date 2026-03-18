@@ -20,6 +20,7 @@ from app.routers.chat import router as chat_router
 from app.routers.extraction import router as extraction_router
 from app.routers.pipeline import router as pipeline_router
 from app.routers.webhook import router as webhook_router
+from app.routers.hot_search import router as hot_search_router
 from app.services.profile_sync import sync_complete_profile, sync_profile_from_yaml
 
 logging.basicConfig(level=logging.INFO)
@@ -68,6 +69,7 @@ app.include_router(chat_router)
 app.include_router(cleaning_router)
 app.include_router(extraction_router)
 app.include_router(pipeline_router)
+app.include_router(hot_search_router)
 
 
 @app.get("/health")

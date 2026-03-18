@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     brave_api_key: str = ""
+    tavily_api_key: str = ""
+    hot_search_model: str = "gpt-4o-mini"
     profile_yaml_path: str = "/app/docs/profile.yaml"
     profile_complete_yaml_path: str = "/app/docs/profile_complete.yaml"
 

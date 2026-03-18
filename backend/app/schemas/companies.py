@@ -121,3 +121,14 @@ class ImportResponse(BaseModel):
     company_name: str | None = None
     jobs_imported: int = 0
     job_ids: list[str] = []
+
+
+# ---------------------------------------------------------------------------
+# Hot Company Search schemas
+# ---------------------------------------------------------------------------
+
+
+class HotSearchRequest(BaseModel):
+    sources: list[str]  # ["tavily", "greenhouse", "lever", "ashby"]
+    guidance: str = ""
+    max_hits: int = 20

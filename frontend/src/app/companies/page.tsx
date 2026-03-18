@@ -7,11 +7,17 @@ import { useCompanies } from "@/hooks/use-companies";
 import { CompaniesTable } from "@/components/companies-table";
 import { AddCompanyFlow } from "@/components/add-company-flow";
 import { RefreshCompanyFlow } from "@/components/refresh-company-flow";
+import { HotCompanySearch } from "@/components/hot-company-search";
+import { useDiscoverFlow } from "@/hooks/use-discover-flow";
+import { useHotSearch } from "@/hooks/use-hot-search";
 import { CompaniesParams, CompanyListItem } from "@/lib/types";
 
 function CompaniesPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isDiscovering, result: discoverResult } = useDiscoverFlow();
+  const { phase: hotSearchPhase } = useHotSearch();
+  const hotSearchActive = hotSearchPhase !== "idle";
 
   // Read state from URL
   const params: CompaniesParams = {
@@ -24,7 +30,13 @@ function CompaniesPageInner() {
 
   const { data, isLoading, error } = useCompanies(params);
   const [showAddFlow, setShowAddFlow] = useState(false);
+  const [showHotSearch, setShowHotSearch] = useState(false);
   const [refreshingCompany, setRefreshingCompany] = useState<CompanyListItem | null>(null);
+
+  // Auto-show add flow if a discover is in progress or has results (survives navigation)
+  const addFlowVisible = showAddFlow || isDiscovering || !!discoverResult;
+  // Auto-show hot search if it's running/has results (survives navigation)
+  const hotSearchVisible = showHotSearch || hotSearchActive;
 
   // Debounced search
   const [searchInput, setSearchInput] = useState(params.q || "");
@@ -91,17 +103,35 @@ function CompaniesPageInner() {
             </p>
           )}
         </div>
-        {!showAddFlow && (
-          <button
-            onClick={() => setShowAddFlow(true)}
-            className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
-          >
-            Add Company
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!hotSearchVisible && (
+            <button
+              onClick={() => { setShowHotSearch(true); setShowAddFlow(false); }}
+              className="h-9 px-4 rounded-md border text-sm font-medium hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200 transition-colors flex items-center gap-2"
+              title="Find Hot Companies"
+            >
+              <span className="text-base leading-none">🔥</span>
+              Find Hot Companies
+            </button>
+          )}
+          {!addFlowVisible && !hotSearchVisible && (
+            <button
+              onClick={() => setShowAddFlow(true)}
+              className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 transition-colors"
+            >
+              Add Company
+            </button>
+          )}
+        </div>
       </div>
 
-      {showAddFlow && (
+      {hotSearchVisible && (
+        <div className="mb-6">
+          <HotCompanySearch onClose={() => setShowHotSearch(false)} />
+        </div>
+      )}
+
+      {addFlowVisible && (
         <div className="mb-6">
           <AddCompanyFlow onClose={() => setShowAddFlow(false)} />
         </div>
@@ -152,6 +182,7 @@ function CompaniesPageInner() {
             setShowAddFlow(false);
             setRefreshingCompany(company);
           }}
+          disableRefresh={refreshingCompany !== null || addFlowVisible || hotSearchActive}
         />
       )}
     </main>

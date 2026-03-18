@@ -36,7 +36,8 @@ class ScraperProtocol(Protocol):
     def can_handle(self, company: Company) -> bool: ...
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient
+        self, company: Company, http_client: httpx.AsyncClient,
+        *, known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]: ...
 
 

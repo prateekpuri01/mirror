@@ -1003,12 +1003,25 @@ def _make_temp_company(ats: str, slug: str) -> Company:
 
 
 async def discover_company(
-    session: AsyncSession, job_url: str
+    session: AsyncSession, job_url: str, *, known_urls: set[str] | None = None,
 ) -> dict:
     """Resolve URL via multi-prong pipeline, fetch all jobs, score, return preview.
 
     Returns dict with ats, slug, company_name, total_jobs, jobs, resolution_method.
+    Pass known_urls to skip detail fetches for jobs already in the DB.
     """
+    from app.services.scrape_progress import progress
+    progress.start()
+
+    try:
+        return await _discover_company_inner(session, job_url, progress, known_urls=known_urls)
+    finally:
+        progress.finish()
+
+
+async def _discover_company_inner(
+    session: AsyncSession, job_url: str, progress, *, known_urls: set[str] | None = None,
+) -> dict:
     resolution = await resolve_job_url(job_url)
 
     if not resolution.ats or not resolution.slug:
@@ -1036,11 +1049,12 @@ async def discover_company(
         }
 
     temp_company = _make_temp_company(resolution.ats, resolution.slug)
+    company_name = resolution.slug.replace("-", " ").title()
+    progress.company_name = company_name
+    progress.listing()
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        scraped_jobs = await scraper.scrape_company(temp_company, client)
-
-    company_name = resolution.slug.replace("-", " ").title()
+        scraped_jobs = await scraper.scrape_company(temp_company, client, known_urls=known_urls)
 
     # Score jobs
     profile_keywords = await _load_profile_keywords(session)
@@ -1218,9 +1232,15 @@ async def refresh_company_jobs(
             "error": "No existing job URLs found for this company.",
         }
 
+    # Get existing job URLs so the scraper can skip detail fetches for known jobs
+    existing_url_result = await session.execute(
+        select(Job.url).where(Job.company_id == company_id, Job.url.isnot(None))
+    )
+    known_urls = {row[0] for row in existing_url_result.all()}
+    logger.info("Refreshing %s via discover_company(%s), %d known URLs", company.name, probe_url, len(known_urls))
+
     # Run the same discovery pipeline used by Add Company
-    logger.info("Refreshing %s via discover_company(%s)", company.name, probe_url)
-    discovery = await discover_company(session, probe_url)
+    discovery = await discover_company(session, probe_url, known_urls=known_urls)
 
     if discovery.get("error"):
         return {
