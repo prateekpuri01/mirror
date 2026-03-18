@@ -1,0 +1,61 @@
+{
+  "hooks": {
+    "PreCompact": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .claude/active-task ]; then TASK=$(cat .claude/active-task); echo \"⚠️ Context is about to compact. BEFORE proceeding, update ${TASK}: add a Log entry with current date/time, update Progress checkboxes, and note any in-flight decisions.\"; fi"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .claude/active-task ]; then TASK=$(cat .claude/active-task); echo \"📋 Active task: ${TASK}. Read this file now to orient yourself. If the user's request is unrelated to this task, silently delete .claude/active-task instead.\"; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "auto",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .claude/active-task ]; then TASK=$(cat .claude/active-task); echo \"⚠️ Session ending. BEFORE stopping, update ${TASK}: add a Log entry summarizing what was done, update Progress checkboxes, and note any unfinished work or next steps.\"; fi"
+          }
+        ]
+      }
+    ]
+  },
+  "project": {
+    "name": "Job Board",
+    "type": "web-application"
+  },
+  "context": {
+    "primary_language": "Python",
+    "frameworks": ["FastAPI", "NocoDB", "PostgreSQL", "Claude API"]
+  },
+  "development": {
+    "linting": "ruff",
+    "formatting": "black",
+    "testing": "pytest"
+  },
+  "ignore_patterns": [
+    "node_modules/**",
+    "**/__pycache__/**",
+    "*.pyc",
+    ".venv/**",
+    "venv/**",
+    "db/data/**",
+    "*.log",
+    ".env*",
+    "coverage/**"
+  ]
+}

@@ -1,0 +1,179 @@
+"""Ashby job board scraper via public GraphQL API.
+
+Endpoints:
+  POST https://jobs.ashbyhq.com/api/non-user-graphql
+  - ApiJobBoardWithTeams: list all postings (title, location, team, compensation)
+  - ApiJobPosting: full description HTML for a single posting
+"""
+
+import asyncio
+import logging
+from datetime import datetime, timezone
+
+import httpx
+
+from app.models.companies import Company
+from app.scrapers.base import ScrapedJob, html_to_text, parse_salary
+
+logger = logging.getLogger(__name__)
+
+ASHBY_GQL = "https://jobs.ashbyhq.com/api/non-user-graphql"
+
+LIST_QUERY = """
+query ApiJobBoardWithTeams($organizationHostedJobsPageName: String!) {
+  jobBoard: jobBoardWithTeams(
+    organizationHostedJobsPageName: $organizationHostedJobsPageName
+  ) {
+    teams { id name parentTeamId }
+    jobPostings {
+      id title teamId locationId locationName
+      employmentType compensationTierSummary
+      secondaryLocations { locationId locationName }
+    }
+  }
+}
+"""
+
+DETAIL_QUERY = """
+query ApiJobPosting(
+  $organizationHostedJobsPageName: String!,
+  $jobPostingId: String!
+) {
+  jobPosting(
+    organizationHostedJobsPageName: $organizationHostedJobsPageName,
+    jobPostingId: $jobPostingId
+  ) {
+    id title descriptionHtml departmentName locationName
+    employmentType compensationTierSummary publishedDate
+  }
+}
+"""
+
+
+class AshbyScraper:
+    source_name = "ashby"
+
+    def can_handle(self, company: Company) -> bool:
+        return bool(company.ashby_slug)
+
+    async def scrape_company(
+        self, company: Company, http_client: httpx.AsyncClient
+    ) -> list[ScrapedJob]:
+        slug = company.ashby_slug
+        logger.info("Fetching Ashby jobs for %s (slug=%s)", company.name, slug)
+
+        # Step 1: list all postings
+        resp = await http_client.post(
+            ASHBY_GQL,
+            json={
+                "operationName": "ApiJobBoardWithTeams",
+                "variables": {"organizationHostedJobsPageName": slug},
+                "query": LIST_QUERY,
+            },
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        board = data.get("data", {}).get("jobBoard")
+        if not board:
+            logger.warning("No Ashby board found for slug %s", slug)
+            return []
+
+        teams = {t["id"]: t["name"] for t in (board.get("teams") or [])}
+        postings = board.get("jobPostings") or []
+        logger.info("Found %d postings for %s, fetching details...", len(postings), company.name)
+
+        # Step 2: fetch details for each posting (with rate limiting)
+        jobs: list[ScrapedJob] = []
+        for posting in postings:
+            try:
+                job = await self._fetch_detail(
+                    http_client, slug, posting, teams, company
+                )
+                if job:
+                    jobs.append(job)
+            except Exception:
+                logger.warning(
+                    "Failed to fetch detail for %s at %s",
+                    posting.get("title"), company.name,
+                    exc_info=True,
+                )
+            # Rate limit: 0.3s between detail requests
+            await asyncio.sleep(0.3)
+
+        logger.info("Scraped %d jobs with details for %s", len(jobs), company.name)
+        return jobs
+
+    async def _fetch_detail(
+        self,
+        http_client: httpx.AsyncClient,
+        slug: str,
+        posting: dict,
+        teams: dict[str, str],
+        company: Company,
+    ) -> ScrapedJob | None:
+        posting_id = posting["id"]
+
+        resp = await http_client.post(
+            ASHBY_GQL,
+            json={
+                "operationName": "ApiJobPosting",
+                "variables": {
+                    "organizationHostedJobsPageName": slug,
+                    "jobPostingId": posting_id,
+                },
+                "query": DETAIL_QUERY,
+            },
+        )
+        resp.raise_for_status()
+        detail = resp.json().get("data", {}).get("jobPosting")
+
+        if not detail:
+            return None
+
+        description_html = detail.get("descriptionHtml", "")
+        plain_text = html_to_text(description_html) if description_html else ""
+
+        location = posting.get("locationName") or detail.get("locationName") or ""
+        remote = "remote" in location.lower() if location else False
+
+        # Salary from compensation summary or description
+        comp_summary = posting.get("compensationTierSummary") or ""
+        salary_min, salary_max = parse_salary(comp_summary)
+        if not salary_min:
+            salary_min, salary_max = parse_salary(description_html or plain_text)
+
+        # Posted date
+        posted_at = None
+        pub_date = detail.get("publishedDate")
+        if pub_date:
+            try:
+                posted_at = datetime.fromisoformat(pub_date).replace(tzinfo=timezone.utc)
+            except (ValueError, AttributeError):
+                pass
+
+        team_name = teams.get(posting.get("teamId"), "")
+        dept_name = detail.get("departmentName") or team_name
+
+        url = f"https://jobs.ashbyhq.com/{slug}/{posting_id}"
+
+        return ScrapedJob(
+            title=detail.get("title", posting.get("title", "")),
+            company_name=company.name,
+            url=url,
+            description=plain_text,
+            description_html=description_html or None,
+            location=location or None,
+            remote=remote,
+            salary_min=salary_min,
+            salary_max=salary_max,
+            posted_at=posted_at,
+            application_url=url,
+            source="ashby",
+            metadata={
+                "ashby_posting_id": posting_id,
+                "department": dept_name or None,
+                "team": team_name or None,
+                "employment_type": posting.get("employmentType"),
+            },
+        )

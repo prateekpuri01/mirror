@@ -1,0 +1,1494 @@
+# profile_complete.yaml
+# Comprehensive, machine-readable catalog of ALL professional accomplishments for Prateek Puri
+# Source of truth for AI-generated resumes, cover letters, and job matching
+# Generated: 2026-03-16
+# Attribution rules:
+#   - RAND publications: Prateek is tech lead on all; attribute all technical results.
+#   - Non-RAND publications: Only first-author papers; attribute direct contributions.
+#   - Special case: arXiv:2512.00009 (Muse benchmarking) — attribute all results regardless of author position.
+
+accomplishments:
+
+  # ============================================================
+  # RAND Corporation — Information Scientist (2022–present)
+  # ============================================================
+
+  - id: rand-muse
+    category: project
+    employer: RAND Corporation
+    title: "MUSE: LLM-Assisted Qualitative Research System"
+    date_range: "2023-2025"
+    impact_summary: |
+      Designed and built MUSE, a blended human-AI research assistant for structured coding,
+      thematic synthesis, and policy analysis. The system was adopted by 400+ RAND researchers
+      across 600+ uploaded projects, fundamentally changing how qualitative research is conducted
+      at the organization. Achieved Cohen's kappa = 0.71 inter-rater reliability between MUSE
+      and human coders, demonstrating production-grade agreement on qualitative tasks.
+    quantitative_specifics:
+      - "400+ RAND researchers onboarded"
+      - "600+ research projects uploaded to the platform"
+      - "Cohen's kappa = 0.71 inter-rater reliability vs. human coders"
+      - "PI/tech lead on system design and implementation"
+    so_what: |
+      Proves ability to conceive, architect, and ship a production AI system used by hundreds of
+      domain experts. Demonstrates end-to-end ownership from LLM pipeline design through user
+      adoption, as well as rigorous evaluation methodology for AI-assisted workflows.
+    skills_demonstrated:
+      - LLM system architecture
+      - RAG pipelines
+      - qualitative research methods
+      - Python
+      - LLM evaluation
+      - product management
+      - user adoption strategy
+    relevance_weight: 0.95
+    tags:
+      - ai-systems
+      - llm
+      - qualitative-research
+      - flagship
+      - award-winning
+
+  - id: rand-rockstar-researchers
+    category: project
+    employer: RAND Corporation
+    title: "International Rockstar Researchers: Scientific Migration Bibliometric Analysis"
+    date_range: "2023-2025"
+    impact_summary: |
+      Led large-scale empirical analysis of elite scientific migration patterns using bibliometric
+      data and machine learning. Constructed LLM system to annotate 300,000+ scientific abstracts,
+      then built an interactive dashboard for exploring migration flows. The project connected novel
+      ML-driven data pipelines to policy-relevant questions about international talent competition.
+    quantitative_specifics:
+      - "300,000+ scientific abstracts annotated via LLM system"
+      - "Interactive dashboard built for policy stakeholders"
+      - "Large-scale bibliometric dataset constructed and analyzed"
+    so_what: |
+      Demonstrates capacity to combine large-scale NLP pipelines with domain-specific analytical
+      frameworks. Shows ability to translate raw data at scale into actionable policy insights and
+      compelling visualizations for non-technical audiences.
+    skills_demonstrated:
+      - NLP
+      - bibliometrics
+      - machine learning
+      - data visualization
+      - LLM annotation pipelines
+      - Python
+      - dashboard development
+    relevance_weight: 0.90
+    tags:
+      - nlp
+      - bibliometrics
+      - science-policy
+      - data-engineering
+
+  - id: rand-darpa-ckc
+    category: project
+    employer: RAND Corporation
+    title: "DARPA CKC: Expert-Rooted AI Evaluation"
+    date_range: "2023-2024"
+    impact_summary: |
+      Developed domain-expert datasets and evaluation protocols for benchmarking AI systems
+      under the DARPA Collaborative Knowledge Capture program. Designed evaluation frameworks
+      that ground AI performance measurement in expert judgment, bridging the gap between
+      standard ML benchmarks and real-world task competency.
+    quantitative_specifics:
+      - "Domain-expert evaluation datasets constructed"
+      - "Evaluation protocols designed and validated"
+      - "DARPA-funded project"
+    so_what: |
+      Proves ability to design rigorous, expert-grounded AI evaluation methodologies for
+      defense and national security applications. Demonstrates experience working within
+      DARPA program structures and delivering evaluation artifacts that meet DoD standards.
+    skills_demonstrated:
+      - AI evaluation
+      - benchmark design
+      - domain-expert elicitation
+      - defense research
+      - Python
+    relevance_weight: 0.85
+    tags:
+      - ai-evaluation
+      - darpa
+      - defense
+      - benchmarking
+
+  - id: rand-misinformation-abm
+    category: project
+    employer: RAND Corporation
+    title: "Digital Cloning of Online Social Networks for Misinformation Modeling"
+    date_range: "2023-2024"
+    impact_summary: |
+      Created a novel simulation framework combining agent-based modeling (ABM) with NLP to
+      model misinformation propagation through social networks. Built a "digital clone" of an
+      actual misinformation network from 10,000+ real users, enabling testing of interventions
+      without affecting live platforms. Testing showed propagation patterns comparable to
+      empirical observations.
+    quantitative_specifics:
+      - "10,000+ real users modeled in digital clone network"
+      - "Language-sensitive ABM framework developed"
+      - "Comparable propagation patterns to real-world observations"
+      - "Published in RAND and arXiv (2401.12509)"
+    so_what: |
+      Demonstrates ability to design novel computational social science methods that combine
+      NLP with simulation. Shows capacity to model complex sociotechnical systems and produce
+      publishable research at the intersection of AI and social dynamics.
+    skills_demonstrated:
+      - agent-based modeling
+      - NLP
+      - network analysis
+      - social simulation
+      - Python
+      - computational social science
+    relevance_weight: 0.88
+    tags:
+      - misinformation
+      - abm
+      - nlp
+      - social-networks
+      - first-author
+
+  - id: rand-small-models
+    category: project
+    employer: RAND Corporation
+    title: "Small Models, Big Threats: Characterizing Low-Compute AI Security Risks"
+    date_range: "2025-2026"
+    impact_summary: |
+      Sole-authored research examining how smaller, consumer-hardware AI systems present
+      growing security risks that current governance frameworks overlook. Analyzed 5,000+
+      HuggingFace models and found that the model size needed for competitive benchmark
+      performance decreased 10X within a single year. Demonstrated that harmful applications
+      are executable on consumer hardware, arguing for governance attention to low-compute
+      vulnerabilities.
+    quantitative_specifics:
+      - "5,000+ HuggingFace models analyzed"
+      - "10X decrease in model size for competitive performance in one year"
+      - "Sole-author publication"
+      - "Accepted at AAAI 2026 Workshop on AI Governance"
+    so_what: |
+      Demonstrates independent research capability and thought leadership in AI governance.
+      Shows ability to identify emerging security risks ahead of the policy curve and
+      communicate findings to both technical and governance audiences.
+    skills_demonstrated:
+      - AI governance
+      - AI safety
+      - empirical analysis
+      - science communication
+      - independent research
+    relevance_weight: 0.95
+    tags:
+      - ai-governance
+      - ai-safety
+      - sole-author
+      - aaai
+      - first-author
+
+  - id: rand-pi-leadership
+    category: project
+    employer: RAND Corporation
+    title: "Principal Investigator — Two RAND Research Projects"
+    date_range: "2023-2025"
+    impact_summary: |
+      Served as Principal Investigator on two RAND research projects with a combined budget
+      of $200K. Managed project scope, timelines, deliverables, and cross-functional research
+      teams from proposal through final publication.
+    quantitative_specifics:
+      - "$200K combined project budget"
+      - "2 projects as PI"
+      - "Full lifecycle management from proposal to publication"
+    so_what: |
+      Proves leadership and project management capability in a research setting. Demonstrates
+      ability to win funding, manage budgets, and deliver on schedule — skills that translate
+      directly to technical leadership roles.
+    skills_demonstrated:
+      - project management
+      - budget management
+      - research leadership
+      - proposal writing
+      - team management
+    relevance_weight: 0.85
+    tags:
+      - leadership
+      - pi
+      - management
+
+  - id: rand-bayesian-spaceforce
+    category: project
+    employer: RAND Corporation
+    title: "Bayesian Neural Networks for Space Collision Event Probabilities"
+    date_range: "2023-2024"
+    impact_summary: |
+      Developed Bayesian neural network models for the U.S. Space Force to estimate collision
+      event probabilities for space objects. Applied uncertainty quantification techniques to
+      provide probabilistic rather than point estimates, enabling more informed risk-based
+      decision-making for space domain awareness.
+    quantitative_specifics:
+      - "Bayesian neural networks for probabilistic collision estimation"
+      - "Built for U.S. Space Force operational context"
+    so_what: |
+      Demonstrates expertise in Bayesian deep learning and uncertainty quantification applied
+      to high-stakes defense applications. Shows ability to translate advanced statistical
+      methods into operationally useful tools for military decision-makers.
+    skills_demonstrated:
+      - Bayesian inference
+      - neural networks
+      - uncertainty quantification
+      - defense applications
+      - Python
+    relevance_weight: 0.80
+    tags:
+      - bayesian
+      - defense
+      - space
+      - deep-learning
+
+  - id: rand-census-data
+    category: project
+    employer: RAND Corporation
+    title: "Workers' First Jobs and Long-Term Wage Growth: Census LEHD Analysis"
+    date_range: "2023-2024"
+    impact_summary: |
+      Built data pipelines and conducted analysis on restricted-use U.S. Census Bureau
+      microdata at a Federal Statistical Research Data Center (FSRDC, Project #2759).
+      Worked with Longitudinal Employer-Household Dynamics (LEHD) linked employer-employee
+      records covering 95%+ of U.S. employment, joined with American Community Survey (ACS)
+      data, to study how workers' initial occupations predict 8-year wage trajectories.
+      Analysis examined four-digit occupation-level skill profiles (Deming 2017 framework)
+      across demographic subgroups, with minimum cell sizes of 500 workers per occupation
+      and 50 per demographic group. Published as RAND working paper (WR-A3492-1) and
+      companion research brief (RB-A3492-1).
+    quantitative_specifics:
+      - "LEHD linked employer-employee records covering 95%+ of U.S. employment"
+      - "8-year longitudinal wage trajectory tracking per worker"
+      - "Four-digit occupation-level skill profile analysis"
+      - "Demographic decomposition by gender and race/ethnicity"
+      - "Restricted-use Census microdata accessed at FSRDC (Project #2759)"
+      - "Published RAND working paper (WR-A3492-1) and research brief (RB-A3492-1)"
+    so_what: |
+      Demonstrates ability to work with restricted-use government microdata at scale in
+      a secure research environment. Shows expertise in longitudinal data analysis, labor
+      economics methodology, and building pipelines over linked administrative records that
+      are not publicly available.
+    skills_demonstrated:
+      - data engineering
+      - longitudinal data analysis
+      - labor economics
+      - Census LEHD/ACS microdata
+      - FSRDC restricted-use data access
+      - demographic analysis
+      - SQL
+      - Python
+    relevance_weight: 0.80
+    tags:
+      - data-engineering
+      - census
+      - labor-economics
+      - longitudinal-analysis
+      - rand-publication
+
+  - id: rand-ai-security-guide
+    category: project
+    employer: RAND Corporation
+    title: "AI Security Guide and Risk Assessment Tool"
+    date_range: "2025-2026"
+    impact_summary: |
+      Tech lead on developing an AI security guide and risk assessment tool published by RAND.
+      The tool provides organizations with structured frameworks for identifying, assessing,
+      and mitigating AI-related security risks, translating complex technical threat models
+      into actionable assessment protocols.
+    quantitative_specifics:
+      - "Published RAND tool (TLA4174-1)"
+      - "Risk assessment framework for organizational AI security"
+    so_what: |
+      Demonstrates ability to translate AI security research into practical, usable tools
+      for non-technical stakeholders. Shows thought leadership at the intersection of AI
+      and cybersecurity governance.
+    skills_demonstrated:
+      - AI security
+      - risk assessment
+      - tool development
+      - technical writing
+      - AI governance
+    relevance_weight: 0.92
+    tags:
+      - ai-security
+      - governance
+      - tool
+      - rand-publication
+
+  - id: rand-ai-governance-equalai
+    category: project
+    employer: RAND Corporation
+    title: "AI Governance Insights from 2024 EqualAI Summit"
+    date_range: "2024-2025"
+    impact_summary: |
+      Contributed technical expertise to RAND's analysis of AI governance discussions at the
+      2024 EqualAI Summit. The resulting publication synthesized insights and recommendations
+      from cross-sector stakeholders on responsible AI deployment, bias mitigation, and
+      governance frameworks.
+    quantitative_specifics:
+      - "Published RAND report (CFA3799-1)"
+      - "Cross-sector AI governance recommendations"
+    so_what: |
+      Shows engagement with the broader AI governance community and ability to synthesize
+      diverse stakeholder perspectives into coherent policy recommendations.
+    skills_demonstrated:
+      - AI governance
+      - policy analysis
+      - stakeholder engagement
+      - technical writing
+    relevance_weight: 0.85
+    tags:
+      - ai-governance
+      - policy
+      - rand-publication
+
+  - id: rand-export-control-hardware
+    category: project
+    employer: RAND Corporation
+    title: "Hardware-Enabled Governance for AI Export Controls (3A090/4A090)"
+    date_range: "2024"
+    impact_summary: |
+      Contributed technical analysis to RAND research on hardware-enabled governance mechanisms
+      for AI chip export controls. The work developed technical solutions for exempting items
+      under Export Control Classification Numbers 3A090 and 4A090, directly informing U.S.
+      semiconductor export policy.
+    quantitative_specifics:
+      - "Published RAND report (WRA3056-1)"
+      - "Directly addressed ECCN 3A090 and 4A090 classifications"
+    so_what: |
+      Demonstrates ability to contribute at the intersection of technical AI capability
+      assessment and international trade policy. Shows understanding of hardware-level
+      governance mechanisms for AI.
+    skills_demonstrated:
+      - AI governance
+      - export control policy
+      - hardware governance
+      - technical analysis
+    relevance_weight: 0.80
+    tags:
+      - ai-governance
+      - export-controls
+      - hardware
+      - rand-publication
+
+  - id: rand-air-force-training
+    category: project
+    employer: RAND Corporation
+    title: "Assessing the Landscape of Advanced Technologies for Department of the Air Force Training and Education"
+    date_range: "2023-2024"
+    impact_summary: |
+      Tech lead on NLP pipeline for a RAND Project AIR FORCE assessment of advanced training
+      technologies. Built a multi-stage text classification system to categorize ~300K documents
+      (spanning DAF, DoD, commercial, academic, allied, and adversary sources from 1990-2022)
+      into 15 technology bins. Hand-annotated ~1,000 documents to create ground-truth labels,
+      then used GPT-4 as a teacher model to label ~15,000 documents via prompt-tuned classification.
+      Fine-tuned a series of BERT models as lightweight student classifiers via knowledge
+      distillation, enabling scalable inference across the full 300K corpus. Developed evaluation
+      pipelines to validate classifier performance against hand-coded ground truth. The resulting
+      technology landscape analysis informed DAF stakeholders on maturity, benefits, applicability,
+      and adoption barriers for 15 categories of advanced training technologies.
+    quantitative_specifics:
+      - "~300,000 documents classified across 15 technology categories"
+      - "~1,000 documents hand-annotated for ground-truth labels"
+      - "~15,000 documents labeled via GPT-4 prompt-tuned classification"
+      - "Fine-tuned BERT model ensemble via GPT-4 → BERT knowledge distillation"
+      - "Evaluation pipeline validating classifier against hand-coded ground truth"
+      - "Document corpus spanning 1990-2022 from 6 source categories (DAF, DoD, commercial, academic, allied, adversary)"
+      - "Published RAND report (RR-A2326-1)"
+    so_what: |
+      Demonstrates end-to-end NLP pipeline construction at scale: annotation, LLM-based data
+      labeling, model distillation (GPT-4 teacher → BERT student), evaluation, and deployment
+      over a 300K document corpus. Shows ability to combine modern LLM capabilities with
+      efficient fine-tuned models for production classification tasks in a defense research context.
+    skills_demonstrated:
+      - BERT fine-tuning
+      - knowledge distillation
+      - GPT-4 prompt engineering
+      - text classification
+      - NLP pipeline development
+      - evaluation methodology
+      - data annotation
+      - defense research
+      - technical writing
+      - Python
+    relevance_weight: 0.90
+    tags:
+      - nlp
+      - bert
+      - knowledge-distillation
+      - text-classification
+      - defense
+      - training
+      - rand-publication
+
+  # ============================================================
+  # FINRA — Senior Data Scientist (2020–2022)
+  # ============================================================
+
+  - id: finra-fraud-detection
+    category: project
+    employer: FINRA
+    title: "Neural Network Fraud Detection on 10 TB+ Time-Series Financial Data"
+    date_range: "2020-2022"
+    impact_summary: |
+      Processed 10 TB+ time-series datasets through AWS pipelines to train neural networks
+      for securities fraud detection. Built end-to-end data engineering and model training
+      infrastructure on AWS, enabling automated identification of manipulative trading
+      patterns in high-volume financial market data.
+    quantitative_specifics:
+      - "10 TB+ time-series datasets processed"
+      - "AWS pipeline architecture (ingestion through inference)"
+      - "Neural network models for fraud detection"
+    so_what: |
+      Proves ability to build production ML systems at massive data scale in a regulated
+      industry. Demonstrates expertise in time-series modeling, cloud infrastructure, and
+      the data engineering required to operationalize deep learning.
+    skills_demonstrated:
+      - deep learning
+      - time-series analysis
+      - AWS
+      - data engineering
+      - Python
+      - fraud detection
+    relevance_weight: 0.70
+    tags:
+      - finra
+      - deep-learning
+      - fraud
+      - aws
+      - large-scale
+
+  - id: finra-image-recommendation
+    category: project
+    employer: FINRA
+    title: "Image-Based Recommendation Algorithms for Fraud Discovery"
+    date_range: "2020-2022"
+    impact_summary: |
+      Developed image-based recommendation algorithms that converted time-series trading
+      patterns into visual representations, then applied computer vision techniques to
+      surface similar fraudulent patterns. Increased fraud discovery efficiency by 5X
+      compared to previous rule-based approaches.
+    quantitative_specifics:
+      - "5X increase in fraud discovery efficiency"
+      - "Image-based representation of trading patterns"
+      - "Recommendation system for fraud pattern matching"
+    so_what: |
+      Demonstrates creative problem-solving — converting a time-series problem into an
+      image recognition problem to leverage transfer learning. Shows ability to deliver
+      dramatic efficiency gains through novel methodological approaches.
+    skills_demonstrated:
+      - computer vision
+      - recommendation systems
+      - creative problem-solving
+      - deep learning
+      - Python
+    relevance_weight: 0.70
+    tags:
+      - finra
+      - computer-vision
+      - recommendation
+      - fraud
+
+  - id: finra-bayesian-uncertainty
+    category: project
+    employer: FINRA
+    title: "Bayesian Frameworks for Uncertainty Estimation in Market Manipulation Review"
+    date_range: "2020-2022"
+    impact_summary: |
+      Designed and implemented Bayesian frameworks for uncertainty estimation in FINRA's
+      market manipulation review pipeline. By quantifying model uncertainty and calibrating
+      alert thresholds, reduced manipulation review workloads by 30% while maintaining
+      detection coverage.
+    quantitative_specifics:
+      - "30% reduction in manipulation review workloads"
+      - "Bayesian uncertainty estimation framework"
+      - "Calibrated alert thresholds based on posterior distributions"
+    so_what: |
+      Demonstrates mastery of Bayesian methods applied to real-world operational decisions.
+      Shows ability to reduce human workload through principled uncertainty quantification
+      rather than crude threshold tuning.
+    skills_demonstrated:
+      - Bayesian inference
+      - uncertainty quantification
+      - anomaly detection
+      - Python
+      - operational ML
+    relevance_weight: 0.70
+    tags:
+      - finra
+      - bayesian
+      - uncertainty
+      - fraud
+
+  - id: finra-dash-dashboards
+    category: project
+    employer: FINRA
+    title: "Python Dash Dashboards for Financial Regulators"
+    date_range: "2020-2022"
+    impact_summary: |
+      Designed and built interactive Python Dash dashboards used by financial regulators
+      to monitor market activity, investigate suspicious patterns, and track enforcement
+      actions. Translated complex ML model outputs into intuitive visual interfaces for
+      non-technical regulatory staff.
+    quantitative_specifics:
+      - "Dashboards used by financial regulators"
+      - "Built with Python Dash framework"
+    so_what: |
+      Proves ability to build user-facing data products that make complex analytical outputs
+      accessible to domain experts. Demonstrates full-stack data science — from model
+      training through visualization and deployment.
+    skills_demonstrated:
+      - Dash
+      - data visualization
+      - Python
+      - UI design
+      - stakeholder communication
+    relevance_weight: 0.65
+    tags:
+      - finra
+      - visualization
+      - dashboard
+
+  # ============================================================
+  # Crisis Text Line
+  # ============================================================
+
+  - id: ctl-nlp-counseling
+    category: project
+    employer: Crisis Text Line
+    title: "NLP Analysis of 50M+ Digital Counseling Conversations"
+    date_range: "2020-2021"
+    impact_summary: |
+      Parsed and analyzed 50M+ digital counseling conversations using NLP techniques to
+      identify mental health trends during the COVID-19 pandemic. Extracted temporal patterns
+      in crisis types, severity, and demographic distributions, producing actionable insights
+      for crisis intervention strategy.
+    quantitative_specifics:
+      - "50M+ digital counseling conversations analyzed"
+      - "COVID-19 mental health trend analysis"
+      - "NLP pipeline for unstructured counseling text"
+    so_what: |
+      Demonstrates ability to apply NLP at massive scale to sensitive, high-impact social
+      data. Shows experience working with protected health information and deriving
+      policy-relevant insights from unstructured text.
+    skills_demonstrated:
+      - NLP
+      - large-scale data processing
+      - mental health research
+      - Python
+      - sensitive data handling
+    relevance_weight: 0.65
+    tags:
+      - nlp
+      - mental-health
+      - covid
+      - large-scale
+
+  - id: ctl-eating-disorders
+    category: project
+    employer: Crisis Text Line
+    title: "Teenage Eating Disorders During COVID-19 Pandemic"
+    date_range: "2020-2021"
+    impact_summary: |
+      Authored study on teenage eating disorder patterns during the COVID-19 pandemic,
+      using NLP-derived insights from Crisis Text Line conversation data to identify
+      emerging trends in adolescent mental health crises.
+    quantitative_specifics:
+      - "Study authored on pandemic eating disorder trends"
+      - "Data-driven analysis of adolescent mental health patterns"
+    so_what: |
+      Shows ability to produce publishable research findings from applied data science work.
+      Demonstrates sensitivity to vulnerable populations and capacity for translational
+      research.
+    skills_demonstrated:
+      - research writing
+      - data analysis
+      - mental health research
+      - NLP
+    relevance_weight: 0.60
+    tags:
+      - mental-health
+      - research
+      - covid
+
+  # ============================================================
+  # Other Professional Projects
+  # ============================================================
+
+  # ============================================================
+  # PhD Research — UCLA (2014–2019)
+  # ============================================================
+
+  - id: phd-reaction-blockading
+    category: project
+    employer: UCLA — Department of Physics
+    title: "Reaction Blockading in Atom-Ion Collisions"
+    date_range: "2017-2019"
+    impact_summary: |
+      Discovered and characterized reaction blockading — a novel quantum phenomenon where
+      laser-assisted control of atomic states suppresses chemical reactions at low collision
+      energies. Published as first author in Nature Chemistry, demonstrating a new method
+      for laser-assisted quantum state control of molecular reactions.
+    quantitative_specifics:
+      - "First-author publication in Nature Chemistry"
+      - "Novel quantum phenomenon discovered and characterized"
+      - "10X acceleration of reaction rates demonstrated"
+    so_what: |
+      Proves ability to conduct original scientific research at the highest level of rigor
+      and publish in top-tier journals. Demonstrates deep analytical thinking and
+      experimental design skills that transfer to any quantitative research domain.
+    skills_demonstrated:
+      - experimental physics
+      - quantum state control
+      - scientific writing
+      - data analysis
+      - research design
+    relevance_weight: 0.45
+    tags:
+      - physics
+      - phd
+      - nature
+      - first-author
+
+  - id: phd-hypermetallic-oxide
+    category: project
+    employer: UCLA — Department of Physics
+    title: "Synthesis of Mixed Hypermetallic Oxide BaOCa+ from Laser-Cooled Reagents"
+    date_range: "2016-2017"
+    impact_summary: |
+      Synthesized a novel mixed hypermetallic oxide (BaOCa+) using laser-cooled reagents
+      in an atom-ion hybrid trap, demonstrating precise quantum-level control of chemical
+      reactions. Published as first author in Science, one of the most prestigious
+      scientific journals.
+    quantitative_specifics:
+      - "First-author publication in Science"
+      - "Novel molecule synthesized via laser-cooled reagents"
+      - "Atom-ion hybrid trap methodology"
+    so_what: |
+      A first-author Science publication demonstrates ability to produce research of the
+      highest possible impact. This level of achievement in experimental physics requires
+      meticulous attention to detail, creative experimental design, and rigorous analysis.
+    skills_demonstrated:
+      - experimental physics
+      - quantum chemistry
+      - scientific writing
+      - laboratory instrumentation
+      - data analysis
+    relevance_weight: 0.45
+    tags:
+      - physics
+      - phd
+      - science-journal
+      - first-author
+
+  # ============================================================
+  # Awards
+  # ============================================================
+
+  - id: award-rand-spotlight-2025
+    category: award
+    employer: RAND Corporation
+    title: "RAND Spotlight Award (MUSE)"
+    date_range: "2025"
+    impact_summary: |
+      Awarded the RAND Spotlight Award in recognition of the MUSE system's impact on
+      qualitative research across the organization. This award highlights exceptional
+      contributions that advance RAND's mission and research capabilities.
+    quantitative_specifics:
+      - "Organization-wide recognition award"
+      - "Awarded for MUSE system impact"
+    so_what: |
+      Formal institutional recognition that the MUSE system represented an exceptional
+      contribution. Validates the claim that this work transformed research practices
+      at a major policy research organization.
+    skills_demonstrated:
+      - AI systems
+      - organizational impact
+    relevance_weight: 0.90
+    tags:
+      - award
+      - muse
+      - rand
+
+  - id: award-rand-silver-2024
+    category: award
+    employer: RAND Corporation
+    title: "RAND Silver Medal Award"
+    date_range: "2024"
+    impact_summary: |
+      Received the RAND Silver Medal, one of the organization's most prestigious
+      individual awards recognizing sustained excellence in research quality and impact.
+    quantitative_specifics:
+      - "One of RAND's most prestigious individual awards"
+    so_what: |
+      Demonstrates sustained excellence recognized by leadership and peers at a
+      world-renowned research organization.
+    skills_demonstrated:
+      - research excellence
+      - sustained impact
+    relevance_weight: 0.85
+    tags:
+      - award
+      - rand
+
+  - id: award-rand-commentary-2024
+    category: award
+    employer: RAND Corporation
+    title: "RAND Commentary Fellowship"
+    date_range: "2024"
+    impact_summary: |
+      Selected for the RAND Commentary Fellowship, supporting the development of
+      public-facing commentary and analysis on AI governance and technology policy topics.
+    quantitative_specifics:
+      - "Competitive fellowship selection"
+    so_what: |
+      Recognition of science communication skills and ability to translate complex
+      technical topics for public audiences. Demonstrates institutional confidence in
+      the candidate's public voice.
+    skills_demonstrated:
+      - science communication
+      - public commentary
+      - AI governance
+    relevance_weight: 0.80
+    tags:
+      - award
+      - rand
+      - science-writing
+
+  - id: award-finra-bond-2021
+    category: award
+    employer: FINRA
+    title: "FINRA BOND Award"
+    date_range: "2021"
+    impact_summary: |
+      Received the FINRA BOND Award recognizing outstanding contributions to the
+      organization's data science and market surveillance capabilities.
+    quantitative_specifics:
+      - "Organizational excellence award"
+    so_what: |
+      Institutional recognition of impact in a second major organization, demonstrating
+      consistent delivery of high-value work across different domains.
+    skills_demonstrated:
+      - data science
+      - organizational impact
+    relevance_weight: 0.60
+    tags:
+      - award
+      - finra
+
+  - id: award-nsf-grfp
+    category: award
+    employer: National Science Foundation
+    title: "NSF Graduate Research Fellowship"
+    date_range: "2015-2018"
+    impact_summary: |
+      Awarded the NSF Graduate Research Fellowship, the most prestigious fellowship
+      for STEM graduate students in the United States. Provides three years of funding
+      and is awarded to approximately 2,000 students per year from a pool of 12,000+
+      applicants (acceptance rate ~16%).
+    quantitative_specifics:
+      - "3 years of full funding"
+      - "~16% acceptance rate"
+      - "Most prestigious US STEM graduate fellowship"
+    so_what: |
+      National recognition of research potential at the start of an academic career.
+      The NSF GRFP is widely regarded as a career-defining credential for researchers.
+    skills_demonstrated:
+      - research excellence
+      - proposal writing
+      - scientific communication
+    relevance_weight: 0.50
+    tags:
+      - award
+      - nsf
+      - fellowship
+      - phd
+
+
+
+  - id: award-delsasso-fellowship
+    category: award
+    employer: UCLA
+    title: "Leo P. Delsasso Fellowship"
+    date_range: "2014"
+    impact_summary: |
+      Awarded the Leo P. Delsasso Fellowship upon entering the UCLA Physics PhD program,
+      recognizing exceptional promise in physics research.
+    quantitative_specifics:
+      - "Awarded at PhD program entry"
+    so_what: |
+      Early-career recognition of research potential in physics.
+    skills_demonstrated:
+      - research potential
+    relevance_weight: 0.35
+    tags:
+      - award
+      - fellowship
+      - phd
+
+  - id: award-kinsey-prize
+    category: award
+    employer: UCLA
+    title: "E. Lee Kinsey Prize"
+    date_range: "2014"
+    impact_summary: |
+      Received the E. Lee Kinsey Prize recognizing outstanding achievement in
+      undergraduate physics.
+    quantitative_specifics:
+      - "Undergraduate physics award"
+    so_what: |
+      Recognition of exceptional performance as an undergraduate, preceding a
+      highly productive PhD career.
+    skills_demonstrated:
+      - academic excellence
+    relevance_weight: 0.35
+    tags:
+      - award
+      - undergraduate
+
+  - id: award-summa-cum-laude
+    category: award
+    employer: UCLA
+    title: "Summa Cum Laude, BSc Physics"
+    date_range: "2014"
+    impact_summary: |
+      Graduated Summa Cum Laude with highest departmental honors in Physics from UCLA,
+      indicating top academic performance across coursework and research.
+    quantitative_specifics:
+      - "Summa Cum Laude distinction"
+      - "Highest Departmental Honors"
+    so_what: |
+      Highest possible undergraduate academic distinction, demonstrating strong
+      foundational knowledge and work ethic.
+    skills_demonstrated:
+      - academic excellence
+      - physics
+    relevance_weight: 0.35
+    tags:
+      - award
+      - undergraduate
+      - education
+
+  # ============================================================
+  # Education
+  # ============================================================
+
+  - id: edu-phd-physics
+    category: education
+    employer: UCLA
+    title: "PhD in Physics (AMO / Quantum Information)"
+    date_range: "2014-2019"
+    impact_summary: |
+      Completed PhD in Physics at UCLA specializing in atomic, molecular, and optical (AMO)
+      physics and quantum information science. Produced four first-author publications in
+      top-tier journals including Science and Nature Chemistry. Research focused on laser-
+      assisted quantum state control of chemical reactions.
+    quantitative_specifics:
+      - "4 first-author publications (Science, Nature Chemistry)"
+      - "NSF GRFP funded"
+      - "5-year program completion"
+    so_what: |
+      A physics PhD with publications in Science and Nature Chemistry demonstrates
+      world-class analytical capability and research rigor that transfers to any
+      quantitative domain.
+    skills_demonstrated:
+      - experimental physics
+      - quantum information
+      - scientific writing
+      - research methodology
+      - data analysis
+    relevance_weight: 0.45
+    tags:
+      - education
+      - phd
+      - physics
+
+  - id: edu-bsc-physics
+    category: education
+    employer: UCLA
+    title: "BSc in Physics, Summa Cum Laude, Highest Departmental Honors"
+    date_range: "2010-2014"
+    impact_summary: |
+      Earned BSc in Physics from UCLA with Summa Cum Laude distinction and highest
+      departmental honors. Received the E. Lee Kinsey Prize for outstanding achievement
+      in physics.
+    quantitative_specifics:
+      - "Summa Cum Laude"
+      - "Highest Departmental Honors"
+      - "E. Lee Kinsey Prize recipient"
+    so_what: |
+      Top-tier undergraduate performance establishing the foundation for a highly
+      productive research career.
+    skills_demonstrated:
+      - physics
+      - academic excellence
+      - research fundamentals
+    relevance_weight: 0.35
+    tags:
+      - education
+      - undergraduate
+      - physics
+
+# ==============================================================
+# PUBLICATIONS
+# ==============================================================
+
+publications:
+
+  # --- RAND Publications (tech lead on all) ---
+
+  - title: "AI Security Guide and Risk Assessment Tool"
+    authors:
+      - Quentin E. Hodgson
+      - Karen Schwindt
+      - Prateek Puri
+      - Nicholas Kong
+      - David Zhang
+      - Barbara Bicksler
+    venue: RAND Corporation
+    year: 2026
+    type: tool
+    url: https://www.rand.org/pubs/tools/TLA4174-1.html
+    citation_count: null
+    abstract: >
+      Provides organizations with a structured guide and interactive risk assessment tool
+      for identifying, evaluating, and mitigating AI-related security risks. Covers threat
+      modeling, vulnerability assessment, and governance recommendations for AI system
+      deployment.
+    rand_id: TLA4174-1
+    doi: null
+    first_author: false
+    impact_summary: |
+      Translated AI security research into a practical, actionable tool for organizations
+      deploying AI systems. Bridges the gap between academic AI security literature and
+      operational risk management needs.
+    so_what: |
+      Demonstrates ability to produce tools and frameworks — not just papers — that
+      enable non-technical stakeholders to manage AI risks.
+    quantitative_specifics:
+      - "Published assessment tool with structured risk framework"
+    skills_demonstrated:
+      - AI security
+      - risk assessment
+      - tool development
+      - technical writing
+    relevance_weight: 0.92
+
+  - title: "Steps Toward AI Governance: Insights and Recommendations from the 2024 EqualAI Summit"
+    authors:
+      - Douglas Yeung
+      - Tina Huang
+      - Benjamin Boudreaux
+      - Prateek Puri
+      - Jonathan W. Welburn
+      - Anita Chandra
+      - Miriam Vogel
+    venue: RAND Corporation
+    year: 2025
+    type: report
+    url: https://www.rand.org/pubs/commentary/CFA3799-1.html
+    citation_count: null
+    abstract: >
+      Synthesizes insights and recommendations from the 2024 EqualAI Summit on responsible
+      AI deployment, bias mitigation, and governance frameworks. Draws on cross-sector
+      stakeholder perspectives to identify actionable steps toward effective AI governance.
+    rand_id: CFA3799-1
+    doi: null
+    first_author: false
+    impact_summary: |
+      Contributed to shaping the AI governance conversation by synthesizing cross-sector
+      perspectives into actionable recommendations for responsible AI deployment.
+    so_what: |
+      Shows engagement with the broader AI governance ecosystem and ability to distill
+      complex multi-stakeholder discussions into clear policy guidance.
+    quantitative_specifics:
+      - "Cross-sector governance recommendations published"
+    skills_demonstrated:
+      - AI governance
+      - policy analysis
+      - stakeholder synthesis
+    relevance_weight: 0.85
+
+  - title: "Clearing Up the Confusion from Misperceptions About the Security Clearance Process"
+    authors:
+      - Ryan Andrew Brown
+      - Sina Beaghley
+      - Douglas Yeung
+      - Emily Ellinger
+      - Ethan Doshi
+      - Prateek Puri
+    venue: RAND Corporation
+    year: 2025
+    type: report
+    url: https://www.rand.org/pubs/research_reports/RRA3543-1.html
+    citation_count: null
+    abstract: >
+      Addresses common misperceptions about the U.S. security clearance process through
+      data-driven analysis, providing clarity for policymakers and the public on how
+      the system actually works.
+    rand_id: RRA3543-1
+    doi: null
+    first_author: false
+    impact_summary: |
+      Applied data analysis to identify and quantify public misperceptions about national
+      security workforce processes, producing actionable findings for clearance policy reform.
+    so_what: |
+      Demonstrates breadth of policy research capability beyond AI, applying rigorous
+      analytical methods to national security workforce issues.
+    quantitative_specifics:
+      - "Data-driven analysis of clearance process misperceptions"
+    skills_demonstrated:
+      - policy research
+      - data analysis
+      - national security
+    relevance_weight: 0.65
+
+  - title: "Hardware-Enabled Governance Mechanisms: Developing Technical Solutions to Exempt Items Otherwise Classified Under Export Control Classification Numbers 3A090 and 4A090"
+    authors:
+      - Gabriel Kulp
+      - Daniel Gonzales
+      - Everett Smith
+      - Lennart Heim
+      - Prateek Puri
+      - Michael J. D. Vermeer
+      - Zev Winkelman
+    venue: RAND Corporation
+    year: 2024
+    type: report
+    url: https://www.rand.org/pubs/working_papers/WRA3056-1.html
+    citation_count: null
+    abstract: >
+      Develops technical solutions for hardware-enabled governance mechanisms that could
+      exempt certain AI chips from export controls under ECCN 3A090 and 4A090. Analyzes
+      technical feasibility of on-chip governance features that would enable selective
+      export control enforcement.
+    rand_id: WRA3056-1
+    doi: null
+    first_author: false
+    impact_summary: |
+      Contributed technical analysis to a policy-shaping paper on AI chip export controls.
+      The work directly informed discussions on how hardware-level governance mechanisms
+      could enable more nuanced export control policies.
+    so_what: |
+      Demonstrates ability to work at the intersection of deep technical analysis and
+      international trade policy — a rare combination needed for AI governance roles.
+    quantitative_specifics:
+      - "Addressed ECCN 3A090 and 4A090 export classifications"
+      - "Technical feasibility analysis for on-chip governance"
+    skills_demonstrated:
+      - AI governance
+      - export control policy
+      - hardware analysis
+      - technical writing
+    relevance_weight: 0.80
+
+  - title: "Assessing the Landscape of Advanced Technologies for Department of the Air Force Training and Education"
+    authors:
+      - Mark Toukan
+      - Emmi Yonekura
+      - Prateek Puri
+      - Maria C. Lytell
+      - Jon Schmid
+      - Andrea M. Abler
+      - Meyer Thalheimer
+      - Eddie Ro
+      - Isabelle Winston
+    venue: RAND Corporation
+    year: 2024
+    type: report
+    url: https://www.rand.org/pubs/research_reports/RRA2326-1.html
+    citation_count: null
+    abstract: >
+      Assesses the landscape of advanced technologies — including AI, simulation, extended
+      reality, and adaptive learning systems — for potential adoption in Department of the
+      Air Force training and education programs. Evaluates readiness levels and integration
+      pathways.
+    rand_id: RRA2326-1
+    doi: null
+    first_author: false
+    impact_summary: |
+      Tech lead on a comprehensive assessment of advanced technology adoption for military
+      training modernization. Evaluated AI, simulation, and immersive technologies for
+      Air Force integration.
+    so_what: |
+      Demonstrates ability to evaluate diverse technology portfolios and recommend
+      integration strategies for large, complex defense organizations.
+    quantitative_specifics:
+      - "Multi-technology assessment for Department of the Air Force"
+    skills_demonstrated:
+      - technology assessment
+      - defense research
+      - AI evaluation
+    relevance_weight: 0.75
+
+  - title: "Artificial Intelligence and Machine Learning for Space Domain Awareness"
+    authors:
+      - Jonathan Tran
+      - Prateek Puri
+      - Jordan Logue
+      - Anthony Jacques
+      - Li Ang Zhang
+      - Krista Langeland
+      - George Nacouzi
+      - Gary J. Briggs
+    venue: RAND Corporation
+    year: 2024
+    type: report
+    url: https://www.rand.org/pubs/research_reports/RRA2318-2.html
+    citation_count: null
+    abstract: >
+      Analyzes the application of artificial intelligence and machine learning techniques
+      to space domain awareness, including object tracking, conjunction assessment, anomaly
+      detection, and decision support for space operations.
+    rand_id: RRA2318-2
+    doi: null
+    first_author: false
+    impact_summary: |
+      Tech lead on RAND's analysis of AI/ML applications for space domain awareness.
+      Assessed how machine learning can enhance space situational awareness for national
+      security purposes.
+    so_what: |
+      Demonstrates deep understanding of AI/ML applications in one of the fastest-growing
+      national security domains.
+    quantitative_specifics:
+      - "Comprehensive AI/ML assessment for space operations"
+    skills_demonstrated:
+      - machine learning
+      - space domain awareness
+      - defense research
+    relevance_weight: 0.78
+
+  - title: "Digital Cloning of Online Social Networks for Language-Sensitive Agent-Based Modeling of Misinformation Spread"
+    authors:
+      - Prateek Puri
+      - Gabriel Hassler
+      - Anton Shenk
+      - Sai Katragadda
+    venue: RAND Corporation
+    year: 2024
+    type: report
+    url: https://www.rand.org/pubs/external_publications/EP70518.html
+    citation_count: null
+    abstract: >
+      Presents a simulation framework combining agent-based modeling with NLP to model
+      misinformation propagation through social networks. Constructs a "digital clone"
+      of an actual misinformation network from 10,000+ real users. Testing demonstrates
+      comparable propagation patterns to empirical observations.
+    rand_id: EP70518
+    doi: null
+    first_author: true
+    impact_summary: |
+      First-author publication introducing a novel computational social science methodology
+      that clones real social networks for misinformation simulation. Demonstrated that
+      synthetic propagation patterns match real-world observations.
+    so_what: |
+      Proves ability to design novel research methodologies and publish first-author work
+      at a major research organization. The combination of ABM, NLP, and network science
+      demonstrates exceptional methodological range.
+    quantitative_specifics:
+      - "10,000+ real users modeled"
+      - "Language-sensitive agent-based modeling framework"
+      - "Comparable propagation patterns to empirical data"
+    skills_demonstrated:
+      - agent-based modeling
+      - NLP
+      - network analysis
+      - computational social science
+    relevance_weight: 0.88
+
+  - title: "The Global Economy at the Firm-Level: Estimating Input-Output Linkages in Production Networks and the Potential for Systemic Risk"
+    authors:
+      - Jonathan W. Welburn
+      - Aaron Strong
+      - Prateek Puri
+    venue: RAND Corporation
+    year: 2023
+    type: working_paper
+    url: https://www.rand.org/pubs/working_papers/WRA2625-1.html
+    citation_count: null
+    abstract: >
+      Estimates input-output linkages in global production networks at the firm level and
+      assesses the potential for systemic risk propagation through supply chain dependencies.
+    rand_id: WRA2625-1
+    doi: null
+    first_author: false
+    impact_summary: |
+      Contributed to novel economic modeling of firm-level production networks, assessing
+      how shocks propagate through global supply chains and create systemic risk.
+    so_what: |
+      Demonstrates analytical versatility extending into economic network analysis and
+      financial risk assessment.
+    quantitative_specifics:
+      - "Firm-level production network analysis"
+      - "Systemic risk assessment methodology"
+    skills_demonstrated:
+      - network analysis
+      - economic modeling
+      - data analysis
+    relevance_weight: 0.65
+
+  # --- arXiv / Conference Papers ---
+
+  - title: "Small models, big threats: Characterizing safety challenges from low-compute AI models"
+    authors:
+      - Prateek Puri
+    venue: AAAI 2026 Workshop on AI Governance
+    year: 2026
+    type: conference
+    url: https://arxiv.org/abs/2601.21365
+    citation_count: null
+    abstract: >
+      Examines how smaller AI systems present growing security risks that current governance
+      frameworks overlook. Analyzed 5,000+ HuggingFace models, finding that the model size
+      needed for competitive benchmark performance decreased 10X in a single year. Demonstrates
+      that harmful applications are executable on consumer hardware. Argues current governance
+      approaches overlook low-compute vulnerabilities.
+    rand_id: null
+    doi: null
+    first_author: true
+    impact_summary: |
+      Sole-authored research identifying a critical blind spot in AI governance: the security
+      risks from small, consumer-hardware AI models. Provided empirical evidence that model
+      capabilities are rapidly commoditizing, challenging governance frameworks focused on
+      frontier models.
+    so_what: |
+      Demonstrates independent thought leadership in AI governance with empirical backing.
+      Sole authorship at a top-tier AI venue shows the ability to conceive, execute, and
+      communicate a complete research agenda independently.
+    quantitative_specifics:
+      - "5,000+ HuggingFace models analyzed"
+      - "10X decrease in model size for competitive performance in one year"
+      - "Sole-author publication"
+      - "AAAI 2026 Workshop on AI Governance"
+    skills_demonstrated:
+      - AI governance
+      - AI safety
+      - empirical analysis
+      - independent research
+      - science communication
+    relevance_weight: 0.95
+
+  - title: "Development and Benchmarking of a Blended Human-AI Qualitative Research Assistant"
+    authors:
+      - Joseph Matveyenko
+      - James Liu
+      - John David Parsons
+      - Ryan A. Brown
+      - Alina Palimaru
+      - Prateek Puri
+    venue: arXiv
+    year: 2025
+    type: conference
+    url: https://arxiv.org/abs/2512.00009
+    citation_count: null
+    abstract: >
+      Evaluates the "Muse" AI system for qualitative research. Achieved Cohen's kappa = 0.71
+      inter-rater reliability between Muse and human coders. Includes comprehensive error
+      analysis examining where AI-assisted coding diverges from human judgment and under
+      what conditions.
+    rand_id: null
+    doi: null
+    first_author: false
+    impact_summary: |
+      Benchmarked the MUSE system (built by Prateek Puri as tech lead) against human coders,
+      demonstrating production-grade agreement (Cohen's kappa = 0.71) on qualitative coding
+      tasks. The error analysis identified specific failure modes and boundary conditions for
+      AI-assisted qualitative research.
+    so_what: |
+      Rigorous evaluation of a system the candidate built, demonstrating not just engineering
+      skill but the scientific mindset to quantitatively assess one's own work. The kappa
+      score provides hard evidence of system quality.
+    quantitative_specifics:
+      - "Cohen's kappa = 0.71 inter-rater reliability"
+      - "Comprehensive error analysis included"
+      - "Tech lead on the evaluated system"
+    skills_demonstrated:
+      - LLM evaluation
+      - qualitative research
+      - benchmarking
+      - system design
+      - statistical analysis
+    relevance_weight: 0.93
+
+  - title: "Digital cloning of online social networks for language-sensitive agent-based modeling of misinformation spread"
+    authors:
+      - Prateek Puri
+      - Gabriel Hassler
+      - Anton Shenk
+      - Sai Katragadda
+    venue: arXiv
+    year: 2024
+    type: conference
+    url: https://arxiv.org/abs/2401.12509
+    citation_count: null
+    abstract: >
+      Created simulation framework combining agent-based modeling with NLP for misinformation
+      propagation. Built "digital clone" of actual misinformation network from 10,000+ users.
+      Testing showed comparable propagation patterns to empirical observations.
+    rand_id: null
+    doi: null
+    first_author: true
+    impact_summary: |
+      First-author arXiv publication presenting the same digital cloning methodology as the
+      RAND report, making the work accessible to the broader computational social science
+      community.
+    so_what: |
+      Demonstrates commitment to open science and reaching multiple audiences with the
+      same research. First-author status confirms intellectual leadership of the project.
+    quantitative_specifics:
+      - "10,000+ users in digital clone network"
+      - "First-author, arXiv preprint"
+    skills_demonstrated:
+      - agent-based modeling
+      - NLP
+      - open science
+    relevance_weight: 0.88
+
+  # --- PhD Publications ---
+
+  - title: "Reaction blockading in a reaction between an excited atom and a charged molecule at low collision energy"
+    authors:
+      - Prateek Puri
+      - Michael Mills
+      - Ionel Simbotin
+      - Christian Schneider
+      - Eric R. Hudson
+    venue: Nature Chemistry
+    year: 2019
+    type: journal
+    url: null
+    citation_count: null
+    abstract: >
+      Reports the discovery of reaction blockading — a novel quantum phenomenon where
+      laser control of atomic excited states suppresses chemical reactions at ultracold
+      collision energies. Demonstrates a new approach to quantum state control of
+      chemical reactions using laser-cooled reagents in an atom-ion hybrid trap.
+    rand_id: null
+    doi: null
+    first_author: true
+    impact_summary: |
+      Discovered and characterized a novel quantum phenomenon (reaction blockading),
+      demonstrating laser-assisted control over chemical reaction rates. Published as
+      first author in Nature Chemistry, a top-tier journal.
+    so_what: |
+      A first-author Nature Chemistry paper demonstrates ability to conduct original
+      research at the highest level and communicate discoveries to the scientific community.
+    quantitative_specifics:
+      - "First-author Nature Chemistry publication"
+      - "Novel quantum phenomenon discovered"
+      - "10X reaction rate acceleration demonstrated"
+    skills_demonstrated:
+      - experimental physics
+      - quantum state control
+      - scientific writing
+      - data analysis
+    relevance_weight: 0.45
+
+  - title: "Synthesis of mixed hypermetallic oxide BaOCa+ from laser-cooled reagents in an atom-ion hybrid trap"
+    authors:
+      - Prateek Puri
+      - Michael Mills
+      - Christian Schneider
+      - Ionel Simbotin
+      - John A. Montgomery
+      - Robin Côté
+      - Arthur G. Suits
+      - Eric R. Hudson
+    venue: Science
+    year: 2017
+    type: journal
+    url: null
+    citation_count: null
+    abstract: >
+      Reports the synthesis of a novel mixed hypermetallic oxide molecule (BaOCa+) using
+      laser-cooled reagents in an atom-ion hybrid trap. Demonstrates precise quantum-level
+      control of a chemical reaction, producing a molecule that had not been previously
+      observed.
+    rand_id: null
+    doi: null
+    first_author: true
+    impact_summary: |
+      Synthesized a novel molecule (BaOCa+) using laser-cooled reagents, demonstrating
+      quantum-level control of chemical reactions. Published as first author in Science,
+      one of the two most prestigious scientific journals in the world.
+    so_what: |
+      A first-author Science publication is among the highest achievements in any
+      scientific career. Demonstrates world-class research capability, experimental rigor,
+      and the ability to produce results of the broadest possible scientific interest.
+    quantitative_specifics:
+      - "First-author Science publication"
+      - "Novel molecule synthesized"
+      - "Quantum-level reaction control demonstrated"
+    skills_demonstrated:
+      - experimental physics
+      - quantum chemistry
+      - scientific writing
+      - laboratory instrumentation
+    relevance_weight: 0.45
+
+  
+
+  - title: "We Should Teach Media Literacy in Elementary School"
+    authors:
+      - Prateek Puri
+    venue: Scientific American (Observations)
+    year: 2018
+    type: commentary
+    url: "https://www.scientificamerican.com/blog/observations/we-should-teach-media-literacy-in-elementary-school/"
+    citation_count: null
+    abstract: >
+      Argues that helping children distinguish fake from real news at an early age
+      provides lifelong benefits. Discusses media consumption patterns, misinformation
+      vulnerability, and advocates for early media literacy curricula in elementary education.
+    rand_id: null
+    doi: null
+    first_author: true
+    impact_summary: |
+      Published policy commentary in Scientific American on media literacy and
+      misinformation — topics directly relevant to AI-era information integrity challenges.
+    so_what: |
+      Early public writing on misinformation and media literacy predates current AI-driven
+      concerns about synthetic content and deepfakes. Shows long-standing interest in the
+      societal impact of information technology.
+    quantitative_specifics:
+      - "Published in Scientific American"
+      - "Written during NSF Graduate Research Fellowship at UCLA"
+    skills_demonstrated:
+      - science communication
+      - policy writing
+      - misinformation research
+      - public engagement
+    relevance_weight: 0.75
+
+  - title: "The Emotional Toll of Grad School"
+    authors:
+      - Prateek Puri
+    venue: Scientific American (Observations)
+    year: 2019
+    type: commentary
+    url: "https://www.scientificamerican.com/blog/observations/the-emotional-toll-of-grad-school/"
+    citation_count: null
+    abstract: >
+      Examines how graduate students are over three times more likely than the average
+      American to experience mental health disorders and depression, drawing on Harvard
+      research and personal perspective from a physics PhD program.
+    rand_id: null
+    doi: null
+    first_author: true
+    impact_summary: |
+      Published commentary on graduate student mental health in Scientific American,
+      contributing to growing discourse on wellbeing in academic research environments.
+    so_what: |
+      Writing for Scientific American validates science communication skills at the
+      highest level of popular science media. Two published articles demonstrate sustained
+      engagement with public-facing science writing.
+    quantitative_specifics:
+      - "Published in Scientific American"
+      - "2 articles published (2018, 2019)"
+    skills_demonstrated:
+      - science communication
+      - writing
+      - public engagement
+      - mental health awareness
+    relevance_weight: 0.70

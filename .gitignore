@@ -1,0 +1,64 @@
+# ---- Environment & Secrets ----
+.env
+.env.*
+!.env.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+*.so
+.venv/
+venv/
+ENV/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# ---- Node / Frontend ----
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# ---- Docker ----
+pgdata/
+
+# ---- Generated output (resumes, docx) ----
+output/
+
+# ---- Corporate CA certs (machine-specific) ----
+backend/ca-certificates.crt
+frontend/ca-certificates.crt
+rand_cert/
+
+# ---- IDE ----
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Alembic ----
+backend/alembic/versions/__pycache__/
+
+# ---- Claude Code (project memory is personal) ----
+.claude/memory
+.claude/memory/
+
+# ---- Personal documents (resumes, spreadsheets) ----
+docs/*.docx
+docs/*.xlsx
+resume/
