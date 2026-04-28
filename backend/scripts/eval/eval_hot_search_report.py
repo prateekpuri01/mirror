@@ -172,6 +172,41 @@ def generate_markdown(report: dict) -> str:
             lines.append(f"| `{src}` | {n} |")
         lines.append("")
 
+    # ---- Funnel diagnostics for 0-hit scenarios. When a persona gets no
+    # hits, the why is more useful than the what. Surface the orchestrator's
+    # candidate-funnel counters + top skip reasons so a reader can see at a
+    # glance whether candidates died in dedup, eval, or post-filter.
+    zero_hit = [s for s in scenarios if not s.get("coverage", False)]
+    funnel_scenarios = [s for s in zero_hit if s.get("funnel")]
+    if funnel_scenarios:
+        lines.append("## Where candidates dropped (0-hit personas)")
+        lines.append("")
+        lines.append(
+            "When a persona returned no hits, this is the orchestrator's "
+            "candidate funnel: how many candidates entered, where they were "
+            "dropped, and (if any) the most-cited skip reasons."
+        )
+        lines.append("")
+        for s in funnel_scenarios:
+            lines.append(f"### `{s.get('persona', '?')}`")
+            lines.append("")
+            funnel = s.get("funnel", {})
+            for key in [
+                "aggregator_entries", "seed_candidates", "candidates_seen",
+                "already_checked", "dedup_dropped", "tracked_no_match",
+                "direct_cap_reached", "direct_hit", "direct_miss",
+                "full_hit", "full_miss", "final_hits",
+            ]:
+                if key in funnel:
+                    lines.append(f"- `{key}`: {funnel[key]}")
+            top_reasons = s.get("top_skip_reasons", [])
+            if top_reasons:
+                lines.append("")
+                lines.append("Top skip reasons:")
+                for reason, count in top_reasons[:5]:
+                    lines.append(f"  - `{count}` × {reason}")
+            lines.append("")
+
     # ---- Best finds
     best = examples.get("best_finds", [])
     if best:
