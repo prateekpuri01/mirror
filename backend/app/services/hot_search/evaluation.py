@@ -23,7 +23,7 @@ from app.models.companies import Company
 from app.models.jobs import Job
 from app.models.profile import UserProfile
 from app.scrapers import make_temp_company, SCRAPERS_BY_ATS
-from app.services.company_discovery import score_job_relevance
+from app.services.company_discovery import _verify_ats_slug, score_job_relevance
 from app.services.extraction import (
     EXTRACTION_PROMPT,
     EXTRACTION_SYSTEM,
