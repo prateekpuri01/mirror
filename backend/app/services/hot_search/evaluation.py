@@ -2083,6 +2083,38 @@ async def _evaluate_tracked_company(
 # ---------------------------------------------------------------------------
 
 
+# Words to strip when computing "share at least one word" near-match overlap.
+# Generic suffixes/articles that would otherwise create spurious matches.
+_DEDUP_STOP_WORDS = {"the", "inc", "co", "ai", "labs", "corp", "ltd"}
+
+
+def _cheap_dedup_check(cand_lower: str, known_names: list[str]) -> str | None:
+    """Fast non-LLM dedup: exact + substring match. Returns the matching
+    known name or None. Pulled out so the batched and single-call paths
+    share the same logic."""
+    for known in known_names:
+        known_lower = known.lower().strip()
+        if cand_lower == known_lower:
+            return known
+        # "Meta AI" contains "Meta", "Google DeepMind" contains "DeepMind"
+        if cand_lower in known_lower or known_lower in cand_lower:
+            return known
+    return None
+
+
+def _near_matches_for(cand_lower: str, known_names: list[str]) -> list[str]:
+    """Find known names that share at least one non-stopword token with the
+    candidate. The LLM dedup only fires when there are plausible matches —
+    avoids paying for an LLM call when the candidate is obviously novel."""
+    cand_words = set(cand_lower.split()) - _DEDUP_STOP_WORDS
+    out = []
+    for known in known_names:
+        known_words = set(known.lower().split()) - _DEDUP_STOP_WORDS
+        if cand_words & known_words:
+            out.append(known)
+    return out
+
+
 async def _is_duplicate_company(
     candidate_name: str,
     known_names: list[str],
@@ -2091,32 +2123,24 @@ async def _is_duplicate_company(
 
     Returns the matching known name if it's a duplicate, or None if it's unique.
     Handles cases like "Meta AI" ↔ "Meta", "Google DeepMind" ↔ "DeepMind".
+
+    Single-candidate version. The batched orchestrator path uses
+    `_batch_check_duplicates` to collapse N candidates × N LLM calls into
+    a single round-trip — this single-call form is kept for callers that
+    only need to dedup one name (e.g. tests).
     """
     if not known_names:
         return None
 
-    # Quick exact/substring check first (free, no LLM)
     cand_lower = candidate_name.lower().strip()
-    for known in known_names:
-        known_lower = known.lower().strip()
-        if cand_lower == known_lower:
-            return known
-        # "Meta AI" contains "Meta", "Google DeepMind" contains "DeepMind"
-        if cand_lower in known_lower or known_lower in cand_lower:
-            return known
+    cheap = _cheap_dedup_check(cand_lower, known_names)
+    if cheap is not None:
+        return cheap
 
-    # Only call LLM if there are plausible near-matches (share at least one word)
-    cand_words = set(cand_lower.split()) - {"the", "inc", "co", "ai", "labs", "corp", "ltd"}
-    near_matches = []
-    for known in known_names:
-        known_words = set(known.lower().split()) - {"the", "inc", "co", "ai", "labs", "corp", "ltd"}
-        if cand_words & known_words:
-            near_matches.append(known)
-
+    near_matches = _near_matches_for(cand_lower, known_names)
     if not near_matches:
         return None
 
-    # LLM check for ambiguous cases
     try:
         client = get_openai_client()
         from app.ai.client import EXTRACTION_MODEL
@@ -2132,7 +2156,6 @@ async def _is_duplicate_company(
         )
         answer = (resp.choices[0].message.content or "").strip().lower()
         if answer and answer != "none":
-            # Find the best match from near_matches
             for nm in near_matches:
                 if nm.lower() in answer or answer in nm.lower():
                     return nm
@@ -2140,6 +2163,112 @@ async def _is_duplicate_company(
         logger.debug("Dedup LLM check failed for %s", candidate_name)
 
     return None
+
+
+async def _batch_check_duplicates(
+    candidate_names: list[str],
+    known_names: list[str],
+) -> dict[str, str | None]:
+    """Batch the LLM dedup check across many candidates. Returns a map
+    `{candidate_name: matching_known_name_or_None}`.
+
+    Why batch: in the orchestrator's Phase 1 we used to call
+    `_is_duplicate_company` per candidate, which sent 30+ sequential LLM
+    requests per query iteration. Each was ~1–2s, so a query loop with
+    30 candidates spent ~45s on dedup alone. The batched version sends a
+    single prompt per query instead.
+
+    Logic per candidate:
+      1. Cheap exact/substring match against known names → resolve locally.
+      2. Otherwise, find "near-match" known names that share a non-stopword.
+      3. Collect candidates with near-matches into a batch and ask the LLM
+         to resolve all of them in one call.
+      4. Candidates with no near-matches resolve to None without an LLM call.
+
+    On LLM failure or malformed output, all unresolved candidates are
+    treated as None (not a duplicate) — same conservative default the
+    single-call version uses.
+    """
+    result: dict[str, str | None] = {}
+    if not known_names:
+        return {name: None for name in candidate_names}
+
+    # Phase 1: resolve everything we can with cheap matching alone.
+    needs_llm: list[tuple[str, list[str]]] = []  # (candidate_name, near_matches)
+    for name in candidate_names:
+        cand_lower = name.lower().strip()
+        cheap = _cheap_dedup_check(cand_lower, known_names)
+        if cheap is not None:
+            result[name] = cheap
+            continue
+        nm = _near_matches_for(cand_lower, known_names)
+        if not nm:
+            result[name] = None
+            continue
+        needs_llm.append((name, nm))
+
+    if not needs_llm:
+        return result
+
+    # Phase 2: one LLM call for all ambiguous candidates. The prompt asks
+    # for a JSON object mapping each candidate index to its match (or
+    # null) — keys are indices to avoid the LLM mangling company names
+    # with quotes/em-dashes/etc.
+    try:
+        client = get_openai_client()
+        from app.ai.client import EXTRACTION_MODEL
+        lines = []
+        for i, (name, nm) in enumerate(needs_llm, 1):
+            matches_str = ", ".join(nm[:10])
+            lines.append(f"{i}. \"{name}\"  (compare against: {matches_str})")
+        prompt = (
+            "For each numbered candidate company, decide if it's the SAME "
+            "company as any of the known names listed in parentheses. "
+            "Common cases: \"Meta AI\" = \"Meta\", \"Google DeepMind\" = \"DeepMind\", "
+            "\"Anthropic, PBC\" = \"Anthropic\".\n\n"
+            + "\n".join(lines)
+            + "\n\nRespond with ONLY a JSON object mapping each number (as a "
+            "string) to either the matching known name OR null. Example:\n"
+            '{"1": "Meta", "2": null, "3": "DeepMind"}\n\n'
+            "No markdown fences. Just the JSON."
+        )
+        resp = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_completion_tokens=400,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
+        import json as _json
+        raw = _json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError("non-dict response")
+
+        for i, (name, nm) in enumerate(needs_llm, 1):
+            answer = raw.get(str(i)) or raw.get(i)
+            if not answer or (isinstance(answer, str) and answer.lower() in ("none", "null", "")):
+                result[name] = None
+                continue
+            # Match LLM's answer against actual near_matches (LLM may have
+            # rephrased; pick the best fit).
+            answer_str = str(answer).lower()
+            picked = None
+            for known in nm:
+                if known.lower() in answer_str or answer_str in known.lower():
+                    picked = known
+                    break
+            result[name] = picked
+    except Exception:
+        logger.debug("Batched dedup LLM call failed; treating all as unique",
+                     exc_info=True)
+        for name, _ in needs_llm:
+            result.setdefault(name, None)
+
+    return result
 
 
 # ---------------------------------------------------------------------------

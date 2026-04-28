@@ -86,11 +86,11 @@ async def run_hot_company_search(
         _load_reference_jobs,
     )
     from app.services.hot_search.evaluation import (
+        _batch_check_duplicates,
         _evaluate_candidate,
         _evaluate_tracked_company,
         _extract_direct_job_url,
         _generate_hit_summary,
-        _is_duplicate_company,
     )
 
     valid_sources = {"web", "greenhouse", "lever", "ashby"}
@@ -259,11 +259,19 @@ async def run_hot_company_search(
                 # ------------------------------------------------------------
                 # Phase 1 (sequential): fast per-candidate pre-processing
                 #   - tracked-company check (DB read + LLM picker, ~3s)
-                #   - dedup (LLM, ~1s)
+                #   - dedup (now BATCHED — one LLM call for the whole query)
                 #   - already-evaluated skip
                 # Output: pending_evals = list of (candidate, norm_key, kind)
                 #         for candidates that need the slow ATS-scrape pipeline.
                 # ------------------------------------------------------------
+                # Pre-batch the dedup LLM check across every candidate of this
+                # query at once. Was previously a sequential per-candidate
+                # call (~30 candidates × 1-2s each = ~45s of sequential LLM
+                # round-trips per query). Now: one LLM call per query.
+                all_known = list(existing_companies) + [h.name for h in hits]
+                cand_names = [c.name for c in candidates if c.name]
+                dup_map = await _batch_check_duplicates(cand_names, all_known)
+
                 pending_evals: list[tuple[CompanyCandidate, str, str]] = []
 
                 for candidate in candidates:
@@ -318,9 +326,12 @@ async def run_hot_company_search(
                         funnel["tracked_no_match"] += 1
                         # Fall through into regular eval pipeline
 
-                    # Dedup: LLM-assisted check for name variations
-                    all_known = list(existing_companies) + [h.name for h in hits]
-                    dup_of = await _is_duplicate_company(candidate.name, all_known)
+                    # Dedup: result already pre-computed in the batched
+                    # call above. Note: we look up the original candidate
+                    # name against `dup_map`, but `all_known` was captured
+                    # before this loop started — duplicates created within
+                    # the same query are detected at eval time, not here.
+                    dup_of = dup_map.get(candidate.name)
                     if dup_of:
                         funnel["dedup_dropped"] += 1
                         yield SearchEvent("skip", {
