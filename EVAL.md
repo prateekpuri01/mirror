@@ -6,16 +6,16 @@ End-to-end evaluation of the AI-powered job-discovery pipeline. Each persona bel
 
 | Persona | Coverage | Novelty | Mean relevance (1–5) | Hits (ATS / lead / tracked) | Imported (novel) | Wall time |
 |---|---|---|---|---|---|---|
-| `ml_engineer_loose` | ✅ | 100% | 2.70 | 5 / 0 / 0 | 43 (43) | 1064s |
-| `ai_policy` | ❌ | — | — | 0 / 0 / 0 | 0 (0) | 1739s |
+| `ml_engineer_loose` | ✅ | 100% | 2.50 | 5 / 0 / 0 | 43 (43) | 898s |
+| `ai_policy` | ❌ | — | — | 0 / 0 / 0 | 0 (0) | 1594s |
 
 ## Aggregate
 
 - **Coverage:** 1/2 personas (50%) returned at least one hit
-- **Mean relevance:** 2.70 / 5  _(LLM judge scoring of returned jobs against the search query)_
+- **Mean relevance:** 2.50 / 5  _(LLM judge scoring of returned jobs against the search query)_
 - **Mean novelty:** 100%  _(jobs surfaced that weren't already in the DB snapshot)_
 - **Total imported:** 43 jobs across 2 personas (43 novel)
-- **Mean wall time:** 1401s per persona
+- **Mean wall time:** 1246s per persona
 - **Estimated cost:** ~$0.04 (rough; see source for assumptions)
 
 ## Source breakdown
@@ -24,8 +24,7 @@ Where the LLM judge's high-relevance hits actually came from. The slug-harvester
 
 | Source | Hits |
 |---|---|
-| `hn_who_is_hiring` | 4 |
-| `remotive` | 1 |
+| `hn_who_is_hiring` | 5 |
 
 ## Where candidates dropped (0-hit personas)
 
@@ -33,38 +32,38 @@ When a persona returned no hits, this is the orchestrator's candidate funnel: ho
 
 ### `ai_policy`
 
-- `aggregator_entries`: 399
-- `seed_candidates`: 310
-- `candidates_seen`: 384
-- `already_checked`: 53
-- `dedup_dropped`: 12
-- `tracked_no_match`: 4
-- `direct_cap_reached`: 73
-- `direct_miss`: 67
-- `full_miss`: 129
+- `aggregator_entries`: 398
+- `seed_candidates`: 312
+- `candidates_seen`: 394
+- `already_checked`: 47
+- `dedup_dropped`: 14
+- `tracked_no_match`: 5
+- `direct_cap_reached`: 79
+- `direct_miss`: 65
+- `full_miss`: 136
 - `final_hits`: 0
 
 Top skip reasons:
-  - `58` × Failed location/salary verification
-  - `23` × No jobs in target location / above salary threshold
-  - `21` × Lead skipped (filters active, can't verify)
+  - `56` × Failed location/salary verification
+  - `24` × No jobs in target location / above salary threshold
+  - `23` × Lead skipped (filters active, can't verify)
   - `6` × No open jobs found
   - `5` × Extraction failed: This URL doesn't look like a job posting.
 
 ## Top finds (highest LLM-judged relevance)
 
-- **5/5** — Higharc / [Sr. AI Engineer, Labs](https://jobs.ashbyhq.com/higharc/4cedbfac-f0ad-42c0-abed-3f161fca27ef)  _(persona: `ml_engineer_loose`)_
-- **4/5** — Matterworks / [Senior Machine Learning Scientist](https://jobs.ashbyhq.com/matterworks/41be74b6-c7cf-4ad3-a908-510a03efe0f3)  _(persona: `ml_engineer_loose`)_
-- **3/5** — Matterworks / [Data Manager](https://jobs.ashbyhq.com/matterworks/5a5f7cd3-bf06-4238-b3e6-87c14d53fbc3)  _(persona: `ml_engineer_loose`)_
-- **3/5** — Higharc / [Senior Product Manager, AI Experiences](https://jobs.ashbyhq.com/higharc/da3e4a14-a3cb-4060-8a61-6ee23294d222)  _(persona: `ml_engineer_loose`)_
-- **3/5** — Higharc / [Research Engineer ](https://jobs.ashbyhq.com/higharc/39a7afd6-0124-49dc-826e-d2248c284cbb)  _(persona: `ml_engineer_loose`)_
+- **4/5** — Solace Health / [Data Scientist](https://jobs.ashbyhq.com/Solace/94e34d8e-264f-4cd6-a3d8-12492aa3c203)  _(persona: `ml_engineer_loose`)_
+- **3/5** — Solace Health / [Data Analyst](https://jobs.ashbyhq.com/Solace/d33b9659-7c3d-48a9-9a24-dd0f903e3a03)  _(persona: `ml_engineer_loose`)_
+- **3/5** — Solace Health / [Data Analyst - Customer Experience](https://jobs.ashbyhq.com/Solace/0d10836e-2faf-4dd4-b187-9cc830e17613)  _(persona: `ml_engineer_loose`)_
+- **3/5** — Solace Health / [Data Engineer](https://jobs.ashbyhq.com/Solace/f19207b3-5fad-4cd4-9a7e-5dd64fb78401)  _(persona: `ml_engineer_loose`)_
+- **3/5** — Solace Health / [Staff Software Engineer](https://jobs.ashbyhq.com/Solace/87748158-42b6-4c55-91ca-8f3d95799ee9)  _(persona: `ml_engineer_loose`)_
 
 ## Weakest finds (where the pipeline misfired)
 
-- **1/5** — Higharc / Sr. Software Engineer, Integrations  _(persona: `ml_engineer_loose`)_
-- **1/5** — Higharc / Sr. Design Systems Engineer, Labs  _(persona: `ml_engineer_loose`)_
-- **2/5** — Matterworks / Future Opportunities  _(persona: `ml_engineer_loose`)_
+- **1/5** — Solace Health / Lead Commercial Counsel   _(persona: `ml_engineer_loose`)_
+- **1/5** — Solace Health / Senior Partnership Marketing Manager  _(persona: `ml_engineer_loose`)_
+- **1/5** — Solace Health / Growth Product Designer   _(persona: `ml_engineer_loose`)_
 
 ---
 
-_Generated from `hot_search` JSON at timestamp `20260428T154900Z`. To regenerate: `./backend/scripts/eval/run.sh`._
+_Generated from `hot_search` JSON at timestamp `20260428T173608Z`. To regenerate: `./backend/scripts/eval/run.sh`._
