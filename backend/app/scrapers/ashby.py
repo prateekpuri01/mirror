@@ -50,6 +50,32 @@ query ApiJobPosting(
 """
 
 
+async def _post_with_429_retry(
+    http_client: httpx.AsyncClient,
+    payload: dict,
+    *,
+    label: str,
+    max_attempts: int = 6,
+) -> httpx.Response:
+    """POST to ASHBY_GQL with exponential backoff on 429. Total backoff
+    across 6 attempts is 1+2+4+8+16+32 = 63s. Ashby's GraphQL endpoint
+    rate-limits hard during heavy concurrency; without sufficient retries
+    we lose entire candidate evaluations to transient throttling that
+    would resolve on its own in under a minute.
+    """
+    resp = None
+    for attempt in range(max_attempts):
+        resp = await http_client.post(ASHBY_GQL, json=payload)
+        if resp.status_code != 429:
+            return resp
+        backoff = 2 ** attempt
+        logger.debug("Ashby 429 for %s, backing off %ds (attempt %d/%d)",
+                     label, backoff, attempt + 1, max_attempts)
+        await asyncio.sleep(backoff)
+    # Final failure; let the caller handle the raise_for_status
+    return resp
+
+
 class AshbyScraper:
     source_name = "ashby"
 
@@ -63,14 +89,15 @@ class AshbyScraper:
         slug = company.ashby_slug
         logger.info("Fetching Ashby jobs for %s (slug=%s)", company.name, slug)
 
-        # Step 1: list all postings
-        resp = await http_client.post(
-            ASHBY_GQL,
-            json={
+        # Step 1: list all postings (with 429 retry — same as detail fetches)
+        resp = await _post_with_429_retry(
+            http_client,
+            {
                 "operationName": "ApiJobBoardWithTeams",
                 "variables": {"organizationHostedJobsPageName": slug},
                 "query": LIST_QUERY,
             },
+            label=f"list/{slug}",
         )
         resp.raise_for_status()
         data = resp.json()
@@ -147,26 +174,18 @@ class AshbyScraper:
     ) -> ScrapedJob | None:
         posting_id = posting["id"]
 
-        # Retry with exponential backoff on 429
-        resp = None
-        for attempt in range(4):
-            resp = await http_client.post(
-                ASHBY_GQL,
-                json={
-                    "operationName": "ApiJobPosting",
-                    "variables": {
-                        "organizationHostedJobsPageName": slug,
-                        "jobPostingId": posting_id,
-                    },
-                    "query": DETAIL_QUERY,
+        resp = await _post_with_429_retry(
+            http_client,
+            {
+                "operationName": "ApiJobPosting",
+                "variables": {
+                    "organizationHostedJobsPageName": slug,
+                    "jobPostingId": posting_id,
                 },
-            )
-            if resp.status_code != 429:
-                break
-            backoff = 2 ** attempt  # 1s, 2s, 4s
-            logger.debug("429 for %s, backing off %ds", posting_id, backoff)
-            await asyncio.sleep(backoff)
-
+                "query": DETAIL_QUERY,
+            },
+            label=f"detail/{slug}/{posting_id}",
+        )
         resp.raise_for_status()
         detail = resp.json().get("data", {}).get("jobPosting")
 
@@ -199,6 +218,16 @@ class AshbyScraper:
 
         url = f"https://jobs.ashbyhq.com/{slug}/{posting_id}"
 
+        metadata = {
+            "ashby_posting_id": posting_id,
+            "department": dept_name or None,
+            "team": team_name or None,
+            "employment_type": posting.get("employmentType"),
+        }
+        # Preserve raw compensation string so LLM extraction can use it
+        if comp_summary:
+            metadata["compensation_raw"] = comp_summary
+
         return ScrapedJob(
             title=detail.get("title", posting.get("title", "")),
             company_name=company.name,
@@ -212,10 +241,5 @@ class AshbyScraper:
             posted_at=posted_at,
             application_url=url,
             source="ashby",
-            metadata={
-                "ashby_posting_id": posting_id,
-                "department": dept_name or None,
-                "team": team_name or None,
-                "employment_type": posting.get("employmentType"),
-            },
+            metadata=metadata,
         )

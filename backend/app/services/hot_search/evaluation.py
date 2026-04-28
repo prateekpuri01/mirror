@@ -1456,7 +1456,12 @@ def _direct_slug_for(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-_CANDIDATE_TIMEOUT = 90  # seconds per candidate (needs headroom for SPA drill + LLM import)
+# 180s per candidate — empirically the previous 90s cap was cutting off
+# slow but legitimate evals: an ATS scrape (~10-20s) + cheap-filter +
+# picker (~5s) + verifier (~5s) + a Playwright drill that hits 50s on
+# its own can comfortably exceed 90s. The semaphore (rate_limits) keeps
+# concurrency bounded; this is just per-candidate wall-time headroom.
+_CANDIDATE_TIMEOUT = 180
 
 
 async def _evaluate_candidate(
