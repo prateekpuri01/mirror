@@ -1678,8 +1678,11 @@ async def _evaluate_candidate_inner(
 
             # Strategy 3b: LLM-guided browser agent — interactively navigates
             # the careers page (types in search boxes, clicks filters, waits
-            # for JS rendering) to find a matching job posting.
-            if careers_url and effective_guidance:
+            # for JS rendering) to find a matching job posting. Disabled by
+            # default — it's a 50s-per-candidate cost and the funnel data
+            # shows it produces <5% of hits. Toggle with
+            # HOT_SEARCH_BROWSER_AGENT=1 in .env for broad searches.
+            if careers_url and effective_guidance and settings.hot_search_browser_agent:
                 logger.info("DRILL_STRATEGY: browser_agent ATTEMPT '%s'", candidate.name)
                 try:
                     agent_results = await asyncio.wait_for(
@@ -1755,9 +1758,17 @@ async def _evaluate_candidate_inner(
                 kind="lead",
             ), ""
 
+    # Skip slugs we marked dead recently (404, repeated 429, etc.). Saves
+    # ~5-30s of slug-verify + scrape work on companies we know we can't
+    # reach. TTL is 24h so transient outages self-heal.
+    from app.services.scrape_cache import is_slug_dead, mark_slug_dead
+    if await is_slug_dead(ats, slug):
+        return None, f"ATS slug recently failed (cached, retry in 24h): {ats}/{slug}"
+
     # Verify the slug exists
     verified = await _verify_ats_slug(ats, slug, http_client)
     if not verified:
+        await mark_slug_dead(ats, slug, reason="slug verify returned False")
         return None, "ATS board not reachable"
 
     # Load from cache or scrape
@@ -1768,10 +1779,16 @@ async def _evaluate_candidate_inner(
     scraped_jobs = await get_scraped_jobs(ats, slug)
     if scraped_jobs is None:
         temp_company = _make_temp_company(ats, slug)
-        scraped_jobs = await scraper.scrape_company(temp_company, http_client)
+        try:
+            scraped_jobs = await scraper.scrape_company(temp_company, http_client)
+        except Exception as e:
+            await mark_slug_dead(ats, slug, reason=f"scrape error: {type(e).__name__}")
+            raise
         await set_scraped_jobs(ats, slug, scraped_jobs)
 
     if not scraped_jobs:
+        # Empty board today — don't mark dead (the company may post tomorrow),
+        # but we won't waste another scrape on this run.
         return None, "No open jobs found"
 
     total_scraped = len(scraped_jobs)

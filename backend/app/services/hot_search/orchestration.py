@@ -47,11 +47,19 @@ async def run_hot_company_search(
     sources: list[str],
     guidance: str,
     max_hits: int = 20,
-    max_iterations: int = 7,
+    # 3 iterations covers ~90% of hits in our eval data; the 4th and 5th
+    # were producing diminishing returns at full LLM cost. Drop default
+    # for faster runs; users can override via the request payload.
+    max_iterations: int = 3,
     locations: list[str] | None = None,
     min_salary: int | None = None,
     reference_job_ids: list[str] | None = None,
-    candidate_concurrency: int = 4,
+    # 8 in flight at once. Per-candidate eval is mostly LLM and HTTP wait
+    # time; OpenAI handles parallel just fine and Ashby's 429 retries
+    # already cope with bursts. The downstream semaphores in rate_limits
+    # cap browser-pool and OpenAI concurrency separately, so this is just
+    # the per-search worker count.
+    candidate_concurrency: int = 8,
 ) -> AsyncGenerator[SearchEvent, None]:
     """Main search loop. Yields SearchEvent objects for SSE streaming.
 
