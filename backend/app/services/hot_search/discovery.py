@@ -1093,10 +1093,3 @@ def _enrich_keywords_from_references(
             if w not in common_words:
                 enriched.setdefault("technical_skills", set()).add(w)
     return enriched
-
-
-# ---------------------------------------------------------------------------
-# Fix 1: LLM dedup — detect "Meta AI" = "Meta", "Google DeepMind" = "DeepMind"
-# ---------------------------------------------------------------------------
-
-

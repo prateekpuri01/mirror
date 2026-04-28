@@ -1545,6 +1545,7 @@ async def _evaluate_candidate_inner(
 
             # Try drilling for individual jobs — works even without a careers
             # URL (the open-web search strategy doesn't need the domain).
+            logger.info("DRILL_STRATEGY: lead_drill ATTEMPT '%s'", candidate.name)
             drilled = await _drill_lead_company_jobs(
                 candidate.name, careers_url, profile_keywords,
                 locations=locations, min_salary=min_salary,
@@ -1579,7 +1580,7 @@ async def _evaluate_candidate_inner(
 
                 if merged_top_jobs:
                     logger.info(
-                        "Lead drill SUCCEEDED for '%s': %d jobs previewed",
+                        "DRILL_STRATEGY: lead_drill SUCCESS '%s' n_jobs=%d",
                         candidate.name, len(merged_top_jobs),
                     )
                     return CompanyHit(
@@ -1633,6 +1634,7 @@ async def _evaluate_candidate_inner(
             # companies (IBM, Google, PwC, Accenture) where Perplexity's
             # index is strong. Each URL is verified via extract_job_from_url.
             if effective_guidance:
+                logger.info("DRILL_STRATEGY: perplexity_drill ATTEMPT '%s'", candidate.name)
                 try:
                     perplexity_results = await asyncio.wait_for(
                         _drill_perplexity_for_job(
@@ -1650,6 +1652,10 @@ async def _evaluate_candidate_inner(
                     for h in perplexity_results:
                         merged_top_jobs.extend(h.top_jobs)
                     if merged_top_jobs:
+                        logger.info(
+                            "DRILL_STRATEGY: perplexity_drill SUCCESS '%s' n_jobs=%d",
+                            candidate.name, len(merged_top_jobs),
+                        )
                         return CompanyHit(
                             name=candidate.name,
                             ats="direct",
@@ -1669,6 +1675,7 @@ async def _evaluate_candidate_inner(
             # the careers page (types in search boxes, clicks filters, waits
             # for JS rendering) to find a matching job posting.
             if careers_url and effective_guidance:
+                logger.info("DRILL_STRATEGY: browser_agent ATTEMPT '%s'", candidate.name)
                 try:
                     agent_results = await asyncio.wait_for(
                         _crawl_careers_page_for_job(
@@ -1687,7 +1694,7 @@ async def _evaluate_candidate_inner(
                         merged_top_jobs.extend(h.top_jobs)
                     if merged_top_jobs:
                         logger.info(
-                            "Browser agent SUCCEEDED for '%s': %d jobs imported",
+                            "DRILL_STRATEGY: browser_agent SUCCESS '%s' n_jobs=%d",
                             candidate.name, len(merged_top_jobs),
                         )
                         return CompanyHit(
@@ -1764,10 +1771,10 @@ async def _evaluate_candidate_inner(
 
     total_scraped = len(scraped_jobs)
 
-    # FIX A: Cheap location/salary prefilter BEFORE relevance scoring.
-    # This drops jobs in the wrong city / below salary threshold based on the
-    # ScrapedJob's structured fields, so we don't waste relevance ranking on
-    # jobs the user definitely doesn't want.
+    # Cheap location/salary prefilter BEFORE relevance scoring — drops jobs
+    # in the wrong city / below salary threshold based on the ScrapedJob's
+    # structured fields, so we don't waste relevance ranking on jobs the
+    # user definitely doesn't want.
     if locations or min_salary:
         prefiltered: list = []
         rejected_loc = 0
@@ -1812,8 +1819,8 @@ async def _evaluate_candidate_inner(
             "relevance": relevance,
             "description_html": sj.description_html,
             "remote": sj.remote,
-            # FIX B: Surface scraper salary fields so the verification step
-            # can do a cheap numeric check instead of always calling the LLM.
+            # Surface scraper salary fields so the verification step can do
+            # a cheap numeric check instead of always calling the LLM.
             "salary_min": sj.salary_min,
             "salary_max": sj.salary_max,
         })
@@ -2114,7 +2121,8 @@ async def _is_duplicate_company(
 
 
 # ---------------------------------------------------------------------------
-# Fix 2: Relevance check + context for lead hits
+# Lead-hit relevance check (used when we couldn't scrape the company's ATS
+# but the company name might still be relevant to the user's search).
 # ---------------------------------------------------------------------------
 
 

@@ -85,10 +85,6 @@ async def run_hot_company_search(
         _is_duplicate_company,
     )
 
-    # Backward compat: "tavily" is a legacy label from when the web-discovery
-    # path was actually wired to Tavily. It now cascades Perplexity → SearXNG
-    # → Brave (see _discovery_search). Accept both spellings from callers.
-    sources = ["web" if s == "tavily" else s for s in sources]
     valid_sources = {"web", "greenhouse", "lever", "ashby"}
     sources = [s for s in sources if s in valid_sources]
     if not sources:
