@@ -195,6 +195,7 @@ async def run_extraction_agent(
         # If no tool calls, this is the final response
         if not message.tool_calls:
             final_text = (message.content or "").strip()
+            logger.info("Agent final response (round %d): %s", round_num + 1, final_text[:500])
 
             # Check for truncation
             if choice.finish_reason == "length":
@@ -250,6 +251,9 @@ async def run_extraction_agent(
             logger.info("Executing tool: %s(%s)", fn_name, fn_args)
 
             result_text = await executor.execute(fn_name, fn_args)
+            # Log tool results (truncate long outputs)
+            log_result = result_text[:500] if len(result_text) > 500 else result_text
+            logger.info("Tool %s result: %s", fn_name, log_result)
 
             messages.append({
                 "role": "tool",

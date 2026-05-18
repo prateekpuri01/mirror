@@ -100,6 +100,17 @@ SCENARIOS: list[Scenario] = [
         rationale="Non-traditional tech — tests niche coverage",
     ),
     Scenario(
+        persona="ai_policy_open",
+        guidance="AI policy or governance researcher",
+        locations=None,
+        min_salary=None,
+        rationale=(
+            "Same niche query as ai_policy but with no location filter. "
+            "Isolates whether the 0-hit result is driven by location "
+            "strictness vs. a true shortage of policy roles in the pool."
+        ),
+    ),
+    Scenario(
         persona="healthcare_ml",
         guidance="machine learning engineer in healthcare or biotech",
         locations=["Boston", "Remote"],

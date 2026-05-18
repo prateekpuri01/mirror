@@ -32,7 +32,7 @@ Extract structured fields from this job posting.
 Job Title: {title}
 Company: {company}
 Listed Location: {location}
-Description (start + end):
+{ats_metadata}Description:
 {description}
 
 Return this exact JSON structure:
@@ -74,6 +74,32 @@ is based — extract those.
 
 Return ONLY the JSON object, no markdown fences or extra text."""
 
+BROWSER_SALARY_SYSTEM = "You extract salary information from job posting page text. Return valid JSON only."
+
+BROWSER_SALARY_PROMPT = """\
+The following is the full visible text from a job posting page. Extract the salary/compensation information.
+
+Job Title: {title}
+Company: {company}
+URL: {url}
+
+Page text:
+{page_text}
+
+Return this exact JSON:
+{{
+  "salary_min": <int annual USD or null>,
+  "salary_max": <int annual USD or null>,
+  "salary_confidence": "high"|"medium"|"low"|"none"
+}}
+
+Rules:
+- Convert to annual USD (hourly x2080, monthly x12). null if not found.
+- If only one number is given, use it for both min and max.
+- "high" if explicit number, "medium" if range/estimate, "low" if vague, "none" if absent.
+- Return ONLY the JSON object, no markdown fences."""
+
+
 LOCATION_MATCH_SYSTEM = "You match location strings to a canonical list. Return valid JSON only."
 
 LOCATION_MATCH_PROMPT = """\
@@ -110,6 +136,9 @@ class SalaryProcessor:
 
     Sets salary_min = -1 as sentinel for "parsed but no salary found",
     so we can distinguish from "never parsed" (salary_min IS NULL).
+
+    If the initial extraction finds no salary, queues the job for a
+    browser-based fallback pass (Playwright + LLM on the rendered page).
     """
 
     def should_process(self, job: Job) -> bool:
@@ -122,7 +151,8 @@ class SalaryProcessor:
         meta["salary_confidence"] = confidence
 
         if confidence == "none" or extracted.get("salary_min") is None:
-            # Parsed but nothing found — mark with sentinel
+            # Queue for browser fallback pass
+            context.setdefault("salary_fallback_jobs", []).append(job)
             job.salary_min = -1
             job.extra_metadata = meta
             return
@@ -211,7 +241,9 @@ def _reset_status() -> None:
 # LLM call helpers
 # ---------------------------------------------------------------------------
 
-CONCURRENCY = 50
+def _get_concurrency() -> int:
+    from app.services.rate_limits import max_concurrent_llm_calls
+    return max_concurrent_llm_calls()
 BATCH_COMMIT_SIZE = 100
 
 
@@ -227,7 +259,7 @@ def _parse_json_response(text: str) -> dict:
 
 
 def _truncate_description(desc: str) -> str:
-    """Return the full description — cheap models make truncation unnecessary."""
+    """Return the full description for extraction accuracy."""
     return desc
 
 
@@ -278,10 +310,20 @@ async def _extract_one(
     """Call LLM for one job. Retries once if location count looks too low."""
     async with semaphore:
         client = get_openai_client()
+
+        # Include ATS-provided structured data (e.g. Ashby compensationTierSummary)
+        # so the LLM can extract salary even when it's not in the description text
+        meta = job.extra_metadata or {}
+        ats_lines = []
+        if meta.get("compensation_raw"):
+            ats_lines.append(f"Compensation (from ATS): {meta['compensation_raw']}")
+        ats_metadata = "\n".join(ats_lines) + "\n" if ats_lines else ""
+
         prompt = EXTRACTION_PROMPT.format(
             title=job.display_title,
             company=job.display_company,
             location=job.location or "Not specified",
+            ats_metadata=ats_metadata,
             description=_truncate_description(job.description or ""),
         )
         messages = [
@@ -314,6 +356,62 @@ async def _extract_one(
         except Exception:
             logger.exception("Extraction failed for job %s", job.id)
             return job, None
+
+
+# ---------------------------------------------------------------------------
+# Browser-based salary fallback
+# ---------------------------------------------------------------------------
+
+
+async def _browser_salary_fallback(job: Job) -> dict | None:
+    """Render the job page in a browser and extract salary via LLM.
+
+    Uses the shared browser pool (no per-job Chromium launch overhead).
+    Catches JS-rendered compensation sections (e.g. Ashby, Workday).
+    """
+    if not job.url:
+        return None
+
+    try:
+        from app.services.browser_pool import fetch_page_text
+
+        page_text = await fetch_page_text(job.url, wait_ms=2000)
+        if not page_text or len(page_text.strip()) < 100:
+            return None
+
+        # Truncate to avoid token waste — salary is usually near top or bottom
+        if len(page_text) > 6000:
+            page_text = page_text[:3000] + "\n...\n" + page_text[-3000:]
+
+        client = get_openai_client()
+        prompt = BROWSER_SALARY_PROMPT.format(
+            title=job.display_title,
+            company=job.display_company,
+            url=job.url,
+            page_text=page_text,
+        )
+        resp = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            messages=[
+                {"role": "system", "content": BROWSER_SALARY_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            max_completion_tokens=200,
+        )
+        text = resp.choices[0].message.content.strip()
+        result = _parse_json_response(text)
+
+        if result.get("salary_confidence", "none") != "none" and result.get("salary_min"):
+            logger.info(
+                "Browser fallback found salary for %s: %s-%s (%s)",
+                job.id, result["salary_min"], result.get("salary_max"), result["salary_confidence"],
+            )
+            return result
+
+    except Exception:
+        logger.warning("Browser salary fallback failed for job %s", job.id, exc_info=True)
+
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -450,13 +548,22 @@ async def _resolve_locations(
 # ---------------------------------------------------------------------------
 
 
-async def extract_new_jobs(session: AsyncSession, jobs: list[Job]) -> dict:
+async def extract_new_jobs(
+    session: AsyncSession,
+    jobs: list[Job],
+    *,
+    browser_fallback: bool = False,
+) -> dict:
     """Extract salary/location/work_model for a list of jobs.
 
     Called by the pipeline after cleaning. Only processes jobs where at least
     one field processor says it needs work (salary_min is None, work_model is
-    None, etc.). Uses the same LLM extraction + field processors as the
-    magic-button endpoint.
+    None, etc.).
+
+    Args:
+        browser_fallback: If True, launch Playwright for jobs where salary
+            wasn't found. Expensive (~15s per job). Default False for pipeline
+            auto-runs; set True for user-initiated extraction.
 
     Returns stats: {extracted, failed}.
     """
@@ -472,7 +579,7 @@ async def extract_new_jobs(session: AsyncSession, jobs: list[Job]) -> dict:
 
     logger.info("Extracting fields for %d new jobs", len(to_extract))
 
-    semaphore = asyncio.Semaphore(CONCURRENCY)
+    semaphore = asyncio.Semaphore(_get_concurrency())
     context: dict[str, Any] = {}
 
     for batch_start in range(0, len(to_extract), BATCH_COMMIT_SIZE):
@@ -505,6 +612,34 @@ async def extract_new_jobs(session: AsyncSession, jobs: list[Job]) -> dict:
     location_buffer = context.get("location_buffer", {})
     if location_buffer:
         await _resolve_locations(session, location_buffer)
+
+    # Browser fallback for jobs where salary wasn't found in description/API
+    # Only runs when explicitly requested (expensive: browser + LLM per job)
+    if browser_fallback:
+        fallback_jobs = context.get("salary_fallback_jobs", [])
+        if fallback_jobs:
+            logger.info("Running browser salary fallback for %d jobs", len(fallback_jobs))
+            # Run in parallel, capped by detected limits
+            from app.services.rate_limits import max_concurrent_browser
+            fallback_sem = asyncio.Semaphore(max_concurrent_browser())
+
+            async def _fallback_one(job: Job) -> bool:
+                async with fallback_sem:
+                    result = await _browser_salary_fallback(job)
+                    if result:
+                        job.salary_min = result["salary_min"]
+                        job.salary_max = result.get("salary_max")
+                        meta = dict(job.extra_metadata or {})
+                        meta["salary_source"] = "browser_fallback"
+                        meta["salary_confidence"] = result["salary_confidence"]
+                        job.extra_metadata = meta
+                        return True
+                    return False
+
+            results = await asyncio.gather(*[_fallback_one(j) for j in fallback_jobs])
+            fallback_count = sum(1 for r in results if r)
+            await session.commit()
+            logger.info("Browser fallback: found salary for %d/%d jobs", fallback_count, len(fallback_jobs))
 
     logger.info(
         "Extraction for new jobs complete: %d extracted, %d failed",
@@ -548,7 +683,7 @@ async def run_extraction_pipeline(session: AsyncSession) -> None:
 
         # Shared context for cross-job data (e.g., location buffer)
         context: dict[str, Any] = {}
-        semaphore = asyncio.Semaphore(CONCURRENCY)
+        semaphore = asyncio.Semaphore(_get_concurrency())
 
         # 2. Process in batches for periodic commits
         for batch_start in range(0, len(jobs_to_process), BATCH_COMMIT_SIZE):

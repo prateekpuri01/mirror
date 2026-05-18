@@ -19,6 +19,18 @@ import {
   HotSearchContext,
   useHotSearchProvider,
 } from "@/hooks/use-hot-search";
+import {
+  RefreshFlowContext,
+  useRefreshFlowProvider,
+} from "@/hooks/use-refresh-flow";
+import {
+  ExtractionTrackingContext,
+  useExtractionTrackingProvider,
+} from "@/hooks/use-extraction-tracking";
+import {
+  JobSelectionContext,
+  useJobSelectionProvider,
+} from "@/hooks/use-job-selection";
 
 function ResumeGenerationProvider({ children }: { children: React.ReactNode }) {
   const state = useResumeGenerationProvider();
@@ -56,6 +68,33 @@ function HotSearchProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+function RefreshFlowProvider({ children }: { children: React.ReactNode }) {
+  const state = useRefreshFlowProvider();
+  return (
+    <RefreshFlowContext.Provider value={state}>
+      {children}
+    </RefreshFlowContext.Provider>
+  );
+}
+
+function ExtractionTrackingProvider({ children }: { children: React.ReactNode }) {
+  const state = useExtractionTrackingProvider();
+  return (
+    <ExtractionTrackingContext.Provider value={state}>
+      {children}
+    </ExtractionTrackingContext.Provider>
+  );
+}
+
+function JobSelectionProvider({ children }: { children: React.ReactNode }) {
+  const state = useJobSelectionProvider();
+  return (
+    <JobSelectionContext.Provider value={state}>
+      {children}
+    </JobSelectionContext.Provider>
+  );
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -75,7 +114,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <ResumeGenerationProvider>
           <JobProcessingProvider>
             <DiscoverFlowProvider>
-              <HotSearchProvider>{children}</HotSearchProvider>
+              <HotSearchProvider>
+                <RefreshFlowProvider>
+                  <ExtractionTrackingProvider>
+                    <JobSelectionProvider>{children}</JobSelectionProvider>
+                  </ExtractionTrackingProvider>
+                </RefreshFlowProvider>
+              </HotSearchProvider>
             </DiscoverFlowProvider>
           </JobProcessingProvider>
         </ResumeGenerationProvider>

@@ -1,0 +1,281 @@
+# profile_complete.yaml.example
+#
+# Comprehensive accomplishment + publication catalog. The app reads this file
+# at startup and merges it under user_profile.data["complete_profile"]. The
+# resume generator uses this as the SOURCE OF TRUTH — no fact in a generated
+# resume should appear here that isn't in this file.
+#
+# Quick start:
+#   1. Copy to docs/profile_complete.yaml.
+#   2. Replace the fictional Sam Rivera entries below with your own.
+#   3. Restart the app. New accomplishments are picked up on next profile sync.
+#
+# Schema notes:
+#   - id: stable string. Used as the entity_key for content_memory grounding.
+#         Pick something descriptive ("helio-eval-harness", not "acc-1").
+#   - employer: must match the work_history entry exactly (the app
+#               employer_key()-normalizes both sides).
+#   - quantitative_specifics: 1–4 plain-language metrics. The LLM uses these
+#                             to back claims. Don't fabricate — leave the
+#                             list empty if your work didn't have headline
+#                             numbers.
+#   - so_what: 1–3 sentences answering "why does this matter to a reader?"
+#              Used heavily by the strategic planner.
+#   - skills_demonstrated: free-form tags surfaced in the planner's
+#                          accomplishment-fit reasoning.
+#   - tags: high-level slice for filtering in the UI.
+
+accomplishments:
+
+  # ============================================================
+  # Helio Labs — Senior Applied AI Scientist (2022–present)
+  # ============================================================
+
+  - id: helio-eval-harness
+    category: project
+    employer: Helio Labs
+    title: "Helio Eval Harness: Production LLM evaluation infrastructure"
+    date_range: "2023–2025"
+    impact_summary: |
+      Designed and built the evaluation infrastructure that gates every model
+      release at Helio. The harness combines task-specific golden sets, LLM-
+      as-judge scoring, and a regression dashboard tied directly to model
+      training runs. Adopted as the canonical pre-release gate across all
+      research teams within six months.
+    quantitative_specifics:
+      - "Used by every model-release decision at the company"
+      - "Reduced eval-cycle wall time by ~6x vs. the prior ad-hoc setup"
+      - "Catches ~80% of regressions before they reach internal dogfood"
+    so_what: |
+      Demonstrates ability to design and ship the connective infrastructure
+      that turns research-team experiments into reliable product decisions.
+      Combines applied ML with systems thinking and rigorous evaluation
+      methodology.
+    hands_on_work: |
+      Owned end-to-end: pipeline architecture, judge-prompt design, golden-set
+      curation tooling, dashboard UI, and the rollout to other teams.
+    skills_demonstrated:
+      - LLM evaluation
+      - LLM-as-judge methodology
+      - Python
+      - distributed pipelines
+      - dashboard development
+    relevance_weight: 0.95
+    tags:
+      - ai-systems
+      - evaluation
+      - flagship
+
+  - id: helio-multi-turn-agent
+    category: project
+    employer: Helio Labs
+    title: "Multi-turn refinement agent for content authoring"
+    date_range: "2024"
+    impact_summary: |
+      Shipped an agent that iteratively improves long-form writing by treating
+      user feedback as structured edit instructions rather than free-form
+      regeneration prompts. Cut user-perceived "wrong tone" rejections on the
+      authoring product by half within the first month after rollout.
+    quantitative_specifics:
+      - "50% drop in tone-related rejections post-launch"
+      - "Median sessions-to-acceptance fell from 4.2 to 2.1 turns"
+    so_what: |
+      Shows pragmatic prompt-engineering and agent design that targets a
+      specific failure mode (LLMs ignoring iteration feedback) rather than
+      chasing benchmark numbers.
+    hands_on_work: |
+      Co-designed the routing layer that classifies user feedback as
+      "tighten / change angle / fix factual" and dispatches the right
+      sub-prompt; wrote the eval harness that simulates multi-turn sessions.
+    skills_demonstrated:
+      - agent design
+      - prompt engineering
+      - LangGraph
+      - Python
+      - multi-turn evaluation
+    relevance_weight: 0.85
+    tags:
+      - agents
+      - prompt-engineering
+
+  - id: helio-cost-cutting
+    category: project
+    employer: Helio Labs
+    title: "Inference-cost reduction across the product surface"
+    date_range: "2023"
+    impact_summary: |
+      Led a focused effort to cut per-request LLM cost across the main
+      product surface without quality regression. Introduced caching, model
+      tiering, and selective prompt caching where supported.
+    quantitative_specifics:
+      - "Per-request inference cost down 40%"
+      - "P95 latency improved 25%"
+      - "Zero quality regression across the eval-harness gates"
+    so_what: |
+      Demonstrates pragmatic engineering judgment: production cost work that
+      stays disciplined about quality rather than trading it away.
+    hands_on_work: |
+      Built the cache invalidation logic, model-tier router, and the A/B
+      framework that proved no quality regression.
+    skills_demonstrated:
+      - caching
+      - cost optimization
+      - A/B testing
+      - distributed systems
+    relevance_weight: 0.7
+    tags:
+      - production
+      - cost-optimization
+
+  # ============================================================
+  # Brightline Health — ML Engineer (2020–2022)
+  # ============================================================
+
+  - id: brightline-triage
+    category: project
+    employer: Brightline Health
+    title: "Patient-message triage classifier"
+    date_range: "2021–2022"
+    impact_summary: |
+      Built and deployed an NLP classifier that triages incoming patient
+      messages by urgency and category, replacing a rules-based system that
+      front-line staff had been hand-tuning for years. Improved both top-
+      level accuracy and calibration on the long tail.
+    quantitative_specifics:
+      - "Top-1 accuracy 88% (prior system: 72%)"
+      - "Calibration error halved on rare-but-urgent categories"
+      - "Used in production triage for ~1,000 daily messages"
+    so_what: |
+      Replacing a long-standing rules system in a regulated domain requires
+      both technical work and stakeholder trust-building. Demonstrates ability
+      to deliver applied ML inside a compliance-heavy environment.
+    hands_on_work: |
+      Owned data pipeline, labeling protocol, model training, calibration, and
+      the rollout plan that kept clinical staff in the loop.
+    skills_demonstrated:
+      - NLP
+      - text classification
+      - calibration
+      - PyTorch
+      - regulated-domain deployment
+    relevance_weight: 0.7
+    tags:
+      - applied-ml
+      - healthcare
+      - nlp
+
+  - id: brightline-feature-store
+    category: project
+    employer: Brightline Health
+    title: "Feature store for clinical ML"
+    date_range: "2020–2021"
+    impact_summary: |
+      Designed and shipped a feature store that consolidated clinical-event
+      features across multiple ML projects. Reduced duplicate feature work
+      and made point-in-time correctness defaults rather than an afterthought.
+    quantitative_specifics:
+      - "~30 features standardized across 4 ML teams"
+      - "Cut feature-engineering duplication ~3x by team estimate"
+    so_what: |
+      Shows infrastructure-minded engineering: investing in shared substrate
+      that compounds team velocity, not just shipping individual models.
+    hands_on_work: |
+      Schema design, point-in-time-correct backfill logic, the SDK other
+      teams call into, and the migration plan for legacy features.
+    skills_demonstrated:
+      - feature engineering
+      - data infrastructure
+      - SQL
+      - Python
+      - PostgreSQL
+    relevance_weight: 0.55
+    tags:
+      - infrastructure
+      - data-engineering
+
+  # ============================================================
+  # Marlin Systems — Software Engineer (2018–2020)
+  # ============================================================
+
+  - id: marlin-realtime-pipeline
+    category: project
+    employer: Marlin Systems
+    title: "Real-time event processing pipeline"
+    date_range: "2019–2020"
+    impact_summary: |
+      Rebuilt a brittle batch ETL flow as a real-time streaming pipeline
+      handling event ingestion, deduplication, and downstream fan-out for
+      analytics consumers.
+    quantitative_specifics:
+      - "End-to-end latency cut from ~1 hour to ~15 seconds"
+      - "Reprocessing window reduced from full-day batch to live"
+    so_what: |
+      Pre-AI engineering work that demonstrates distributed-systems chops and
+      a track record of replacing fragile inherited systems with sturdier ones.
+    skills_demonstrated:
+      - distributed systems
+      - streaming
+      - Python
+      - PostgreSQL
+    relevance_weight: 0.4
+    tags:
+      - distributed-systems
+      - infrastructure
+
+
+# ============================================================
+# Publications — leave empty if you're not in research
+# ============================================================
+
+publications:
+
+  - id: helio-eval-paper
+    authors: ["Sam Rivera", "Jordan Chen", "Priya Desai"]
+    title: "Practical LLM Evaluation in Production: Lessons from the Helio Harness"
+    venue: "MLSys Workshop on LLM Evaluation"
+    year: 2024
+    first_author: true
+    work_history_key: helio_labs
+    impact_summary: |
+      Practitioner paper documenting the design choices and tradeoffs in
+      Helio's release-gating eval system; widely cited internally at peer
+      labs as a reference architecture.
+    abstract: |
+      We describe the evaluation harness used to gate model releases at
+      Helio Labs, focusing on three design choices that practitioners often
+      get wrong: golden-set curation discipline, LLM-as-judge prompt design,
+      and the interaction between offline eval and online A/B testing.
+    skills_demonstrated:
+      - LLM evaluation
+      - technical writing
+
+
+# ============================================================
+# Awards — short-form recognition entries
+# ============================================================
+
+awards:
+
+  - id: award-helio-distinguished-2024
+    employer: Helio Labs
+    name: Distinguished Engineer Award
+    year: 2024
+    impact_summary: |
+      Annual award recognizing technical contribution that shaped the company
+      stack. Cited the eval harness adoption.
+
+  - id: award-brightline-innovation-2021
+    employer: Brightline Health
+    name: Innovation Prize
+    year: 2021
+    impact_summary: |
+      Awarded for the patient-message triage rollout — the first production
+      ML deployment at the company.
+
+  - id: award-berkeley-citation-2016
+    employer: UC Berkeley
+    name: CS Departmental Citation (highest honors)
+    year: 2016
+    impact_summary: |
+      Departmental honor recognizing top-of-class undergraduate performance
+      in Computer Science.

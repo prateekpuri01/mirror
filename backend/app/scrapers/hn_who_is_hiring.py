@@ -252,6 +252,10 @@ def _parse_comment(comment: dict, thread_title: str) -> ScrapedJob | None:
 
     # Extract URLs from the full text
     urls = re.findall(r"https?://[^\s<>\"']+", plain)
+    # Strip trailing punctuation that gets glued onto URLs by HN's
+    # comment formatting ("apply at example.com)." → "example.com).").
+    # Without this, ~10-20% of harvested URLs hit DNS errors downstream.
+    urls = [re.sub(r"[.,;:!?\)\]\}>]+$", "", u) for u in urls]
     careers_url = None
     for u in urls:
         # Prefer career/job URLs

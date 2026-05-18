@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai.client import get_openai_client, RESUME_MODEL
 from app.ai.prompts import (
     PROMPT_VERSION,
-    ROLE_FIT_SYSTEM,
-    INTEREST_FIT_SYSTEM,
+    build_role_fit_system,
+    build_interest_fit_system,
     build_role_fit_prompt,
     build_interest_fit_prompt,
     format_job_for_scoring,
@@ -68,14 +68,12 @@ def _build_compact_profile(data: dict) -> str:
         lines.append(f"Domains: {', '.join(domains)}")
     lines.append("")
 
-    # Skills
+    # Skills (dynamic categories)
     skills = data.get("skills", {})
-    if skills.get("technical"):
-        lines.append(f"Technical skills: {', '.join(skills['technical'])}")
-    if skills.get("communication"):
-        lines.append(f"Communication: {', '.join(skills['communication'])}")
-    if skills.get("tools"):
-        lines.append(f"Tools: {', '.join(skills['tools'])}")
+    from app.ai.skill_utils import format_skills_for_prompt
+    skills_text = format_skills_for_prompt(skills)
+    if skills_text:
+        lines.append(skills_text)
     lines.append("")
 
     # Work history
@@ -106,7 +104,8 @@ def _build_compact_profile(data: dict) -> str:
     if top_acc:
         lines.append("Key accomplishments:")
         for a in top_acc:
-            lines.append(f"  - [{a.get('employer', '')}] {a.get('title', '')}")
+            position = f" ({a['work_history_key']})" if a.get("work_history_key") else ""
+            lines.append(f"  - [{a.get('employer', '')}] {a.get('title', '')}{position}")
             if a.get("impact_summary"):
                 summary = a["impact_summary"].strip().replace("\n", " ")[:200]
                 lines.append(f"    {summary}")
@@ -116,6 +115,9 @@ def _build_compact_profile(data: dict) -> str:
             skills_demo = a.get("skills_demonstrated", [])
             if skills_demo:
                 lines.append(f"    Skills: {', '.join(skills_demo[:6])}")
+            related_pubs = a.get("related_publication_ids", [])
+            if related_pubs:
+                lines.append(f"    Related pubs: {', '.join(related_pubs)}")
         lines.append("")
 
     # Key publications (top 6)
@@ -128,48 +130,72 @@ def _build_compact_profile(data: dict) -> str:
             lines.append(f"  - \"{p.get('title', '')}\" ({p.get('venue', '')}, {p.get('year', '')}){fa}")
         lines.append("")
 
-    # Search preferences
+    # Search preferences — prefer new free-text fields, fall back to legacy
     prefs = data.get("search_preferences", {})
     if prefs:
-        if prefs.get("industries_ranked"):
+        if prefs.get("looking_for"):
+            lines.append(f"Looking for: {prefs['looking_for']}")
+            if prefs.get("positive_signals"):
+                lines.append(f"Positive signals: {', '.join(prefs['positive_signals'])}")
+        elif prefs.get("industries_ranked"):
             lines.append("Preferred org types (ranked):")
             for ind in prefs["industries_ranked"]:
                 lines.append(f"  - {ind}")
-        elif prefs.get("industries"):
-            lines.append(f"Preferred industries: {', '.join(prefs['industries'])}")
-        if prefs.get("nice_to_haves"):
-            lines.append(f"Nice-to-haves: {', '.join(prefs['nice_to_haves'])}")
-        if prefs.get("deal_breakers"):
+            if prefs.get("nice_to_haves"):
+                lines.append(f"Nice-to-haves: {', '.join(prefs['nice_to_haves'])}")
+
+        if prefs.get("not_looking_for"):
+            lines.append(f"Not looking for: {prefs['not_looking_for']}")
+            if prefs.get("exclusions"):
+                lines.append("Exclusions:")
+                for ex in prefs["exclusions"]:
+                    lines.append(f"  - {ex}")
+        elif prefs.get("deal_breakers"):
             lines.append("Deal-breakers:")
             for db in prefs["deal_breakers"]:
                 lines.append(f"  - {db}")
-        if prefs.get("org_anti_patterns"):
-            lines.append("Anti-patterns:")
-            for ap in prefs["org_anti_patterns"]:
-                lines.append(f"  - {ap}")
+            if prefs.get("org_anti_patterns"):
+                lines.append("Anti-patterns:")
+                for ap in prefs["org_anti_patterns"]:
+                    lines.append(f"  - {ap}")
 
     return "\n".join(lines)
 
 
-async def _get_profile_text(session: AsyncSession) -> str:
-    """Load a compact profile string from the DB for scoring prompts."""
+async def _get_profile(session: AsyncSession) -> UserProfile:
+    """Load the user profile from the DB."""
     result = await session.execute(select(UserProfile).limit(1))
     profile = result.scalar_one_or_none()
     if profile is None:
         raise RuntimeError("User profile not synced — run profile sync first")
+    return profile
 
+
+async def _get_profile_text(session: AsyncSession) -> str:
+    """Load a compact profile string from the DB for scoring prompts."""
+    profile = await _get_profile(session)
     return _build_compact_profile(profile.data)
 
 
 async def _get_example_jobs(session: AsyncSession) -> tuple[list[Job], list[Job]]:
-    """Fetch thumbed-up and thumbed-down jobs for few-shot examples."""
+    """Fetch thumbed-up and thumbed-down jobs for few-shot examples.
+
+    Limits: 10 positive, 5 negative (most recent first).
+    Keeps prompt size bounded as users dismiss more jobs over time.
+    """
     pos_result = await session.execute(
-        select(Job).where(Job.thumbs == 1).limit(20)
+        select(Job)
+        .where(Job.thumbs == 1)
+        .order_by(Job.updated_at.desc())
+        .limit(10)
     )
     positive = list(pos_result.scalars().unique().all())
 
     neg_result = await session.execute(
-        select(Job).where(Job.thumbs == -1).limit(20)
+        select(Job)
+        .where(Job.thumbs == -1)
+        .order_by(Job.updated_at.desc())
+        .limit(5)
     )
     negative = list(neg_result.scalars().unique().all())
 
@@ -198,7 +224,7 @@ async def _call_llm(system: str, messages: list[dict]) -> dict:
     response = await client.chat.completions.create(
         model=SCORING_MODEL,
         messages=oai_messages,
-        max_completion_tokens=1500,
+        max_completion_tokens=2000,
     )
 
     return _parse_json_response(response.choices[0].message.content)
@@ -209,6 +235,7 @@ async def score_job(
     job_id: uuid.UUID,
     *,
     profile_text: str | None = None,
+    profile_data: dict | None = None,
     positive_jobs: list[Job] | None = None,
     negative_jobs: list[Job] | None = None,
 ) -> Job | None:
@@ -219,8 +246,12 @@ async def score_job(
         return None
 
     # Load profile if not cached
-    if profile_text is None:
-        profile_text = await _get_profile_text(session)
+    if profile_text is None or profile_data is None:
+        profile = await _get_profile(session)
+        if profile_text is None:
+            profile_text = _build_compact_profile(profile.data)
+        if profile_data is None:
+            profile_data = profile.data
 
     # Load examples if not cached
     if positive_jobs is None:
@@ -238,14 +269,18 @@ async def score_job(
 
     job_text = format_job_for_scoring(job, company_notes=company_notes)
 
+    # Build dynamic system prompts from profile data
+    role_fit_system = build_role_fit_system(profile_data)
+    interest_fit_system = build_interest_fit_system(profile_data)
+
     # Score role fit and interest fit in parallel
     try:
         role_task = _call_llm(
-            ROLE_FIT_SYSTEM,
+            role_fit_system,
             build_role_fit_prompt(profile_text, job_text),
         )
         interest_task = _call_llm(
-            INTEREST_FIT_SYSTEM,
+            interest_fit_system,
             build_interest_fit_prompt(
                 profile_text,
                 job_text,
@@ -258,8 +293,36 @@ async def score_job(
         logger.exception("Failed to score job %s (%s at %s)", job.id, job.title, job.company)
         raise
 
-    role_score = role_result.get("role_fit", {}).get("score", 0)
-    interest_score = interest_result.get("interest_fit", {}).get("score", 0)
+    # Post-hoc arithmetic correction: recompute totals from sub-scores
+    rf = role_result.get("role_fit", {})
+    rf_computed = sum([
+        rf.get("hard_skills", {}).get("score", 0),
+        rf.get("experience_level", {}).get("score", 0),
+        rf.get("domain_relevance", {}).get("score", 0),
+        rf.get("education_fit", {}).get("score", 0),
+    ])
+    rf_reported = rf.get("score", 0)
+    if rf_computed > 0 and rf_computed != rf_reported:
+        logger.warning(
+            "Role fit arithmetic mismatch for %s: reported=%d computed=%d",
+            job.id, rf_reported, rf_computed,
+        )
+    role_score = rf_computed if rf_computed > 0 else rf_reported
+
+    intf = interest_result.get("interest_fit", {})
+    if_computed = sum([
+        intf.get("role_alignment", {}).get("score", 0),
+        intf.get("domain_excitement", {}).get("score", 0),
+        intf.get("organization_fit", {}).get("score", 0),
+        intf.get("practical_factors", {}).get("score", 0),
+    ])
+    if_reported = intf.get("score", 0)
+    if if_computed > 0 and if_computed != if_reported:
+        logger.warning(
+            "Interest fit arithmetic mismatch for %s: reported=%d computed=%d",
+            job.id, if_reported, if_computed,
+        )
+    interest_score = if_computed if if_computed > 0 else if_reported
 
     # Build rationale
     rationale = {
@@ -295,6 +358,7 @@ async def _score_one(
     semaphore: asyncio.Semaphore,
     session: AsyncSession,
     profile_text: str,
+    profile_data: dict,
     positive_jobs: list[Job],
     negative_jobs: list[Job],
 ) -> bool:
@@ -305,6 +369,7 @@ async def _score_one(
                 session,
                 job_id,
                 profile_text=profile_text,
+                profile_data=profile_data,
                 positive_jobs=positive_jobs,
                 negative_jobs=negative_jobs,
             )
@@ -346,7 +411,9 @@ async def score_jobs_batch(
         return
 
     # Cache profile and examples
-    profile_text = await _get_profile_text(session)
+    profile = await _get_profile(session)
+    profile_text = _build_compact_profile(profile.data)
+    profile_data = profile.data
     positive_jobs, negative_jobs = await _get_example_jobs(session)
 
     _batch_status = {
@@ -366,7 +433,7 @@ async def score_jobs_batch(
     for batch_start in range(0, len(jobs), batch_size):
         batch = jobs[batch_start : batch_start + batch_size]
         tasks = [
-            _score_one(job.id, semaphore, session, profile_text, positive_jobs, negative_jobs)
+            _score_one(job.id, semaphore, session, profile_text, profile_data, positive_jobs, negative_jobs)
             for job in batch
         ]
         results = await asyncio.gather(*tasks)

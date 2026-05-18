@@ -1,0 +1,159 @@
+name: Semantic eval
+
+# Runs the LLM-as-judge eval suite on PRs that touch prompts, the
+# generation pipeline, the chat agent, or the memory layer. Path-filtered
+# to keep cost down — every run makes ~20 LLM calls (~$0.50–$1 on GPT-5
+# class models). See docs/MEMORY_DESIGN.md for what the eval grades and
+# why it's worth running.
+#
+# Required repo secrets:
+#   OPENAI_API_KEY     (or set LLM_PROVIDER + the relevant key — see below)
+#
+# Optional repo variables:
+#   EVAL_PASS_THRESHOLD   default "0.80" — fails the job if pass rate dips below this
+#   LLM_PROVIDER          "openai" | "anthropic" | "ollama" (default: openai)
+
+on:
+  pull_request:
+    paths:
+      - 'backend/app/ai/**'
+      - 'backend/app/services/content_memory_service.py'
+      - 'backend/app/services/writing_memory_service.py'
+      - 'backend/app/routers/chat.py'
+      - 'backend/app/routers/documents.py'
+      - 'backend/scripts/eval/**'
+      - 'backend/alembic/versions/**'
+      - '.github/workflows/semantic-eval.yml'
+
+jobs:
+  eval:
+    name: Multi-turn focused-edit eval
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: jobboard
+          POSTGRES_PASSWORD: jobboard
+          POSTGRES_DB: jobboard
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://jobboard:jobboard@localhost:5432/jobboard
+      REDIS_URL: redis://localhost:6379/0
+      LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'openai' }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EVAL_PASS_THRESHOLD: ${{ vars.EVAL_PASS_THRESHOLD || '0.80' }}
+      PROFILE_YAML_PATH: ${{ github.workspace }}/docs/profile.yaml
+      PROFILE_COMPLETE_YAML_PATH: ${{ github.workspace }}/docs/profile_complete.yaml
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install backend deps
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Seed sample profile
+        # Use the fictional profile examples so PRs from forks (which can't
+        # access the maintainer's real profile) still run the eval. The
+        # examples are designed to be runnable.
+        run: |
+          cp docs/profile.yaml.example docs/profile.yaml
+          cp docs/profile_complete.yaml.example docs/profile_complete.yaml
+
+      - name: Run database migrations
+        run: |
+          cd backend
+          alembic upgrade head
+
+      - name: Sync profile into DB
+        run: |
+          cd backend
+          python -c "
+          import asyncio
+          from app.database import async_session
+          from app.services.profile_sync import sync_profile_from_yaml, sync_complete_profile
+          async def main():
+              async with async_session() as session:
+                  await sync_profile_from_yaml(session, '${{ github.workspace }}/docs/profile.yaml')
+                  await sync_complete_profile(session, '${{ github.workspace }}/docs/profile_complete.yaml')
+                  await session.commit()
+          asyncio.run(main())
+          "
+
+      - name: Verify required secret is present
+        run: |
+          provider="${LLM_PROVIDER:-openai}"
+          case "$provider" in
+            openai)    test -n "$OPENAI_API_KEY"     || { echo '::error::OPENAI_API_KEY secret is required'; exit 1; } ;;
+            anthropic) test -n "$ANTHROPIC_API_KEY"  || { echo '::error::ANTHROPIC_API_KEY secret is required'; exit 1; } ;;
+            *) echo "::warning::Unknown LLM_PROVIDER=$provider — eval may fail";;
+          esac
+
+      - name: Run multi-turn focused-edit eval
+        # Script exits non-zero when pass_rate < EVAL_PASS_THRESHOLD,
+        # which fails this job and blocks the PR until the regression is
+        # addressed. The summary JSON below captures per-turn judge output.
+        run: |
+          cd backend
+          python scripts/eval/eval_focused_edit.py
+
+      - name: Upload eval summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: backend/output/eval_results.json
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Comment summary on PR
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'backend/output/eval_results.json';
+            if (!fs.existsSync(path)) {
+              console.log('No summary file — eval likely crashed before producing one.');
+              return;
+            }
+            const r = JSON.parse(fs.readFileSync(path, 'utf8'));
+            const verdict = r.passed_gate ? '✅' : '❌';
+            const lines = [
+              `### ${verdict} Semantic eval — ${r.pass_count}/${r.total_checks} checks passed (${(r.pass_rate*100).toFixed(1)}%)`,
+              `Threshold: ${(r.threshold*100).toFixed(0)}%`,
+              ``,
+            ];
+            if (r.failed_checks && r.failed_checks.length) {
+              lines.push('**Failed checks:**');
+              for (const fc of r.failed_checks) {
+                lines.push(`- *[${fc.scenario}]* turn ${fc.turn} — ${fc.axes.join(', ')}: ${fc.summary}`);
+              }
+              lines.push('');
+            }
+            lines.push(`<sub>Provider: \`${process.env.LLM_PROVIDER || 'openai'}\` · See workflow artifact \`eval-results\` for full per-turn judge output.</sub>`);
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: lines.join('\n'),
+            });

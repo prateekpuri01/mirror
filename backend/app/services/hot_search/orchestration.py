@@ -26,6 +26,7 @@ lose 90 candidates?" without grepping logs.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from collections import Counter
 from typing import AsyncGenerator
@@ -33,6 +34,7 @@ from typing import AsyncGenerator
 import httpx
 
 from app.config import settings
+from app.ai.client import EXTRACTION_MODEL, get_openai_client
 from app.scrapers.discovery_adapters import DISCOVERY_ADAPTERS
 from app.services.hot_search.types import (
     CompanyCandidate,
@@ -41,6 +43,102 @@ from app.services.hot_search.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Aggregator pre-filter — one batched LLM call to drop guidance-incompatible
+# aggregator entries BEFORE they consume the direct-import budget.
+# ---------------------------------------------------------------------------
+
+
+async def _prefilter_aggregator_entries(
+    entries: list,
+    guidance: str,
+    *,
+    max_entries: int = 250,
+) -> list:
+    """Batch-LLM-filter aggregator harvest entries by guidance fit.
+
+    Without this, the harvest dumps ~200 guidance-blind entries (Bank of
+    America, Uber, generic GmbH consultancies, etc.) into the candidate
+    pool, where they burn the 100-direct-import budget before any
+    guidance-driven LLM-query candidate gets a chance to run.
+
+    One ~$0.01 LLM call drops the off-topic majority, leaving only
+    entries that plausibly match the search topic. Returns the original
+    list unfiltered if guidance is empty or the LLM call fails — better
+    to over-include than to swallow real matches on a parse error.
+    """
+    if not guidance or not entries:
+        return entries
+
+    # Cap input to bound LLM cost. The cap is generous because the prompt
+    # itself is just (company — title) one-liners, which compress well.
+    sample = entries[:max_entries]
+
+    lines = []
+    for i, e in enumerate(sample):
+        company = (getattr(e, "company_name", "") or "Unknown").strip()
+        title = (getattr(e, "job_title", "") or "unknown role").strip()
+        # Truncate to keep the prompt compact
+        if len(title) > 100:
+            title = title[:97] + "..."
+        lines.append(f"{i}. {company} — {title}")
+
+    user_msg = (
+        f"User is searching for jobs matching this guidance:\n\n"
+        f"  {guidance.strip()}\n\n"
+        f"Below are {len(sample)} candidate (company — job-title) pairs from "
+        f"aggregator feeds. Return the indices of entries that are "
+        f"PLAUSIBLY relevant to the guidance. Be generous — include anything "
+        f"that could plausibly fit, even loosely. Exclude only entries that "
+        f"clearly don't match (e.g. retail, hospitality, generic admin/sales "
+        f"roles at unrelated companies, foreign-language consultancies in "
+        f"unrelated fields).\n\n"
+        + "\n".join(lines)
+        + '\n\nReturn ONLY valid JSON: {"relevant": [<indices>]}'
+    )
+
+    try:
+        client = get_openai_client()
+        response = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            messages=[
+                {"role": "system", "content": (
+                    "You filter aggregator job listings by relevance to a user's "
+                    "search guidance. You return only JSON. Be generous — when "
+                    "uncertain, include the entry."
+                )},
+                {"role": "user", "content": user_msg},
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=3000,
+        )
+        text = (response.choices[0].message.content or "").strip()
+        parsed = json.loads(text)
+        indices = parsed.get("relevant", [])
+        if not isinstance(indices, list):
+            return entries  # malformed — fall through
+        kept = {int(i) for i in indices if isinstance(i, (int, float))}
+        filtered = [sample[i] for i in sorted(kept) if 0 <= i < len(sample)]
+        # If the LLM was over-aggressive and dropped everything, fall back
+        # to the original list — better to evaluate all than block the search.
+        if not filtered and sample:
+            logger.info(
+                "Aggregator pre-filter returned 0 of %d entries — falling "
+                "back to unfiltered set",
+                len(sample),
+            )
+            return entries
+        logger.info(
+            "Aggregator pre-filter: %d → %d entries (%.0f%% dropped)",
+            len(sample), len(filtered),
+            (1 - len(filtered) / max(1, len(sample))) * 100,
+        )
+        return filtered
+    except Exception:
+        logger.exception("Aggregator pre-filter failed — using unfiltered set")
+        return entries
 
 
 async def run_hot_company_search(
@@ -102,15 +200,13 @@ async def run_hot_company_search(
 
     # Validate at least one web search backend is reachable. The unified
     # web_search() will silently return empty if nothing is configured.
-    if not (
-        settings.perplexity_api_key
-        or settings.brave_api_key
-        or settings.searxng_url
-    ):
+    from app.services.web_search_llm import native_web_search_supported
+    if not (native_web_search_supported() or settings.searxng_url):
         yield SearchEvent("error", {
             "message": (
-                "No web search backend configured. Set PERPLEXITY_API_KEY, "
-                "BRAVE_API_KEY, or run a SearXNG instance and set SEARXNG_URL."
+                "No web search backend configured. Configure an LLM provider "
+                "key (OPENAI_API_KEY or ANTHROPIC_API_KEY) for native web "
+                "search, or run a SearXNG instance and set SEARXNG_URL."
             ),
         })
         yield SearchEvent("done", {"total_hits": 0, "total_candidates_checked": 0})
@@ -140,13 +236,32 @@ async def run_hot_company_search(
     hits: list[CompanyHit] = []
     total_candidates = 0
     consecutive_dry = 0
-    direct_import_count = 0  # Cap one-off URL imports per session
-    # Bumped to 100 once the aggregator harvester started producing 350+
-    # seed candidates per run; previously 25 was throwing away ~120 viable
-    # candidates per run (see funnel: direct_cap_reached). The verifier
-    # already runs per-candidate so the cap is now a cost ceiling, not a
-    # quality gate.
-    _MAX_DIRECT_IMPORTS = 100
+    # Split the per-session direct-import budget by candidate origin so the
+    # guidance-blind aggregator harvest can't crowd out guidance-driven LLM
+    # queries — which was the root cause of "0 hits, AI-and-agriculture
+    # companies discovered too late to be evaluated" complaints. Each origin
+    # gets its own cap; the verifier still runs per-candidate so these are
+    # cost ceilings, not quality gates.
+    aggregator_direct_count = 0
+    query_direct_count = 0
+    _AGGREGATOR_DIRECT_CAP = 50
+    _QUERY_DIRECT_CAP = 50
+
+    # Global wall-clock budget. Hard cap so a single search can't grind for
+    # hours when Ashby is rate-limiting hard or candidate eval pipelines
+    # stall. At 8 minutes the user has time to refine guidance and try
+    # again; without it, individual stuck candidates (180s timeout each)
+    # multiplied across 3 iterations × ~30 candidates × bounded concurrency
+    # produced 1.5-hour stalls in practice.
+    import time
+    _GLOBAL_BUDGET_S = 8 * 60
+    start_time = time.monotonic()
+
+    def _budget_remaining() -> float:
+        return _GLOBAL_BUDGET_S - (time.monotonic() - start_time)
+
+    def _budget_exceeded() -> bool:
+        return _budget_remaining() <= 0
 
     # Funnel: count where candidates drop. Emitted in the `done` event so we
     # can see at a glance whether the bottleneck is dedup, ATS resolution,
@@ -192,6 +307,32 @@ async def run_hot_company_search(
                     adapter.source_name, len(result),
                 )
                 all_entries.extend(result)
+            # Pre-filter the aggregator pool by guidance fit before
+            # spending HTTP probes resolving them. One LLM call drops the
+            # obviously-off-topic entries (e.g. "Bank of America: Wealth
+            # Manager" against "AI and agriculture") so the direct-import
+            # budget goes to entries that could actually match.
+            pre_count = len(all_entries)
+            if guidance:
+                yield SearchEvent("status", {
+                    "message": (
+                        f"Filtering {pre_count} aggregator entries against "
+                        f"your guidance..."
+                    ),
+                    "phase": "filtering", "iteration": 0,
+                    "total_queries": 0, "hits_so_far": 0,
+                })
+                all_entries = await _prefilter_aggregator_entries(
+                    all_entries, guidance,
+                )
+            yield SearchEvent("status", {
+                "message": (
+                    f"Resolving {len(all_entries)} of {pre_count} aggregator "
+                    f"entries to ATS boards..."
+                ),
+                "phase": "harvesting", "iteration": 0,
+                "total_queries": 0, "hits_so_far": 0,
+            })
             seed_candidates = await _harvest_candidates_from_entries(
                 all_entries,
                 http_client,
@@ -204,6 +345,14 @@ async def run_hot_company_search(
                 "Aggregator harvest: %d entries → %d candidates",
                 len(all_entries), len(seed_candidates),
             )
+            yield SearchEvent("status", {
+                "message": (
+                    f"Harvested {len(seed_candidates)} candidates from "
+                    f"{len(all_entries)} aggregator entries — searching..."
+                ),
+                "phase": "harvested", "iteration": 0,
+                "total_queries": 0, "hits_so_far": 0,
+            })
         except Exception:
             logger.exception("Aggregator harvest failed; continuing without seed candidates")
             seed_candidates = []
@@ -216,6 +365,19 @@ async def run_hot_company_search(
                     "message": "Stopping — 3 iterations with no new hits",
                     "phase": "stopping", "iteration": iteration,
                     "total_queries": len(past_queries), "hits_so_far": len(hits),
+                })
+                break
+            if _budget_exceeded():
+                yield SearchEvent("status", {
+                    "message": (
+                        f"Stopping — {_GLOBAL_BUDGET_S // 60}-minute wall-clock "
+                        f"budget hit (likely Ashby rate-limiting). Returning "
+                        f"{len(hits)} companies found so far. Try narrower "
+                        f"guidance or fewer reference jobs for a faster run."
+                    ),
+                    "phase": "stopping", "iteration": iteration,
+                    "total_queries": len(past_queries), "hits_so_far": len(hits),
+                    "budget_exhausted": True,
                 })
                 break
 
@@ -237,6 +399,10 @@ async def run_hot_company_search(
 
             for query in queries:
                 if len(hits) >= max_hits:
+                    break
+                if _budget_exceeded():
+                    # Inner break — outer loop check will emit the
+                    # user-visible "Stopping" status on the next pass.
                     break
 
                 yield SearchEvent("status", {
@@ -360,20 +526,37 @@ async def run_hot_company_search(
                         "source": candidate.source,
                     })
 
-                    # Direct-URL branch: check cap at queue time. We reserve
-                    # a slot eagerly so concurrent direct imports can't exceed
-                    # the cap (though in practice direct URLs are rare).
+                    # Direct-URL branch: check the appropriate per-origin
+                    # cap at queue time. Aggregator vs query candidates have
+                    # separate budgets so a flood of guidance-blind
+                    # aggregator entries can't starve guidance-driven LLM
+                    # query candidates of evaluation slots.
                     if candidate.direct_job_url:
-                        if direct_import_count >= _MAX_DIRECT_IMPORTS:
+                        is_aggregator = candidate.origin == "aggregator"
+                        if is_aggregator:
+                            cap = _AGGREGATOR_DIRECT_CAP
+                            used = aggregator_direct_count
+                            cap_label = "aggregator"
+                        else:
+                            cap = _QUERY_DIRECT_CAP
+                            used = query_direct_count
+                            cap_label = "query"
+                        if used >= cap:
                             evaluated[norm_key] = "miss"
-                            funnel["direct_cap_reached"] += 1
+                            funnel[f"direct_cap_reached_{cap_label}"] += 1
                             yield SearchEvent("skip", {
                                 "name": candidate.name,
                                 "source": candidate.source,
-                                "reason": f"Direct-import cap reached ({_MAX_DIRECT_IMPORTS}/run)",
+                                "reason": (
+                                    f"Direct-import cap reached "
+                                    f"({cap}/{cap_label})"
+                                ),
                             })
                             continue
-                        direct_import_count += 1
+                        if is_aggregator:
+                            aggregator_direct_count += 1
+                        else:
+                            query_direct_count += 1
                         pending_evals.append((candidate, norm_key, "direct"))
                     else:
                         pending_evals.append((candidate, norm_key, "full"))
@@ -510,8 +693,16 @@ async def run_hot_company_search(
                             else:
                                 # Direct URL import failed — release the slot
                                 # we reserved at queue time so we don't count
-                                # it against the cap.
-                                direct_import_count = max(0, direct_import_count - 1)
+                                # it against the cap. Refund the matching
+                                # per-origin counter.
+                                if candidate.origin == "aggregator":
+                                    aggregator_direct_count = max(
+                                        0, aggregator_direct_count - 1,
+                                    )
+                                else:
+                                    query_direct_count = max(
+                                        0, query_direct_count - 1,
+                                    )
                                 evaluated[norm_key] = "miss"
                                 funnel["direct_miss"] += 1
                                 if skip_reason:

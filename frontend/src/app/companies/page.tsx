@@ -10,7 +10,8 @@ import { RefreshCompanyFlow } from "@/components/refresh-company-flow";
 import { HotCompanySearch } from "@/components/hot-company-search";
 import { useDiscoverFlow } from "@/hooks/use-discover-flow";
 import { useHotSearch } from "@/hooks/use-hot-search";
-import { CompaniesParams, CompanyListItem } from "@/lib/types";
+import { useRefreshFlow } from "@/hooks/use-refresh-flow";
+import { CompaniesParams } from "@/lib/types";
 
 function CompaniesPageInner() {
   const router = useRouter();
@@ -18,20 +19,21 @@ function CompaniesPageInner() {
   const { isDiscovering, result: discoverResult } = useDiscoverFlow();
   const { phase: hotSearchPhase } = useHotSearch();
   const hotSearchActive = hotSearchPhase !== "idle";
+  const { step: refreshStep, company: refreshCompany, startRefresh, clearRefresh } = useRefreshFlow();
+  const refreshActive = refreshStep !== "idle";
 
   // Read state from URL
   const params: CompaniesParams = {
     page: Number(searchParams.get("page")) || 1,
     per_page: Number(searchParams.get("per_page")) || 50,
     q: searchParams.get("q") || undefined,
-    sort_by: searchParams.get("sort_by") || "name",
-    sort_dir: (searchParams.get("sort_dir") as "asc" | "desc") || "asc",
+    sort_by: searchParams.get("sort_by") || "job_count",
+    sort_dir: (searchParams.get("sort_dir") as "asc" | "desc") || "desc",
   };
 
   const { data, isLoading, error } = useCompanies(params);
   const [showAddFlow, setShowAddFlow] = useState(false);
   const [showHotSearch, setShowHotSearch] = useState(false);
-  const [refreshingCompany, setRefreshingCompany] = useState<CompanyListItem | null>(null);
 
   // Auto-show add flow if a discover is in progress or has results (survives navigation)
   const addFlowVisible = showAddFlow || isDiscovering || !!discoverResult;
@@ -108,10 +110,10 @@ function CompaniesPageInner() {
             <button
               onClick={() => { setShowHotSearch(true); setShowAddFlow(false); }}
               className="h-9 px-4 rounded-md border text-sm font-medium hover:bg-orange-50 hover:text-orange-700 hover:border-orange-200 transition-colors flex items-center gap-2"
-              title="Find Hot Companies"
+              title="Find Hot Jobs"
             >
               <span className="text-base leading-none">🔥</span>
-              Find Hot Companies
+              Find Hot Jobs
             </button>
           )}
           {!addFlowVisible && !hotSearchVisible && (
@@ -137,12 +139,9 @@ function CompaniesPageInner() {
         </div>
       )}
 
-      {refreshingCompany && (
+      {refreshActive && refreshCompany && (
         <div className="mb-6">
-          <RefreshCompanyFlow
-            company={refreshingCompany}
-            onClose={() => setRefreshingCompany(null)}
-          />
+          <RefreshCompanyFlow company={refreshCompany} onClose={() => clearRefresh()} />
         </div>
       )}
 
@@ -180,9 +179,9 @@ function CompaniesPageInner() {
           onPerPageChange={handlePerPageChange}
           onRefresh={(company) => {
             setShowAddFlow(false);
-            setRefreshingCompany(company);
+            startRefresh(company);
           }}
-          disableRefresh={refreshingCompany !== null || addFlowVisible || hotSearchActive}
+          disableRefresh={refreshActive || addFlowVisible || hotSearchActive}
         />
       )}
     </main>

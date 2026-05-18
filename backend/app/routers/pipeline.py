@@ -15,10 +15,13 @@ from app.schemas.pipeline import (
     PipelineProcessResult,
     PipelineStatus,
     PrefilterResult,
+    RecheckExpiredResult,
+    ReprocessRequest,
+    ReprocessResult,
     RescoreResult,
 )
 from app.scrapers.runner import run_scrape
-from app.services.liveness import check_urls_batch, garbage_collect, get_liveness_stats
+from app.services.liveness import check_urls_batch, garbage_collect, get_liveness_stats, recheck_expired
 from app.services.pipeline import get_pipeline_summary, process_new_jobs, rescore_outdated
 
 logger = logging.getLogger(__name__)
@@ -113,6 +116,136 @@ async def rescore(
     return RescoreResult(job_ids=job_ids, current_version=PROMPT_VERSION)
 
 
+@router.post("/reprocess", response_model=ReprocessResult)
+async def reprocess_jobs(
+    body: ReprocessRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
+    """Re-run selected operations on specific jobs. Runs in background.
+
+    Operations: "score", "extract" (salary/location), "requirements".
+    Returns the job IDs so the frontend can track progress.
+    """
+    from sqlalchemy import select as sa_select
+
+    valid_ops = {"score", "extract", "requirements"}
+    ops = [op for op in body.operations if op in valid_ops]
+    if not ops:
+        raise HTTPException(status_code=400, detail="No valid operations specified")
+
+    # Validate job IDs exist and reset pipeline_stage for progress tracking
+    job_uuids = []
+    for jid in body.job_ids:
+        try:
+            job_uuids.append(uuid.UUID(jid))
+        except ValueError:
+            continue
+
+    result = await session.execute(
+        sa_select(Job.id).where(Job.id.in_(job_uuids))
+    )
+    found_ids = [str(row[0]) for row in result.all()]
+    if not found_ids:
+        raise HTTPException(status_code=404, detail="No valid jobs found")
+
+    # Reset pipeline_stage to "scraped" so frontend spinner tracks correctly
+    from sqlalchemy import update as sa_update
+
+    await session.execute(
+        sa_update(Job)
+        .where(Job.id.in_([uuid.UUID(jid) for jid in found_ids]))
+        .values(pipeline_stage="scraped")
+    )
+    await session.commit()
+
+    background_tasks.add_task(_run_reprocess, found_ids, ops)
+    return ReprocessResult(job_ids=found_ids)
+
+
+async def _run_reprocess(job_ids: list[str], operations: list[str]):
+    """Background task: reprocess specific jobs with selected operations."""
+    import asyncio
+
+    from app.ai.scoring import score_job
+    from app.services.extraction import (
+        FIELD_PROCESSORS,
+        _extract_one,
+        _resolve_locations,
+    )
+    from app.services.app_req_extraction_service import extract_application_requirements
+
+    async with async_session() as session:
+        for jid in job_ids:
+            job_uuid = uuid.UUID(jid)
+            try:
+                # Extract salary/location
+                if "extract" in operations:
+                    from sqlalchemy import select as sa_select
+
+                    result = await session.execute(
+                        sa_select(Job).where(Job.id == job_uuid)
+                    )
+                    job = result.scalar_one_or_none()
+                    if job:
+                        semaphore = asyncio.Semaphore(1)
+                        _, extracted = await _extract_one(job, semaphore)
+                        if extracted:
+                            context: dict = {}
+                            for name, processor in FIELD_PROCESSORS.items():
+                                try:
+                                    await processor.apply(job, extracted, context)
+                                except Exception:
+                                    logger.exception(
+                                        "Reprocess: processor %s failed for job %s",
+                                        name, jid,
+                                    )
+                            meta = dict(job.extra_metadata or {})
+                            meta["extracted"] = True
+                            job.extra_metadata = meta
+
+                            # Resolve locations inline for this single job
+                            loc_buffer = context.get("location_buffer", {})
+                            if loc_buffer:
+                                await _resolve_locations(session, loc_buffer)
+
+                        await session.commit()
+
+                # Score
+                if "score" in operations:
+                    await score_job(session, job_uuid)
+                    await session.commit()
+
+                # Extract requirements
+                if "requirements" in operations:
+                    await extract_application_requirements(session, jid)
+
+                # Mark pipeline_stage back to scored
+                from sqlalchemy import select as sa_select, update as sa_update
+
+                await session.execute(
+                    sa_update(Job)
+                    .where(Job.id == job_uuid)
+                    .values(pipeline_stage="scored")
+                )
+                await session.commit()
+
+            except Exception:
+                logger.exception("Reprocess failed for job %s", jid)
+                # Still try to restore pipeline_stage
+                try:
+                    from sqlalchemy import update as sa_update
+
+                    await session.execute(
+                        sa_update(Job)
+                        .where(Job.id == job_uuid)
+                        .values(pipeline_stage="scored")
+                    )
+                    await session.commit()
+                except Exception:
+                    logger.exception("Failed to restore pipeline_stage for job %s", jid)
+
+
 @router.get("/status", response_model=PipelineStatus)
 async def pipeline_status(session: AsyncSession = Depends(get_session)):
     """Get counts per pipeline stage."""
@@ -205,6 +338,30 @@ async def check_urls(background_tasks: BackgroundTasks):
     return {"message": "URL check started", "status": "running"}
 
 
+async def _run_recheck_expired():
+    """Background task: recheck expired jobs."""
+    async with async_session() as session:
+        try:
+            await recheck_expired(session)
+        except Exception:
+            logger.exception("Recheck expired failed")
+
+
+@router.post("/liveness/recheck-expired", response_model=RecheckExpiredResult)
+async def recheck_expired_jobs(
+    background_tasks: BackgroundTasks,
+    batch_size: int = 100,
+    sync: bool = False,
+    session: AsyncSession = Depends(get_session),
+):
+    """GET-check all expired jobs and revive any still live. Fixes false expirations."""
+    if sync:
+        result = await recheck_expired(session, batch_size=batch_size)
+        return RecheckExpiredResult(**result)
+    background_tasks.add_task(_run_recheck_expired)
+    return RecheckExpiredResult()
+
+
 @router.post("/liveness/gc", response_model=GCResult)
 async def gc(
     expired_days: int = 90,
@@ -213,3 +370,10 @@ async def gc(
     """Archive jobs expired > N days with status='new'."""
     result = await garbage_collect(session, expired_days=expired_days)
     return GCResult(**result)
+
+
+@router.get("/maintenance-status")
+async def maintenance_status():
+    """Show daily maintenance scheduler status."""
+    from app.services.scheduler import get_maintenance_status
+    return await get_maintenance_status()

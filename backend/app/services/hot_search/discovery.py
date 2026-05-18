@@ -727,35 +727,58 @@ async def _harvest_candidates_from_entries(
     `seen` and `existing_companies_lower` are shared dedup sets passed by
     the caller so harvested candidates don't collide with web-discovered
     ones or with companies already tracked in the user's DB.
-    """
-    candidates: list[CompanyCandidate] = []
 
-    for entry in entries:
+    Probes run in parallel with bounded concurrency. Sequential probing
+    was the cause of multi-minute "Harvesting..." stalls before the first
+    candidate event reached the SSE stream: ~100 entries × ~15 ATS probes
+    per name name-probe makes 1,500+ serial HTTP calls. Parallel-10 cuts
+    that to seconds while still respecting Ashby's rate-limit budget.
+    """
+    sem = asyncio.Semaphore(10)
+
+    async def _resolve_entry(
+        entry,
+    ) -> tuple[str | None, str | None, object] | None:
+        """Returns (ats, slug, entry) for ATS-matched entries; (None, None, entry)
+        for direct-URL fallbacks; None if the entry has no usable URL."""
         url = (entry.job_url or "").strip()
         if not url:
-            continue
+            return None
 
-        # 1. URL → ATS slug
-        matched_ats: tuple[str, str] | None = None
+        # 1. URL → ATS slug (fast, no HTTP)
         for ats, pattern in _ATS_URL_PATTERNS.items():
             m = pattern.search(url)
             if m:
-                slug = m.group(1)
-                matched_ats = (ats, slug)
-                break
+                return (ats, m.group(1), entry)
 
-        # 2. Name probe (validated against live ATS API) when URL didn't match
-        if matched_ats is None and entry.company_name:
-            probed = await _probe_name_for_ats(entry.company_name, http_client)
+        # 2. Name probe — the slow part. Bounded by `sem` so we don't
+        # bury the ATS APIs (especially Ashby) with concurrent verifies.
+        if entry.company_name:
+            async with sem:
+                probed = await _probe_name_for_ats(entry.company_name, http_client)
             if probed:
-                matched_ats = probed
+                return (probed[0], probed[1], entry)
 
-        if matched_ats is not None:
-            ats, slug = matched_ats
+        # 3. Direct-URL fallback (no probe needed)
+        return (None, None, entry)
+
+    results = await asyncio.gather(
+        *[_resolve_entry(e) for e in entries],
+        return_exceptions=False,
+    )
+
+    candidates: list[CompanyCandidate] = []
+    for res in results:
+        if res is None:
+            continue
+        ats, slug, entry = res
+        url = (entry.job_url or "").strip()
+
+        if ats is not None and slug is not None:
             key = f"{ats}:{slug}"
             if key in seen:
                 continue
-            if entry.company_name.lower() in existing_companies_lower:
+            if (entry.company_name or "").lower() in existing_companies_lower:
                 continue
             seen.add(key)
             candidates.append(CompanyCandidate(
@@ -764,10 +787,11 @@ async def _harvest_candidates_from_entries(
                 ats=ats,
                 slug=slug,
                 source=entry.source,
+                origin="aggregator",
             ))
             continue
 
-        # 3. Direct-URL fallback. Lane A's verifier in _extract_direct_job_url
+        # Direct-URL fallback. Lane A's verifier in _extract_direct_job_url
         # will hard-reject if filters don't match.
         key = f"direct:{url}"
         if key in seen:
@@ -780,6 +804,7 @@ async def _harvest_candidates_from_entries(
             slug=None,
             source=entry.source,
             direct_job_url=url,
+            origin="aggregator",
         ))
 
     # Reorder so ATS-resolved candidates run before direct-URL fallbacks.

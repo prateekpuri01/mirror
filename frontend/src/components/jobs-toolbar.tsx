@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, SlidersHorizontal, X, Check } from "lucide-react";
+import {
+  Loader2,
+  Plus,
+  SlidersHorizontal,
+  Tag as TagIcon,
+  X,
+  Check,
+  Eye,
+  EyeOff,
+  ChevronDown,
+} from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,7 +32,19 @@ import {
 import { ALL_STATUSES, STATUS_CONFIG, ALL_SOURCES, SOURCE_CONFIG } from "@/lib/constants";
 import { useTags, useLocations } from "@/hooks/use-jobs";
 import { useJobProcessing } from "@/hooks/use-job-processing";
-import { rescoreBatch, runGarbageCollect } from "@/lib/api";
+import { useJobSelection } from "@/hooks/use-job-selection";
+import { useExtractionTracking } from "@/hooks/use-extraction-tracking";
+import {
+  extractApply,
+  extractPreview,
+  importJobFromUrl,
+  rescoreBatch,
+  runGarbageCollect,
+  scoreJob,
+  triggerRequirementsExtraction,
+} from "@/lib/api";
+
+type ReprocessOp = "score" | "extract_salary_location" | "extract_requirements";
 
 const WORK_MODELS = [
   { value: "remote", label: "Remote", bg: "bg-sky-100 text-sky-700 border-sky-300", activeBg: "bg-sky-500 text-white border-sky-500" },
@@ -44,6 +66,8 @@ export function JobsToolbar() {
   const { data: tags } = useTags();
   const { data: locations } = useLocations();
   const { hasProcessingJobs, startProcessing } = useJobProcessing();
+  const { selectedIds, count: selectionCount, clearSelection } = useJobSelection();
+  const extractionTracking = useExtractionTracking();
 
   const [rescoring, setRescoring] = useState(false);
   const [rescoreCount, setRescoreCount] = useState(0);
@@ -58,6 +82,159 @@ export function JobsToolbar() {
   const currentLocation = searchParams.get("location") || "";
   const currentWorkModel = searchParams.get("work_model") || "";
   const currentMinSalary = Number(searchParams.get("min_salary")) || 0;
+  const hideExpired = searchParams.get("hide_expired") !== "false"; // default true
+
+  const [addJobOpen, setAddJobOpen] = useState(false);
+  const [addJobUrl, setAddJobUrl] = useState("");
+  const [addJobImporting, setAddJobImporting] = useState(false);
+  const [addJobError, setAddJobError] = useState<string | null>(null);
+
+  // Reprocess dropdown — selected operations + running state
+  const [reprocessOpen, setReprocessOpen] = useState(false);
+  const [reprocessOps, setReprocessOps] = useState<Set<ReprocessOp>>(
+    new Set(["score"]),
+  );
+  const [reprocessRunning, setReprocessRunning] = useState(false);
+  const [reprocessError, setReprocessError] = useState<string | null>(null);
+
+  // Tags popover open state
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [createTagPending, setCreateTagPending] = useState(false);
+  const [tagCreateError, setTagCreateError] = useState<string | null>(null);
+
+  const toggleReprocessOp = useCallback((op: ReprocessOp) => {
+    setReprocessOps((prev) => {
+      const next = new Set(prev);
+      if (next.has(op)) next.delete(op);
+      else next.add(op);
+      return next;
+    });
+  }, []);
+
+  const handleReprocess = useCallback(async () => {
+    if (selectionCount === 0 || reprocessOps.size === 0) return;
+    setReprocessRunning(true);
+    setReprocessError(null);
+    const ids = Array.from(selectedIds);
+    const ops = Array.from(reprocessOps);
+    try {
+      // Register all jobs as processing so the table shows the spinner glow
+      startProcessing(ids);
+
+      // Run each operation over the selected jobs. The browser handles ~10
+      // parallel fetches comfortably; we don't cap concurrency for now since
+      // the backend's per-endpoint locks already protect against thundering
+      // herd, and per-job calls are bounded by the selection count.
+      const runOpForId = async (op: ReprocessOp, id: string) => {
+        if (op === "score") {
+          await scoreJob(id);
+        } else if (op === "extract_salary_location") {
+          const preview = await extractPreview(id);
+          await extractApply(id, {
+            salary_min: preview.salary_min,
+            salary_max: preview.salary_max,
+            work_model: preview.work_model,
+            locations: preview.locations,
+          });
+        } else if (op === "extract_requirements") {
+          await triggerRequirementsExtraction(id);
+          extractionTracking.startTracking(id);
+        }
+      };
+
+      const tasks: Promise<void>[] = [];
+      for (const id of ids) {
+        for (const op of ops) {
+          tasks.push(runOpForId(op, id).catch(() => undefined));
+        }
+      }
+      await Promise.all(tasks);
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setReprocessOpen(false);
+    } catch (err) {
+      setReprocessError(
+        err instanceof Error ? err.message : "Reprocess failed",
+      );
+    } finally {
+      setReprocessRunning(false);
+    }
+  }, [
+    selectedIds,
+    selectionCount,
+    reprocessOps,
+    startProcessing,
+    extractionTracking,
+    queryClient,
+  ]);
+
+  const handleCreateTag = useCallback(async () => {
+    const name = newTagName.trim();
+    if (!name) return;
+    setCreateTagPending(true);
+    setTagCreateError(null);
+    try {
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/tags`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.detail || `Failed: ${res.status}`);
+      }
+      setNewTagName("");
+      await queryClient.invalidateQueries({ queryKey: ["tags"] });
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (err) {
+      setTagCreateError(
+        err instanceof Error ? err.message : "Failed to create tag",
+      );
+    } finally {
+      setCreateTagPending(false);
+    }
+  }, [newTagName, queryClient]);
+
+  const handleDeleteTag = useCallback(
+    async (tagId: string) => {
+      const apiUrl =
+        process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      try {
+        await fetch(`${apiUrl}/api/tags/${tagId}`, { method: "DELETE" });
+        await queryClient.invalidateQueries({ queryKey: ["tags"] });
+        await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      } catch {
+        // silent — list will refresh on next load
+      }
+    },
+    [queryClient],
+  );
+
+  const handleAddJob = useCallback(async () => {
+    const url = addJobUrl.trim();
+    if (!url) return;
+    setAddJobImporting(true);
+    setAddJobError(null);
+    try {
+      const job = await importJobFromUrl(url);
+      // Register as processing BEFORE invalidating queries so the row renders
+      // with the amber processing background + spinner the moment it appears
+      // in the refetch. If we invalidated first, the row would briefly render
+      // in its normal "scraped" state before flipping to processing.
+      startProcessing([job.id]);
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setAddJobUrl("");
+      setAddJobOpen(false);
+    } catch (err) {
+      setAddJobError(
+        err instanceof Error ? err.message : "Failed to import job"
+      );
+    } finally {
+      setAddJobImporting(false);
+    }
+  }, [addJobUrl, queryClient, startProcessing]);
 
   const [searchValue, setSearchValue] = useState(currentQ);
   const [salaryValue, setSalaryValue] = useState(currentMinSalary);
@@ -248,7 +425,7 @@ export function JobsToolbar() {
           </span>
         </div>
 
-        {/* Location multi-select */}
+        {/* Location multi-select — top-level button matching production */}
         {locations && locations.length > 0 && (
           <Popover open={locationOpen} onOpenChange={setLocationOpen}>
             <PopoverTrigger
@@ -273,9 +450,13 @@ export function JobsToolbar() {
                       onClick={() => toggleLocation(l.display_name)}
                       className="flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md hover:bg-muted/50 text-left"
                     >
-                      <span className={`flex items-center justify-center w-4 h-4 rounded border text-[10px] ${
-                        active ? "bg-foreground text-background border-foreground" : "border-muted-foreground/30"
-                      }`}>
+                      <span
+                        className={`flex items-center justify-center w-4 h-4 rounded border text-[10px] ${
+                          active
+                            ? "bg-foreground text-background border-foreground"
+                            : "border-muted-foreground/30"
+                        }`}
+                      >
                         {active && <Check className="w-3 h-3" />}
                       </span>
                       <span className="truncate">{l.display_name}</span>
@@ -297,22 +478,198 @@ export function JobsToolbar() {
           </Popover>
         )}
 
-        {/* Advanced filters popover */}
+        {/* Tags filter — top-level popover with full tag list + create-tag inline */}
+        <Popover open={tagsOpen} onOpenChange={setTagsOpen}>
+          <PopoverTrigger
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted/50 cursor-pointer ${
+              currentTag ? "border-foreground/30 bg-muted/30" : ""
+            }`}
+          >
+            <TagIcon className="w-3.5 h-3.5" />
+            Tags
+            {currentTag && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
+                1
+              </Badge>
+            )}
+          </PopoverTrigger>
+          <PopoverContent className="w-72 p-3" align="start">
+            <div className="space-y-3">
+              <p className="text-xs font-medium text-muted-foreground">Filter by tag</p>
+              {tags && tags.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {tags.map((t) => {
+                    const active = currentTag === t.name;
+                    return (
+                      <div
+                        key={t.id}
+                        onClick={() =>
+                          updateParams({ tag: active ? "" : t.name })
+                        }
+                        className={`inline-flex items-center gap-1 pl-2 pr-1 py-0.5 text-xs rounded-full border cursor-pointer transition-colors ${
+                          active
+                            ? "bg-foreground text-background border-foreground"
+                            : "border-muted-foreground/30 hover:bg-muted/50"
+                        }`}
+                        style={
+                          t.color && !active
+                            ? {
+                                backgroundColor: `${t.color}20`,
+                                color: t.color,
+                                borderColor: t.color,
+                              }
+                            : undefined
+                        }
+                      >
+                        <span>{t.name}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTag(t.id);
+                          }}
+                          aria-label="Delete tag"
+                          className="rounded-full p-0.5 hover:bg-black/10"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground italic">
+                  No tags yet
+                </p>
+              )}
+              <div className="border-t pt-3 space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Create tag
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  New tags auto-apply to jobs containing the tag name.
+                </p>
+                <div className="flex gap-1.5">
+                  <Input
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    placeholder="e.g. AI Safety"
+                    className="h-8 text-sm"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !createTagPending) handleCreateTag();
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={handleCreateTag}
+                    disabled={!newTagName.trim() || createTagPending}
+                    className="h-8 px-2"
+                  >
+                    {createTagPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Plus className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
+                {tagCreateError && (
+                  <p className="text-xs text-red-600">{tagCreateError}</p>
+                )}
+                {currentTag && (
+                  <button
+                    onClick={() => updateParams({ tag: "" })}
+                    className="text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    Clear tag filter
+                  </button>
+                )}
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Add Job (URL import) — inline between Tags and More to match production */}
+        <Popover open={addJobOpen} onOpenChange={setAddJobOpen}>
+          <PopoverTrigger className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted/50 cursor-pointer">
+            <Plus className="w-3.5 h-3.5" />
+            Add Job
+          </PopoverTrigger>
+          <PopoverContent className="w-[420px]" align="end">
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
+                  Job URL
+                </label>
+                <Input
+                  value={addJobUrl}
+                  onChange={(e) => setAddJobUrl(e.target.value)}
+                  placeholder="https://example.com/jobs/12345"
+                  disabled={addJobImporting}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !addJobImporting) handleAddJob();
+                  }}
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                We&apos;ll fetch the page, parse it with the LLM, save the
+                job, and score it automatically.
+              </p>
+              {addJobError && (
+                <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+                  {addJobError}
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setAddJobUrl("");
+                    setAddJobError(null);
+                    setAddJobOpen(false);
+                  }}
+                  disabled={addJobImporting}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAddJob}
+                  disabled={!addJobUrl.trim() || addJobImporting}
+                >
+                  {addJobImporting ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Importing...
+                    </>
+                  ) : (
+                    "Import"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Advanced filters popover — Source, Location, bulk actions all live here */}
         <Popover>
           <PopoverTrigger
             className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm border rounded-md hover:bg-muted/50 cursor-pointer ${
-              hasAdvancedFilters ? "border-foreground/30 bg-muted/30" : ""
+              hasAdvancedFilters || activeLocations.size > 0
+                ? "border-foreground/30 bg-muted/30"
+                : ""
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
             More
-            {hasAdvancedFilters && (
+            {(hasAdvancedFilters || activeLocations.size > 0) && (
               <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4">
-                {(currentSource ? 1 : 0) + (currentTag ? 1 : 0)}
+                {(currentSource ? 1 : 0) +
+                  (currentTag ? 1 : 0) +
+                  (activeLocations.size > 0 ? 1 : 0)}
               </Badge>
             )}
           </PopoverTrigger>
-          <PopoverContent className="w-64 p-3" align="start">
+          <PopoverContent className="w-72 p-3" align="start">
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Source</label>
@@ -334,41 +691,64 @@ export function JobsToolbar() {
                 </Select>
               </div>
 
-              {tags && tags.length > 0 && (
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Tag</label>
-                  <Select
-                    value={currentTag || undefined}
-                    onValueChange={(v) => updateParams({ tag: v === "all" ? "" : (v ?? "") })}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="All tags" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All tags</SelectItem>
-                      {tags.map((t) => (
-                        <SelectItem key={t.id} value={t.name}>
-                          {t.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {hasAdvancedFilters && (
+              {currentSource && (
                 <button
-                  onClick={() => updateParams({ source: "", tag: "" })}
+                  onClick={() => updateParams({ source: "" })}
                   className="text-xs text-muted-foreground hover:text-foreground"
                 >
                   Clear advanced filters
                 </button>
               )}
+
+              <div className="border-t pt-3 space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Bulk actions
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={gcLoading}
+                  onClick={handleGarbageCollect}
+                  className="w-full justify-start"
+                >
+                  {gcLoading ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Archiving...
+                    </>
+                  ) : gcResult ? (
+                    gcResult
+                  ) : (
+                    "Archive Expired"
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={rescoring || hasProcessingJobs}
+                  onClick={handleRescore}
+                  className="w-full justify-start"
+                >
+                  {rescoring ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Starting...
+                    </>
+                  ) : hasProcessingJobs ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                      Rescoring {rescoreCount} jobs...
+                    </>
+                  ) : (
+                    "Rescore All"
+                  )}
+                </Button>
+              </div>
             </div>
           </PopoverContent>
         </Popover>
 
-        {/* Right-aligned actions */}
+        {/* Right-grouped actions: Clear filters, Reprocess (conditional), Hide Expired */}
         <div className="ml-auto flex items-center gap-2">
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters}>
@@ -377,42 +757,116 @@ export function JobsToolbar() {
             </Button>
           )}
 
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={gcLoading}
-            onClick={handleGarbageCollect}
-          >
-            {gcLoading ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                Archiving...
-              </>
-            ) : gcResult ? (
-              gcResult
-            ) : (
-              "Archive Expired"
-            )}
-          </Button>
+          {/* Reprocess dropdown — only when there's a selection */}
+          {selectionCount > 0 && (
+            <Popover open={reprocessOpen} onOpenChange={setReprocessOpen}>
+              <PopoverTrigger
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted/50 cursor-pointer bg-amber-50 border-amber-200 text-amber-800"
+                title={`${selectionCount} job${selectionCount === 1 ? "" : "s"} selected`}
+              >
+                <span className="font-medium">Reprocess</span>
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] px-1.5 py-0 h-4 bg-amber-200 text-amber-900"
+                >
+                  {selectionCount}
+                </Badge>
+                <ChevronDown className="w-3.5 h-3.5" />
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" align="end">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground px-1">
+                    Operations
+                  </p>
+                  {(
+                    [
+                      { op: "score" as const, label: "Score (AI scoring)" },
+                      {
+                        op: "extract_salary_location" as const,
+                        label: "Extract Salary/Location",
+                      },
+                      {
+                        op: "extract_requirements" as const,
+                        label: "Extract Requirements",
+                      },
+                    ]
+                  ).map(({ op, label }) => {
+                    const active = reprocessOps.has(op);
+                    return (
+                      <button
+                        key={op}
+                        onClick={() => toggleReprocessOp(op)}
+                        className={`flex items-center gap-2 w-full px-2 py-1.5 text-sm rounded-md text-left transition-colors ${
+                          active
+                            ? "bg-muted/50 font-medium"
+                            : "hover:bg-muted/30"
+                        }`}
+                      >
+                        <span
+                          className={`flex items-center justify-center w-4 h-4 rounded border text-[10px] ${
+                            active
+                              ? "bg-foreground text-background border-foreground"
+                              : "border-muted-foreground/30"
+                          }`}
+                        >
+                          {active && <Check className="w-3 h-3" />}
+                        </span>
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                  {reprocessError && (
+                    <p className="text-xs text-red-600 px-1">{reprocessError}</p>
+                  )}
+                  <div className="border-t pt-2 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => {
+                        clearSelection();
+                        setReprocessOpen(false);
+                      }}
+                      className="text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Clear selection
+                    </button>
+                    <Button
+                      size="sm"
+                      onClick={handleReprocess}
+                      disabled={reprocessRunning || reprocessOps.size === 0}
+                    >
+                      {reprocessRunning ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                          Reprocessing...
+                        </>
+                      ) : (
+                        `Reprocess ${selectionCount} Job${selectionCount === 1 ? "" : "s"}`
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
 
+          {/* Hide Expired toggle — last button in the row to match production */}
           <Button
-            variant="outline"
+            variant={hideExpired ? "default" : "outline"}
             size="sm"
-            disabled={rescoring || hasProcessingJobs}
-            onClick={handleRescore}
+            onClick={() =>
+              updateParams({ hide_expired: hideExpired ? "false" : "" })
+            }
+            title={hideExpired ? "Hiding expired jobs" : "Showing expired jobs"}
           >
-            {rescoring ? (
+            {hideExpired ? (
               <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                Starting...
-              </>
-            ) : hasProcessingJobs ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                Rescoring {rescoreCount} jobs...
+                <EyeOff className="w-3.5 h-3.5 mr-1.5" />
+                Hide Expired
               </>
             ) : (
-              "Rescore All"
+              <>
+                <Eye className="w-3.5 h-3.5 mr-1.5" />
+                Show Expired
+              </>
             )}
           </Button>
         </div>

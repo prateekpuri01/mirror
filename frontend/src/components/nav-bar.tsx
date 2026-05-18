@@ -4,8 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const NAV_LINKS = [
-  { href: "/", label: "Jobs" },
+  { href: "/profile", label: "Profile" },
   { href: "/companies", label: "Companies" },
+  { href: "/", label: "Jobs" },
 ];
 
 export function NavBar() {
@@ -15,7 +16,7 @@ export function NavBar() {
     <nav className="border-b bg-background">
       <div className="max-w-[1400px] mx-auto px-6 flex items-center justify-between h-12">
         <Link href="/" className="text-sm font-bold tracking-tight">
-          Job Board
+          Mirror
         </Link>
         <div className="flex items-center gap-1">
           {NAV_LINKS.map((link) => {

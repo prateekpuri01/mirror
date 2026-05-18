@@ -132,3 +132,8 @@ class HotSearchRequest(BaseModel):
     sources: list[str]  # ["tavily", "greenhouse", "lever", "ashby"]
     guidance: str = ""
     max_hits: int = 20
+    max_iterations: int = 3
+    locations: list[str] | None = None
+    min_salary: int | None = None
+    reference_job_ids: list[str] | None = None
+    candidate_concurrency: int = 8

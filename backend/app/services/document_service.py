@@ -8,6 +8,39 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Document, DocType
 
 
+def migrate_resume_json(resume_json: dict) -> dict:
+    """Convert old parallel-array bullets to per-bullet objects (v2 → v3).
+
+    Old format: {"bullets": ["b1", "b2"], "accomplishment_ids": ["a1", "a2"]}
+    New format: {"bullets": [{"text": "b1", "accomplishment_ids": ["a1"]}, ...]}
+
+    Idempotent — if already in new format, returns unchanged.
+    """
+    experience = resume_json.get("experience")
+    if not experience:
+        return resume_json
+    for emp_key, emp_data in experience.items():
+        if not isinstance(emp_data, dict):
+            continue
+        bullets = emp_data.get("bullets", [])
+        if not bullets:
+            continue
+        # Already migrated if first bullet is a dict
+        if isinstance(bullets[0], dict):
+            continue
+        # Convert parallel arrays to per-bullet objects
+        acc_ids = emp_data.get("accomplishment_ids", [])
+        emp_data["bullets"] = [
+            {
+                "text": b,
+                "accomplishment_ids": [acc_ids[i]] if i < len(acc_ids) else [],
+            }
+            for i, b in enumerate(bullets)
+        ]
+        emp_data.pop("accomplishment_ids", None)
+    return resume_json
+
+
 async def list_documents_for_job(session: AsyncSession, job_id: uuid.UUID) -> list[Document]:
     result = await session.execute(
         select(Document).where(Document.job_id == job_id).order_by(Document.created_at.desc())
@@ -41,7 +74,22 @@ async def create_document(
     content_docx_path: str | None = None,
     content_json: dict | None = None,
 ) -> Document:
-    """Create a new document record."""
+    """Create a new document record.
+
+    Version is auto-incremented based on existing documents of the same
+    type for the same job.
+    """
+    # Compute next version: max existing version + 1
+    from sqlalchemy import func as sqlfunc
+    result = await session.execute(
+        select(sqlfunc.max(Document.version)).where(
+            Document.job_id == job_id,
+            Document.doc_type == doc_type,
+        )
+    )
+    max_version = result.scalar() or 0
+    next_version = max_version + 1
+
     doc = Document(
         job_id=job_id,
         doc_type=doc_type,
@@ -49,6 +97,7 @@ async def create_document(
         content_markdown=content_markdown,
         content_docx_path=content_docx_path,
         content_json=content_json,
+        version=next_version,
     )
     session.add(doc)
     await session.commit()

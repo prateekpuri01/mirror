@@ -10,57 +10,119 @@ import {
   Square,
   Check,
 } from "lucide-react";
-import { useHotSearch } from "@/hooks/use-hot-search";
+import { useHotSearch, type ImportStatus } from "@/hooks/use-hot-search";
+import { useJobs, useLocations } from "@/hooks/use-jobs";
 import { useImportCompany } from "@/hooks/use-companies";
 import { useJobProcessing } from "@/hooks/use-job-processing";
 import { ReviewStep } from "@/components/add-company-flow";
-import { HotSearchHit, DiscoverResponse, JobPreview } from "@/lib/types";
+import { HotSearchHit, DiscoverResponse } from "@/lib/types";
 import { Badge } from "@/components/ui/badge";
 
 interface HotCompanySearchProps {
   onClose: () => void;
 }
 
-const SOURCE_OPTIONS = [
-  { id: "tavily", label: "Web Search", color: "bg-violet-100 text-violet-700 border-violet-200" },
-  { id: "greenhouse", label: "Greenhouse", color: "bg-emerald-100 text-emerald-700 border-emerald-200" },
-  { id: "lever", label: "Lever", color: "bg-blue-100 text-blue-700 border-blue-200" },
-  { id: "ashby", label: "Ashby", color: "bg-amber-100 text-amber-700 border-amber-200" },
-] as const;
+// All sources are always on. The backend's discovery phase always runs the
+// full set of query flavors (web + site:boards.greenhouse.io + site:jobs.lever.co
+// + site:jobs.ashbyhq.com). The per-source toggle that used to live here only
+// controlled query generation, not which ATS APIs we actually called — so
+// exposing it created the illusion of control and invited confusion (esp. the
+// "Eightfold" option, which was a no-op). Hardcoded here, and preserved as a
+// constant so the existing request schema keeps working.
+const DEFAULT_SOURCES = ["web", "greenhouse", "lever", "ashby"];
 
 const ATS_COLORS: Record<string, string> = {
   greenhouse: "bg-emerald-100 text-emerald-700 border-emerald-200",
   lever: "bg-blue-100 text-blue-700 border-blue-200",
   ashby: "bg-amber-100 text-amber-700 border-amber-200",
+  eightfold: "bg-teal-100 text-teal-700 border-teal-200",
 };
 
 const SOURCE_COLORS: Record<string, string> = {
+  web: "bg-violet-100 text-violet-700 border-violet-200",
+  // Legacy alias — older hits may still carry source="tavily"
   tavily: "bg-violet-100 text-violet-700 border-violet-200",
   greenhouse: "bg-emerald-100 text-emerald-700 border-emerald-200",
   lever: "bg-blue-100 text-blue-700 border-blue-200",
   ashby: "bg-amber-100 text-amber-700 border-amber-200",
+  eightfold: "bg-teal-100 text-teal-700 border-teal-200",
 };
 
-// Per-hit job selections: slug → Set<url>
-type HitSelections = Record<string, Set<string>>;
-
-// Import status per slug
-type ImportStatus = "idle" | "importing" | "imported" | "error";
-
 export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
-  const [sources, setSources] = useState<string[]>(["tavily", "greenhouse", "lever", "ashby"]);
-  const [guidance, setGuidance] = useState("");
-  const [expandedHit, setExpandedHit] = useState<string | null>(null);
+  // sources is no longer user-controlled — always use the full set. Kept
+  // as a local constant so the API call signature stays the same.
+  const sources = DEFAULT_SOURCES;
 
-  // Multi-select state
-  const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
-  const [hitSelections, setHitSelections] = useState<HitSelections>({});
-  const [importStatuses, setImportStatuses] = useState<Record<string, ImportStatus>>({});
+  // Form, filter, and selection state — sourced from HotSearchContext so
+  // every input survives tab navigation. Only transient input UI state
+  // (typeahead query, dropdown open/closed, accordion toggles) stays local.
+  const {
+    guidance, setGuidance,
+    selectedLocations, setSelectedLocations,
+    minSalary, setMinSalary,
+    selectedRefIds, setSelectedRefIds,
+    expandedHit, setExpandedHit,
+    selectedSlugs, setSelectedSlugs,
+    hitSelections, setHitSelections,
+    importStatuses, setImportStatuses,
+  } = useHotSearch();
+
+  const [locationQuery, setLocationQuery] = useState("");
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [showReferences, setShowReferences] = useState(false);
+
+  const { data: likedJobs } = useJobs({
+    thumbs: 1,
+    per_page: 20,
+    sort_by: "updated_at",
+    sort_dir: "desc",
+  });
+
+  const { data: allLocations } = useLocations();
+
+  function toggleRef(id: string) {
+    setSelectedRefIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const filteredLocations = (allLocations || []).filter(
+    (loc) =>
+      !selectedLocations.includes(loc.display_name) &&
+      loc.display_name.toLowerCase().includes(locationQuery.toLowerCase())
+  );
+
+  function addLocation(name: string) {
+    if (!selectedLocations.includes(name)) {
+      setSelectedLocations((prev) => [...prev, name]);
+    }
+    setLocationQuery("");
+    setShowLocationDropdown(false);
+  }
+
+  function removeLocation(name: string) {
+    setSelectedLocations((prev) => prev.filter((l) => l !== name));
+  }
+
+  function handleLocationKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" && locationQuery.trim()) {
+      e.preventDefault();
+      addLocation(locationQuery.trim());
+    }
+    if (e.key === "Escape") {
+      setShowLocationDropdown(false);
+    }
+  }
 
   const {
-    hits, status, errorMessage, phase, isSearching, candidateName,
+    hits, candidateLog, status, errorMessage, phase, isSearching, candidateName,
     startSearch, stopSearch, clearSearch,
   } = useHotSearch();
+  const [showLog, setShowLog] = useState(false);
 
   const importMutation = useImportCompany();
   const { startProcessing } = useJobProcessing();
@@ -90,7 +152,12 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
   }
 
   function toggleSelectAllCompanies() {
-    const importable = hits.filter((h) => (importStatuses[h.slug] || "idle") === "idle");
+    // Only importable (ATS + direct) hits can be selected. Lead hits have
+    // no usable ATS, and tracked hits are already in the user's DB.
+    const importable = hits.filter((h) => {
+      const kind = h.kind || "ats";
+      return (importStatuses[h.slug] || "idle") === "idle" && kind === "ats";
+    });
     if (selectedSlugs.size === importable.length) {
       setSelectedSlugs(new Set());
     } else {
@@ -166,22 +233,22 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
     );
   }
 
-  function toggleSource(id: string) {
-    setSources((prev) =>
-      prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]
-    );
-  }
-
   function handleSearch() {
-    if (sources.length === 0) return;
     setImportStatuses({});
     setSelectedSlugs(new Set());
     setHitSelections({});
-    startSearch(sources, guidance);
+    startSearch(sources, guidance, {
+      locations: selectedLocations.length > 0 ? selectedLocations : undefined,
+      minSalary: minSalary ? parseInt(minSalary) * 1000 : undefined,
+      referenceJobIds: selectedRefIds.size > 0 ? Array.from(selectedRefIds) : undefined,
+    });
   }
 
   const isAnyImporting = Object.values(importStatuses).includes("importing");
-  const importableHits = hits.filter((h) => (importStatuses[h.slug] || "idle") === "idle");
+  // Importable = idle status AND not a pre-imported (direct-drill) hit
+  const importableHits = hits.filter(
+    (h) => (importStatuses[h.slug] || "idle") === "idle" && h.ats !== "direct",
+  );
 
   return (
     <div className="rounded-lg border bg-background p-4">
@@ -189,7 +256,7 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <Flame className="h-5 w-5 text-orange-500" />
-          <h2 className="text-lg font-semibold">Find Hot Companies</h2>
+          <h2 className="text-lg font-semibold">Find Hot Jobs</h2>
         </div>
         <button
           onClick={() => {
@@ -206,31 +273,145 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
       {phase === "idle" && (
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            AI-powered search finds companies with relevant jobs across ATS boards.
-            Select sources and optionally provide guidance to steer the search.
+            AI-powered search finds companies with relevant jobs across the
+            web and major ATS platforms (Greenhouse, Lever, Ashby). Add
+            optional filters and guidance below to steer the search.
           </p>
 
+          {/* Filters toggle */}
           <div className="space-y-2">
-            <label className="text-sm font-medium">Sources</label>
-            <div className="flex flex-wrap gap-2">
-              {SOURCE_OPTIONS.map((opt) => {
-                const active = sources.includes(opt.id);
-                return (
-                  <button
-                    key={opt.id}
-                    onClick={() => toggleSource(opt.id)}
-                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-all ${
-                      active
-                        ? opt.color
-                        : "bg-muted/30 text-muted-foreground border-transparent opacity-50"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                );
-              })}
-            </div>
+            <button
+              onClick={() => setShowFilters(!showFilters)}
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              {showFilters ? (
+                <ChevronDown className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5" />
+              )}
+              <span>Filters</span>
+              {(selectedLocations.length > 0 || minSalary) && (
+                <Badge variant="outline" className="text-xs ml-1">active</Badge>
+              )}
+            </button>
+            {showFilters && (
+              <div className="grid grid-cols-2 gap-3 pl-5">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Location</label>
+                  {/* Selected location tags */}
+                  {selectedLocations.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {selectedLocations.map((loc) => (
+                        <span
+                          key={loc}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-xs font-medium"
+                        >
+                          {loc}
+                          <button
+                            onClick={() => removeLocation(loc)}
+                            className="hover:text-foreground text-muted-foreground"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Combobox input */}
+                  <div className="relative">
+                    <input
+                      value={locationQuery}
+                      onChange={(e) => {
+                        setLocationQuery(e.target.value);
+                        setShowLocationDropdown(true);
+                      }}
+                      onFocus={() => setShowLocationDropdown(true)}
+                      onBlur={() => {
+                        // Delay to allow click on dropdown item
+                        setTimeout(() => setShowLocationDropdown(false), 200);
+                      }}
+                      onKeyDown={handleLocationKeyDown}
+                      placeholder="e.g. San Francisco, Remote"
+                      className="w-full rounded-md border px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    {showLocationDropdown && locationQuery && filteredLocations.length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full max-h-[160px] overflow-y-auto rounded-md border bg-popover shadow-md">
+                        {filteredLocations.slice(0, 8).map((loc) => (
+                          <button
+                            key={loc.id}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => addLocation(loc.display_name)}
+                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-muted/50 truncate"
+                          >
+                            {loc.display_name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">Min salary</label>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm text-muted-foreground">$</span>
+                    <input
+                      value={minSalary}
+                      onChange={(e) => setMinSalary(e.target.value.replace(/\D/g, ""))}
+                      placeholder="150"
+                      className="w-20 rounded-md border px-3 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <span className="text-sm text-muted-foreground">K</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
+
+          {/* Find jobs like... toggle */}
+          {likedJobs && likedJobs.items.length > 0 && (
+            <div className="space-y-2">
+              <button
+                onClick={() => setShowReferences(!showReferences)}
+                className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showReferences ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5" />
+                )}
+                <span>Find jobs like...</span>
+                <span className="text-xs text-muted-foreground/60">
+                  ({likedJobs.items.length} liked)
+                </span>
+                {selectedRefIds.size > 0 && (
+                  <Badge variant="outline" className="text-xs ml-1">
+                    {selectedRefIds.size} selected
+                  </Badge>
+                )}
+              </button>
+              {showReferences && (
+                <div className="pl-5 space-y-1 max-h-[200px] overflow-y-auto">
+                  {likedJobs.items.map((job) => (
+                    <label
+                      key={job.id}
+                      className="flex items-center gap-2 text-sm py-1 cursor-pointer"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedRefIds.has(job.id)}
+                        onChange={() => toggleRef(job.id)}
+                        className="rounded"
+                      />
+                      <span className="font-medium truncate">{job.display_title}</span>
+                      <span className="text-muted-foreground truncate">
+                        — {job.display_company}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="space-y-2">
             <label className="text-sm font-medium">Guidance (optional)</label>
@@ -245,7 +426,7 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
 
           <button
             onClick={handleSearch}
-            disabled={sources.length === 0}
+            disabled={isSearching}
             className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors flex items-center gap-2"
           >
             <Flame className="h-3.5 w-3.5" />
@@ -287,6 +468,49 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
             </div>
           </div>
 
+          {/* Collapsible activity log */}
+          {candidateLog.length > 0 && (
+            <div>
+              <button
+                onClick={() => setShowLog(!showLog)}
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showLog ? (
+                  <ChevronDown className="h-3 w-3" />
+                ) : (
+                  <ChevronRight className="h-3 w-3" />
+                )}
+                <span>Activity log</span>
+                <span className="text-muted-foreground/60">
+                  ({candidateLog.filter((e) => e.status === "accepted").length} accepted, {candidateLog.filter((e) => e.status === "rejected").length} rejected)
+                </span>
+              </button>
+              {showLog && (
+                <div className="mt-2 max-h-[200px] overflow-y-auto rounded-md border bg-muted/20 px-3 py-2 space-y-1">
+                  {candidateLog.map((entry, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs py-0.5">
+                      {entry.status === "checking" && (
+                        <Loader2 className="h-3 w-3 animate-spin text-amber-500 flex-shrink-0" />
+                      )}
+                      {entry.status === "accepted" && (
+                        <Check className="h-3 w-3 text-emerald-500 flex-shrink-0" />
+                      )}
+                      {entry.status === "rejected" && (
+                        <X className="h-3 w-3 text-red-400 flex-shrink-0" />
+                      )}
+                      <span className={entry.status === "rejected" ? "text-muted-foreground/60" : "font-medium"}>
+                        {entry.name}
+                      </span>
+                      {entry.reason && (
+                        <span className="text-muted-foreground/50">— {entry.reason}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {errorMessage && (
             <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
@@ -310,16 +534,6 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                     : "Select all"}
                 </span>
               </label>
-              {selectedSlugs.size > 0 && (
-                <button
-                  onClick={importAllSelected}
-                  disabled={isAnyImporting || countSelectedJobs() === 0}
-                  className="h-8 px-4 rounded-md bg-foreground text-background text-xs font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors flex items-center gap-2"
-                >
-                  {isAnyImporting && <Loader2 className="h-3 w-3 animate-spin" />}
-                  Import {selectedSlugs.size} {selectedSlugs.size === 1 ? "Company" : "Companies"}
-                </button>
-              )}
             </div>
           )}
 
@@ -327,14 +541,25 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
           {hits.length > 0 && (
             <div className="space-y-2 max-h-[600px] overflow-auto">
               {hits.map((hit) => {
-                const isExpanded = expandedHit === hit.slug;
-                const hitStatus = importStatuses[hit.slug] || "idle";
-                const isSelected = selectedSlugs.has(hit.slug);
-                const jobSel = getJobSelections(hit);
+                const hitKey = hit.slug || `${hit.kind || "ats"}:${hit.name}`;
+                const hitKind = hit.kind || "ats";
+                const isAts = hitKind === "ats";
+                const isLead = hitKind === "lead";
+                const isTracked = hitKind === "tracked";
+                const isExpanded = expandedHit === hitKey;
+                const hitStatus = importStatuses[hitKey] || "idle";
+                const isSelected = selectedSlugs.has(hitKey);
+                const jobSel = isAts ? getJobSelections(hit) : new Set<string>();
+
+                const bgClass = isLead
+                  ? "bg-amber-50/30 border-amber-200"
+                  : isTracked
+                    ? "bg-blue-50/30 border-blue-200"
+                    : "";
 
                 return (
                   <div
-                    key={hit.slug}
+                    key={hitKey}
                     className={`rounded-md border transition-all duration-300 ${
                       hitStatus === "importing"
                         ? "opacity-50 bg-muted/20"
@@ -342,23 +567,22 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                           ? "bg-emerald-50/50 border-emerald-200"
                           : hitStatus === "error"
                             ? "bg-red-50/50 border-red-200"
-                            : ""
+                            : bgClass
                     }`}
                   >
                     {/* Hit card header */}
                     <div className="flex items-center gap-3 px-4 py-3">
-                      {/* Checkbox (only when not searching) */}
-                      {!isSearching && hitStatus === "idle" && (
+                      {/* Checkbox: all ATS/direct hits are importable. */}
+                      {isAts && !isSearching && hitStatus === "idle" && (
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => toggleCompanySelect(hit.slug)}
+                          onChange={() => toggleCompanySelect(hitKey)}
                           onClick={(e) => e.stopPropagation()}
                           className="rounded flex-shrink-0"
                         />
                       )}
 
-                      {/* Status indicator for importing/imported */}
                       {hitStatus === "importing" && (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground flex-shrink-0" />
                       )}
@@ -367,7 +591,7 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                       )}
 
                       <button
-                        onClick={() => setExpandedHit(isExpanded ? null : hit.slug)}
+                        onClick={() => setExpandedHit(isExpanded ? null : hitKey)}
                         className="flex items-center gap-3 flex-1 min-w-0 text-left"
                       >
                         {isExpanded ? (
@@ -379,18 +603,38 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                         <div className="flex flex-col min-w-0 flex-1 gap-0.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium truncate">{hit.name}</span>
-                            <Badge
-                              variant="outline"
-                              className={`text-xs capitalize flex-shrink-0 ${ATS_COLORS[hit.ats] || ""}`}
-                            >
-                              {hit.ats}
-                            </Badge>
-                            <Badge
-                              variant="outline"
-                              className={`text-xs flex-shrink-0 ${SOURCE_COLORS[hit.source] || "bg-muted text-muted-foreground"}`}
-                            >
-                              {hit.source}
-                            </Badge>
+                            {isLead && (
+                              <Badge
+                                variant="outline"
+                                className="bg-amber-100 text-amber-800 border-amber-300 text-xs flex-shrink-0"
+                              >
+                                Lead
+                              </Badge>
+                            )}
+                            {isTracked && (
+                              <Badge
+                                variant="outline"
+                                className="bg-blue-100 text-blue-800 border-blue-300 text-xs flex-shrink-0"
+                              >
+                                Tracked
+                              </Badge>
+                            )}
+                            {isAts && hit.ats && (
+                              <Badge
+                                variant="outline"
+                                className={`text-xs capitalize flex-shrink-0 ${ATS_COLORS[hit.ats] || ""}`}
+                              >
+                                {hit.ats}
+                              </Badge>
+                            )}
+                            {hit.source && (
+                              <Badge
+                                variant="outline"
+                                className={`text-xs flex-shrink-0 ${SOURCE_COLORS[hit.source] || "bg-muted text-muted-foreground"}`}
+                              >
+                                {hit.source}
+                              </Badge>
+                            )}
                             {hitStatus === "importing" && (
                               <span className="text-xs text-muted-foreground">Importing...</span>
                             )}
@@ -411,15 +655,21 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                         </div>
 
                         <span className="text-sm text-muted-foreground flex-shrink-0 whitespace-nowrap">
-                          {hit.total_jobs} jobs · {hit.relevant_jobs} relevant
-                          {jobSel.size > 0 && hitStatus === "idle" && (
-                            <span className="text-foreground font-medium"> · {jobSel.size} selected</span>
+                          {isLead ? (
+                            <>careers page</>
+                          ) : (
+                            <>
+                              {hit.total_jobs} jobs · {hit.relevant_jobs} relevant
+                              {jobSel.size > 0 && hitStatus === "idle" && (
+                                <span className="text-foreground font-medium"> · {jobSel.size} selected</span>
+                              )}
+                            </>
                           )}
                         </span>
                       </button>
                     </div>
 
-                    {/* Expanded: match reason + job review */}
+                    {/* Expanded: match reason + body */}
                     {isExpanded && (
                       <div className="border-t px-4 py-4 space-y-3">
                         {hit.match_reason && (
@@ -428,13 +678,65 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                             {hit.match_reason}
                           </p>
                         )}
-                        <HitReview
-                          hit={hit}
-                          selectedUrls={jobSel}
-                          onSelectionChange={(urls) => updateJobSelections(hit.slug, urls)}
-                          onImport={() => importSingle(hit)}
-                          importStatus={hitStatus}
-                        />
+
+                        {isLead && hit.careers_url && (
+                          <div>
+                            <a
+                              href={hit.careers_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-amber-100 text-amber-800 hover:bg-amber-200 text-sm font-medium border border-amber-300 transition-colors"
+                            >
+                              Open careers page →
+                            </a>
+                            <p className="text-xs text-muted-foreground mt-2">
+                              We can't import jobs from this company automatically — browse their careers page to find roles.
+                            </p>
+                          </div>
+                        )}
+
+                        {isTracked && hit.top_jobs.length > 0 && (
+                          <div className="space-y-2">
+                            <p className="text-xs font-medium text-blue-800">
+                              Matching jobs already in your tracker:
+                            </p>
+                            <ul className="space-y-1.5">
+                              {hit.top_jobs.map((j) => (
+                                <li
+                                  key={j.url}
+                                  className="text-sm flex items-start gap-2 px-3 py-2 rounded-md bg-white border border-blue-100"
+                                >
+                                  <span className="flex-1 min-w-0">
+                                    <span className="font-medium">{j.title}</span>
+                                    {j.location && (
+                                      <span className="text-muted-foreground"> · {j.location}</span>
+                                    )}
+                                  </span>
+                                  {j.url && (
+                                    <a
+                                      href={j.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs text-blue-700 hover:underline whitespace-nowrap"
+                                    >
+                                      View →
+                                    </a>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {isAts && (
+                          <HitReview
+                            hit={hit}
+                            selectedUrls={jobSel}
+                            onSelectionChange={(urls) => updateJobSelections(hit.slug, urls)}
+                            onImport={() => importSingle(hit)}
+                            importStatus={hitStatus}
+                          />
+                        )}
                       </div>
                     )}
                   </div>
@@ -452,13 +754,13 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
 
           {hits.length === 0 && phase === "done" && !errorMessage && (
             <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
-              No companies found matching your criteria. Try different guidance or sources.
+              No companies found matching your criteria. Try different guidance or looser filters.
             </div>
           )}
 
           {/* Footer */}
           {phase !== "searching" && (
-            <div className="flex items-center justify-end gap-3 pt-2 border-t">
+            <div className="flex items-center justify-between pt-2 border-t">
               <button
                 onClick={() => {
                   clearSearch();
@@ -468,15 +770,31 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
               >
                 Close
               </button>
-              {phase === "error" && (
-                <button
-                  onClick={handleSearch}
-                  disabled={sources.length === 0}
-                  className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors"
-                >
-                  Retry
-                </button>
-              )}
+              <div className="flex items-center gap-3">
+                {phase === "error" && (
+                  <button
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors"
+                  >
+                    Retry
+                  </button>
+                )}
+                {selectedSlugs.size > 0 && (
+                  <button
+                    onClick={importAllSelected}
+                    disabled={isAnyImporting || countSelectedJobs() === 0}
+                    className={`h-9 px-5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${
+                      isAnyImporting || countSelectedJobs() === 0
+                        ? "bg-foreground/50 text-background/70 cursor-not-allowed"
+                        : "bg-foreground text-background hover:bg-foreground/90 shadow-[0_0_12px_rgba(59,130,246,0.5)] hover:shadow-[0_0_18px_rgba(59,130,246,0.6)]"
+                    }`}
+                  >
+                    {isAnyImporting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Import {selectedSlugs.size} {selectedSlugs.size === 1 ? "Company" : "Companies"} ({countSelectedJobs()} jobs)
+                  </button>
+                )}
+              </div>
             </div>
           )}
         </div>

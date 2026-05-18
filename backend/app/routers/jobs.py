@@ -1,12 +1,17 @@
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_session
 from app.models import JobSource, JobStatus
 from app.schemas.jobs import JobCreate, JobList, JobRead, JobUpdate
 from app.services import job_service
+from app.services.job_url_importer import extract_job_from_url
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["jobs"])
 
@@ -30,6 +35,8 @@ async def list_jobs(
     location: str | None = None,
     work_model: str | None = None,
     min_salary: int | None = Query(None, ge=0),
+    hide_expired: bool = False,
+    pin_ids: list[str] = Query(default=[]),
     session: AsyncSession = Depends(get_session),
 ):
     jobs, total = await job_service.list_jobs(
@@ -51,6 +58,8 @@ async def list_jobs(
         location=location,
         work_model=work_model,
         min_salary=min_salary,
+        hide_expired=hide_expired,
+        pin_ids=pin_ids or None,
     )
     return JobList(
         items=[JobRead.model_validate(j) for j in jobs],
@@ -71,6 +80,45 @@ async def get_job(job_id: uuid.UUID, session: AsyncSession = Depends(get_session
 @router.post("/jobs", response_model=JobRead, status_code=201)
 async def create_job(body: JobCreate, session: AsyncSession = Depends(get_session)):
     job = await job_service.create_job(session, body.model_dump())
+    return job
+
+
+class ImportJobFromUrlRequest(BaseModel):
+    url: str
+
+
+@router.post("/jobs/import-from-url", response_model=JobRead, status_code=201)
+async def import_job_from_url(
+    body: ImportJobFromUrlRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
+    """Fetch a job URL, extract details via LLM, save, and trigger processing.
+
+    Returns the created job immediately. The pipeline (extract, score, tag)
+    runs in a background task — the frontend tracks the job ID and auto-
+    refreshes until it reaches pipeline_stage='scored' or 'skipped'.
+    """
+    try:
+        job_data = await extract_job_from_url(body.url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Check for duplicate URL
+    from sqlalchemy import select
+    from app.models import Job
+    existing = await session.execute(
+        select(Job).where(Job.url == body.url).limit(1)
+    )
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="This job URL has already been imported.")
+
+    job = await job_service.create_job(session, job_data)
+
+    # Trigger pipeline processing in background (catches this job + any stragglers)
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
+
     return job
 
 

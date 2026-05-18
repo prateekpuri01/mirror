@@ -43,7 +43,7 @@ async def get_liveness_stats(session: AsyncSession) -> dict:
     }
 
 
-async def check_urls_batch(session: AsyncSession, max_jobs: int = 50) -> dict:
+async def check_urls_batch(session: AsyncSession, max_jobs: int = 500) -> dict:
     """HTTP HEAD check on jobs not seen recently to detect dead listings.
 
     Targets jobs with no last_seen_at or last_seen_at > 7 days ago.
@@ -67,7 +67,25 @@ async def check_urls_batch(session: AsyncSession, max_jobs: int = 50) -> dict:
             stats["checked"] += 1
             try:
                 resp = await client.head(job.url)
-                if resp.status_code == 404 or resp.status_code == 410:
+                if resp.status_code in (404, 410):
+                    # Some ATS platforms (Ashby, Greenhouse) reject HEAD
+                    # but serve the page fine on GET — verify before expiring
+                    resp = await client.get(job.url)
+                is_dead = resp.status_code in (404, 410)
+
+                # Greenhouse/Lever redirect dead job URLs to the company board
+                # with ?error=true or to a generic page — detect these
+                if not is_dead and resp.status_code == 200:
+                    final_url = str(resp.url)
+                    original_url = job.url or ""
+                    # Redirected away from the specific job URL
+                    if "error=true" in final_url:
+                        is_dead = True
+                    elif "/jobs/" in original_url and "/jobs/" not in final_url:
+                        # Redirected from a specific job page to the main board
+                        is_dead = True
+
+                if is_dead:
                     job.expired_at = datetime.now(timezone.utc)
                     stats["dead"] += 1
                 else:
@@ -80,6 +98,47 @@ async def check_urls_batch(session: AsyncSession, max_jobs: int = 50) -> dict:
     logger.info(
         "URL check: %d checked, %d alive, %d dead, %d errors",
         stats["checked"], stats["alive"], stats["dead"], stats["errors"],
+    )
+    return stats
+
+
+async def recheck_expired(session: AsyncSession, batch_size: int = 100) -> dict:
+    """GET-check all expired jobs and revive any that are still live.
+
+    Fixes false expirations caused by ATS platforms that reject HEAD requests.
+    """
+    result = await session.execute(
+        select(Job)
+        .where(
+            Job.expired_at.isnot(None),
+            Job.status != JobStatus.archived,
+        )
+        .limit(batch_size)
+    )
+    jobs = list(result.scalars().all())
+
+    stats = {"checked": 0, "revived": 0, "confirmed_dead": 0, "errors": 0}
+    now = datetime.now(timezone.utc)
+
+    async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
+        for job in jobs:
+            stats["checked"] += 1
+            try:
+                resp = await client.get(job.url)
+                if resp.status_code in (404, 410):
+                    stats["confirmed_dead"] += 1
+                else:
+                    job.expired_at = None
+                    job.last_seen_at = now
+                    stats["revived"] += 1
+                    logger.info("Revived job %s: %s", job.id, job.url)
+            except Exception:
+                stats["errors"] += 1
+
+    await session.commit()
+    logger.info(
+        "Recheck expired: %d checked, %d revived, %d confirmed dead, %d errors",
+        stats["checked"], stats["revived"], stats["confirmed_dead"], stats["errors"],
     )
     return stats
 

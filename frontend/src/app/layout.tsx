@@ -4,8 +4,14 @@ import { Providers } from "./providers";
 import { NavBar } from "@/components/nav-bar";
 
 export const metadata: Metadata = {
-  title: "Job Board",
-  description: "AI-powered personal job board",
+  title: {
+    default: "Mirror",
+    template: "%s | Mirror",
+  },
+  description: "AI-powered job search assistant that reflects your best self at every opportunity",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

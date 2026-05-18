@@ -14,6 +14,7 @@ from app.schemas.locations import LocationRead
 from app.services.extraction import (
     get_extraction_status,
     run_extraction_pipeline,
+    _browser_salary_fallback,
     _extract_one,
     _make_display_name,
     _truncate_description,
@@ -92,6 +93,14 @@ async def extract_preview(
             break
     if extracted is None:
         raise HTTPException(status_code=500, detail="Extraction failed after retries")
+
+    # Browser fallback: if no salary found, render the page and try again
+    if extracted.get("salary_confidence", "none") == "none" or not extracted.get("salary_min"):
+        browser_result = await _browser_salary_fallback(job)
+        if browser_result:
+            extracted["salary_min"] = browser_result["salary_min"]
+            extracted["salary_max"] = browser_result.get("salary_max")
+            extracted["salary_confidence"] = browser_result["salary_confidence"]
 
     # Build location display names for the preview
     locs = []

@@ -1,6 +1,7 @@
+import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,8 @@ from app.database import get_session
 from app.models.companies import ScrapeRun
 from app.schemas.scrape import ScrapeResult, ScrapeRunList, ScrapeRunRead
 from app.scrapers.runner import run_hn_scrape, run_scrape
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["scraping"])
 
@@ -23,43 +26,70 @@ def _summarize(runs: list[ScrapeRun]) -> ScrapeResult:
 
 
 @router.post("/scrape/run-now", response_model=ScrapeResult)
-async def scrape_run_now(session: AsyncSession = Depends(get_session)):
+async def scrape_run_now(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
     """Scrape all active companies with all available scrapers."""
     runs = await run_scrape(session)
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
     return _summarize(runs)
 
 
 @router.post("/scrape/greenhouse", response_model=ScrapeResult)
-async def scrape_greenhouse(session: AsyncSession = Depends(get_session)):
+async def scrape_greenhouse(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
     """Scrape only Greenhouse companies."""
     runs = await run_scrape(session, source_filter="greenhouse")
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
     return _summarize(runs)
 
 
 @router.post("/scrape/lever", response_model=ScrapeResult)
-async def scrape_lever(session: AsyncSession = Depends(get_session)):
+async def scrape_lever(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
     """Scrape only Lever companies."""
     runs = await run_scrape(session, source_filter="lever")
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
     return _summarize(runs)
 
 
 @router.post("/scrape/ashby", response_model=ScrapeResult)
-async def scrape_ashby(session: AsyncSession = Depends(get_session)):
+async def scrape_ashby(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
     """Scrape only Ashby companies."""
     runs = await run_scrape(session, source_filter="ashby")
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
     return _summarize(runs)
 
 
 @router.post("/scrape/hn-who-is-hiring", response_model=ScrapeResult)
-async def scrape_hn(session: AsyncSession = Depends(get_session)):
+async def scrape_hn(
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
     """Scrape the latest HN 'Who is hiring?' thread for AI/research jobs."""
     run = await run_hn_scrape(session)
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
     return _summarize([run])
 
 
 @router.post("/scrape/company/{company_id}", response_model=ScrapeResult)
 async def scrape_company(
-    company_id: uuid.UUID, session: AsyncSession = Depends(get_session)
+    company_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
 ):
     """Scrape a single company with all matching scrapers."""
     runs = await run_scrape(session, company_id=company_id)
@@ -68,6 +98,8 @@ async def scrape_company(
             status_code=404,
             detail="Company not found, not active, or has no matching scraper",
         )
+    from app.routers.pipeline import _run_process
+    background_tasks.add_task(_run_process)
     return _summarize(runs)
 
 

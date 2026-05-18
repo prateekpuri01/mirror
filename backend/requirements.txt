@@ -1,4 +1,5 @@
 fastapi==0.115.6
+python-multipart==0.0.20
 uvicorn[standard]==0.34.0
 sqlalchemy[asyncio]==2.0.36
 asyncpg==0.30.0
@@ -7,13 +8,18 @@ pyyaml==6.0.2
 pydantic-settings==2.7.1
 redis==5.2.1
 httpx==0.28.1
-anthropic==0.49.0
 openai>=1.82.0
+# Used only when LLM_PROVIDER=anthropic OR when calling Anthropic's native
+# web_search tool from app/services/web_search_llm.py. The provider-agnostic
+# chat-completion path runs through Anthropic's OpenAI-compat shim and does
+# NOT need this SDK; lazy-import keeps the runtime hit zero when unused.
+anthropic>=0.40.0
 langgraph>=0.4.7
 langchain-openai>=0.3.18
 langchain-core>=0.3.45
 openpyxl==3.1.5
 python-docx==1.1.2
+pymupdf==1.25.5
 playwright==1.52.0
 pytest==8.3.4
 pytest-asyncio==0.25.0

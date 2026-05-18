@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { type SortingState } from "@tanstack/react-table";
 import { useJobs } from "@/hooks/use-jobs";
@@ -21,18 +21,36 @@ function JobsPageInner() {
     status: (searchParams.get("status") as JobStatus) || undefined,
     source: (searchParams.get("source") as JobSource) || undefined,
     tag: searchParams.get("tag") || undefined,
-    sort_by: searchParams.get("sort_by") || "scraped_at",
+    sort_by: searchParams.get("sort_by") || "relevance_score",
     sort_dir: (searchParams.get("sort_dir") as "asc" | "desc") || "desc",
     location: searchParams.get("location") || undefined,
     work_model: searchParams.get("work_model") || undefined,
     min_salary: Number(searchParams.get("min_salary")) || undefined,
   };
 
-  const { hasProcessingJobs, syncWithJobsData } = useJobProcessing();
+  const {
+    hasProcessingJobs,
+    processingJobIds,
+    completedJobIds: completedProcessingIds,
+    syncWithJobsData,
+  } = useJobProcessing();
 
-  const { data, isLoading, error } = useJobs(params, {
-    refetchInterval: hasProcessingJobs ? 3000 : false,
-  });
+  // Pin recently-added jobs (still processing or just completed) to the top
+  // of the list regardless of sort. Without this, freshly-imported jobs with
+  // null relevance_score sort to the LAST page and the user "loses" them.
+  const pinIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of processingJobIds) ids.add(id);
+    for (const id of completedProcessingIds) ids.add(id);
+    return Array.from(ids);
+  }, [processingJobIds, completedProcessingIds]);
+
+  const { data, isLoading, error } = useJobs(
+    { ...params, pin_ids: pinIds.length > 0 ? pinIds : undefined },
+    {
+      refetchInterval: hasProcessingJobs ? 3000 : false,
+    },
+  );
 
   useEffect(() => {
     if (data?.items) {
@@ -78,7 +96,7 @@ function JobsPageInner() {
   }
 
   return (
-    <main className="max-w-[1400px] mx-auto px-6 py-6">
+    <main className="max-w-[1600px] mx-auto px-6 py-6">
       <div className="mb-6">
         <h1 className="text-2xl font-bold mb-1">Jobs</h1>
         {data && (

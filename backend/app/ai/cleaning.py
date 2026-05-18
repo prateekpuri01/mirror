@@ -11,7 +11,7 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_client, SCORING_MODEL
+from app.ai.client import get_openai_client, EXTRACTION_MODEL, SCORING_MODEL
 from app.ai.enrichment import _normalize_company_name, _levenshtein
 from app.models import Company, Job
 
@@ -61,16 +61,18 @@ async def llm_clean_job(
         f"{candidates_text}"
     )
 
-    client = get_client()
+    client = get_openai_client()
     try:
-        response = await client.messages.create(
-            model=SCORING_MODEL,
-            max_tokens=200,
+        response = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            max_completion_tokens=200,
             temperature=0,
-            system=_LLM_CLEANING_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": _LLM_CLEANING_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
         )
-        text = response.content[0].text.strip()
+        text = response.choices[0].message.content.strip()
         result = json.loads(text)
     except (json.JSONDecodeError, IndexError, KeyError) as exc:
         logger.warning("LLM cleaning failed for job %s: %s", job.id, exc)

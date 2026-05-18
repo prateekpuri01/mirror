@@ -17,6 +17,12 @@ class CompanyCandidate:
     slug: str | None = None
     source: str = ""
     direct_job_url: str | None = None  # Set when this candidate is a one-off job URL
+    # Origin tracks whether a candidate came from the guidance-blind
+    # aggregator harvest (HN/Remotive/Muse/Arbeitnow) or from a
+    # guidance-driven LLM query. Used by the orchestration to split the
+    # direct-import budget so aggregator candidates can't crowd out
+    # higher-relevance query-driven ones.
+    origin: str = "query"  # "aggregator" | "query"
 
 
 @dataclass

@@ -1,0 +1,119 @@
+# User Profile — source of truth for job matching, resume tailoring, and UI display
+#
+# Quick start:
+#   1. Copy this file to docs/profile.yaml and edit with your real data, OR
+#   2. Skip this file and use the in-app onboarding wizard
+#      (upload your resume at /onboarding) to auto-generate your profile.
+#
+# The app reads docs/profile.yaml at startup. The data here is fictional and
+# illustrative — replace with your own. Long-form accomplishments belong in
+# docs/profile_complete.yaml (see profile_complete.yaml.example).
+
+personal:
+  name: Sam Rivera
+  email: sam.rivera@example.com
+  phone: "415-555-0123"
+  linkedin: linkedin.com/in/sam-rivera-example
+  google_scholar: ""              # optional — leave blank if not academic
+  location: San Francisco, CA
+  willing_to_relocate: false
+  remote_preference: remote        # remote | hybrid | onsite | flexible
+  professional_links: []
+    # - label: Personal site
+    #   url: https://samrivera.example.com
+    # - label: GitHub
+    #   url: https://github.com/sam-rivera-example
+
+target_roles:
+  - title: Senior ML Engineer
+    seniority: senior
+  - title: Applied AI Scientist
+    seniority: senior
+  - title: Member of Technical Staff
+    seniority: senior
+
+domains:
+  - applied AI
+  - LLM evaluation
+  - human-in-the-loop systems
+  - production ML
+
+skills:
+  technical:
+    - Python
+    - TypeScript
+    - PostgreSQL
+    - SQL
+    - PyTorch
+    - scikit-learn
+    - LangGraph
+    - RAG pipelines
+    - LLM evaluation
+    - NLP
+    - distributed systems
+    - REST API design
+  communication:
+    - technical writing
+    - design docs
+    - data visualization
+  tools:
+    - Docker
+    - Git
+    - AWS
+    - Claude
+    - Cursor
+
+education:
+  - degree: MS
+    field: Computer Science
+    institution: Stanford University
+    year: "2018"
+    honors: null
+  - degree: BS
+    field: Computer Science
+    institution: UC Berkeley
+    year: "2016"
+    honors: "Highest honors"
+
+experience_years: 7
+
+work_history:
+  - employer: Helio Labs
+    title: Senior Applied AI Scientist
+    start: "2022-06"
+    end: null              # null = current position
+    location: San Francisco, CA
+  - employer: Brightline Health
+    title: ML Engineer
+    start: "2020-04"
+    end: "2022-05"
+    location: Remote
+  - employer: Marlin Systems
+    title: Software Engineer
+    start: "2018-08"
+    end: "2020-03"
+    location: Palo Alto, CA
+
+awards:
+  - Helio Labs Distinguished Engineer Award (2024)
+  - Brightline Innovation Prize (2021)
+  - Berkeley CS Departmental Citation (2016)
+
+search_preferences:
+  salary_minimum: 220000
+  industries_ranked:
+    - frontier-model AI labs
+    - research-first AI startups
+    - applied ML at established tech
+    - regulated-domain AI (health, finance)
+  company_size: any        # startup | mid | large | any
+  deal_breakers:
+    - ad-tech
+    - surveillance products
+  nice_to_haves:
+    - publishes research or open-source
+    - small but senior team
+    - remote-first
+  org_anti_patterns:
+    - title-heavy bureaucracies
+    - opaque promotion processes

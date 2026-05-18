@@ -14,9 +14,10 @@ import httpx
 from sqlalchemy import select, func, update, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_client, SCORING_MODEL
-from app.ai.prompts import COMPANY_ENRICHMENT_SYSTEM
+from app.ai.client import get_openai_client, EXTRACTION_MODEL
+from app.ai.prompts import build_company_enrichment_system
 from app.models import Company, Job
+from app.models.profile import UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +39,7 @@ _enrichment_status: dict = {
     "started_at": None,
 }
 
-BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
+# Web search is handled by app.services.web_search (SearXNG + Brave fallback)
 
 # ---------------------------------------------------------------------------
 # Known junk company names (lowercase)
@@ -305,34 +306,21 @@ async def resolve_companies(session: AsyncSession) -> dict:
 # Step 2: Company Enrichment (web fetch + LLM summarize)
 # ---------------------------------------------------------------------------
 
-async def _web_search(query: str, brave_api_key: str) -> list[dict]:
-    """Search the web using Brave Search API."""
-    if not brave_api_key:
-        return []
-    try:
-        async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(
-                BRAVE_API_URL,
-                params={"q": query, "count": 5},
-                headers={
-                    "X-Subscription-Token": brave_api_key,
-                    "Accept": "application/json",
-                },
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            results = data.get("web", {}).get("results", [])
-            return [
-                {
-                    "title": r.get("title", ""),
-                    "url": r.get("url", ""),
-                    "description": r.get("description", ""),
-                }
-                for r in results[:5]
-            ]
-    except Exception:
-        logger.warning("Web search failed for: %s", query)
-        return []
+async def _web_search_compat(query: str, brave_api_key: str = "") -> list[dict]:
+    """Search the web using SearXNG (with Brave fallback).
+
+    Returns results in the legacy format with 'description' key for backward compat.
+    """
+    from app.services.web_search import web_search as unified_search
+    results = await unified_search(query, num_results=5)
+    return [
+        {
+            "title": r.get("title", ""),
+            "url": r.get("url", ""),
+            "description": r.get("snippet", ""),
+        }
+        for r in results
+    ]
 
 
 async def _fetch_page(url: str, *, max_chars: int = 8000) -> str:
@@ -370,7 +358,6 @@ async def _fetch_page(url: str, *, max_chars: int = 8000) -> str:
 async def _gather_company_context(
     company: Company,
     job_titles: list[str],
-    brave_api_key: str,
 ) -> dict:
     """Gather web content about a company for LLM summarization."""
     context: dict = {
@@ -383,9 +370,9 @@ async def _gather_company_context(
     website = company.website
 
     # Find website if missing
-    if not website and brave_api_key:
-        results = await _web_search(
-            f'"{company.name}" company website', brave_api_key
+    if not website:
+        results = await _web_search_compat(
+            f'"{company.name}" company website'
         )
         if results:
             website = results[0].get("url")
@@ -407,10 +394,9 @@ async def _gather_company_context(
                 break
 
     # Search for recent news
-    if brave_api_key:
-        context["news"] = await _web_search(
-            f'"{company.name}" AI research 2025 2026', brave_api_key
-        )
+    context["news"] = await _web_search_compat(
+        f'"{company.name}" AI research 2025 2026'
+    )
 
     return context
 
@@ -460,7 +446,7 @@ async def enrich_single_company(
     session: AsyncSession,
     company: Company,
     job_titles: list[str],
-    brave_api_key: str,
+    brave_api_key: str = "",
     *,
     force: bool = False,
 ) -> bool:
@@ -470,7 +456,7 @@ async def enrich_single_company(
         logger.info("Skipping already-enriched: %s", company.name)
         return False
 
-    context = await _gather_company_context(company, job_titles, brave_api_key)
+    context = await _gather_company_context(company, job_titles)
 
     # Check if we got any web content
     has_web_content = bool(context["website_text"] or context["about_text"] or context["news"])
@@ -511,15 +497,21 @@ async def enrich_single_company(
 
     source_text = "\n\n".join(source_parts)
 
+    # Load profile data for dynamic system prompt
+    profile_result = await session.execute(select(UserProfile).limit(1))
+    profile = profile_result.scalar_one_or_none()
+    profile_data = profile.data if profile else {}
+    enrichment_system = build_company_enrichment_system(profile_data)
+
     # Call LLM
-    client = get_client()
+    client = get_openai_client()
     async with _enrichment_semaphore:
-        response = await client.messages.create(
-            model=SCORING_MODEL,
-            max_tokens=800,
+        response = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            max_completion_tokens=800,
             temperature=0,
-            system=COMPANY_ENRICHMENT_SYSTEM,
             messages=[
+                {"role": "system", "content": enrichment_system},
                 {
                     "role": "user",
                     "content": (
@@ -527,11 +519,11 @@ async def enrich_single_company(
                         f"Website: {company.website or 'unknown'}\n\n"
                         f"{source_text}"
                     ),
-                }
+                },
             ],
         )
 
-    notes = response.content[0].text.strip()
+    notes = response.choices[0].message.content.strip()
     company.notes = notes
     company.enriched_at = datetime.now(timezone.utc)
     await session.commit()
@@ -688,7 +680,7 @@ async def run_enrichment_pipeline(
 
             try:
                 success = await enrich_single_company(
-                    session, company, job_titles, brave_api_key, force=force
+                    session, company, job_titles, force=force
                 )
                 if success:
                     _enrichment_status["enriched"] += 1
@@ -744,7 +736,7 @@ async def enrich_single(
     job_titles = [row[0] for row in titles_result.all()]
 
     await enrich_single_company(
-        session, company, job_titles, brave_api_key, force=force
+        session, company, job_titles, force=force
     )
     await session.refresh(company)
     return company

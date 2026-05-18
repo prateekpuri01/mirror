@@ -61,6 +61,7 @@ class DocumentBrief(BaseModel):
     name: str
     version: int
     content_docx_path: str | None = None
+    created_at: datetime
 
 
 class JobRead(BaseModel):

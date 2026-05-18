@@ -314,25 +314,27 @@ async def _drill_perplexity_for_job(
 
     Sits between the SearXNG lead drill and the browser agent in the
     cascade: cheaper than the browser agent, more capable than SearXNG
-    for well-known companies.
+    for well-known companies. Uses the user's configured LLM provider's
+    native web search (formerly Perplexity Sonar, retired 2026-05).
 
     Returns a list of 0 or 1 CompanyHit.
     """
-    # Skip if Perplexity isn't configured
-    if not settings.perplexity_api_key:
-        return []
     if not guidance:
         return []
 
-    from app.services.web_search import _perplexity_search
+    # Skip if no LLM provider supports native web search
+    from app.services.web_search_llm import llm_web_search, native_web_search_supported
+    if not native_web_search_supported():
+        return []
 
     location_hint = ""
     if locations:
         location_hint = f" in {' or '.join(locations[:2])}"
 
     # Ask for specific job-posting URLs (with a requisition ID in the path),
-    # not listing/search pages. The emphasis on "with an ID" helps Perplexity
-    # return deep-links like /jobs/12345 instead of /careers/engineering.
+    # not listing/search pages. The emphasis on "with an ID" helps the
+    # native search return deep-links like /jobs/12345 instead of
+    # /careers/engineering.
     query = (
         f"Find 1-3 SPECIFIC {guidance} job postings currently open at "
         f"{company_name}{location_hint}. I need direct URLs that point to an "
@@ -343,14 +345,21 @@ async def _drill_perplexity_for_job(
     )
 
     try:
-        results = await _perplexity_search(query, num_results=6)
+        search_result = await llm_web_search(query, num_results=6)
     except Exception as e:
-        logger.debug("Perplexity drill error for '%s': %s", company_name, e)
+        logger.debug("LLM-native drill error for '%s': %s", company_name, e)
         return []
 
-    if not results:
-        logger.info("Perplexity drill for '%s': no results", company_name)
+    if search_result is None or not search_result.citations:
+        logger.info("LLM-native drill for '%s': no results", company_name)
         return []
+
+    # Normalize to the shape downstream code expects (legacy ``_perplexity_search``
+    # return shape: list of {title, url, snippet}).
+    results = [
+        {"title": c.title, "url": c.url, "snippet": c.snippet}
+        for c in search_result.citations
+    ]
 
     # Filter to likely job URLs, drop aggregators
     candidates: list[dict] = []

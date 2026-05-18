@@ -1,6 +1,6 @@
-# Job Board
+# Mirror
 
-AI-powered personal job board that finds relevant jobs, tracks applications, and generates tailored application materials using Claude API.
+AI-powered job search assistant that finds relevant jobs, tracks applications, and generates tailored application materials using Claude API. Reflects your best self at every opportunity.
 
 ## Stack
 
@@ -15,7 +15,7 @@ AI-powered personal job board that finds relevant jobs, tracks applications, and
 
 | Service | Container | Port |
 |---------|-----------|------|
-| FastAPI backend | `api` | 8000 |
+| FastAPI backend | `api` | 8085 |
 | PostgreSQL | `db` | 5433 (host) → 5432 (container) |
 | NocoDB | `nocodb` | 8080 |
 | Redis | `redis` | 6379 |

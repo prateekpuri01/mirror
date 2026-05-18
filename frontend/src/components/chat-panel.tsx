@@ -1,34 +1,44 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { Send, Trash2, X } from "lucide-react";
-import { ChatMessageRead } from "@/lib/types";
+import { ChatMessageRead, ProfileWorkHistory } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
 // ---------------------------------------------------------------------------
-// Section label display
+// Section label display (static entries + dynamic from work history)
 // ---------------------------------------------------------------------------
 
-const SECTION_DISPLAY: Record<string, string> = {
-  tagline: "Tagline",
-  summary: "Summary",
-  selected_research: "Selected Research",
-  "experience.rand": "RAND Experience",
-  "experience.rand.bullets": "RAND Bullets",
-  "experience.finra": "FINRA Experience",
-  "experience.finra.bullets": "FINRA Bullets",
-  "experience.ucla": "UCLA Experience",
-  "experience.ucla.bullets": "UCLA Bullets",
-  publications: "Publications",
-  technical_skills: "Technical Skills",
-  "technical_skills.ai_systems": "AI Systems Skills",
-  "technical_skills.data_science": "Data Science Skills",
-  "technical_skills.engineering": "Engineering Skills",
-  "technical_skills.communication": "Communication Skills",
-  awards: "Awards",
-};
+function buildSectionDisplay(workHistory?: ProfileWorkHistory[]): Record<string, string> {
+  const base: Record<string, string> = {
+    tagline: "Tagline",
+    summary: "Summary",
+    selected_research: "Selected Research",
+    publications: "Publications",
+    technical_skills: "Technical Skills",
+    "technical_skills.ai_systems": "AI Systems Skills",
+    "technical_skills.data_science": "Data Science Skills",
+    "technical_skills.engineering": "Engineering Skills",
+    awards: "Awards",
+  };
+
+  if (workHistory) {
+    for (const wh of workHistory) {
+      const key = wh.employer
+        .toLowerCase()
+        .replace(/^the\s+/, "")
+        .replace(/[^\w\s]/g, " ")
+        .trim()
+        .replace(/\s+/g, "_");
+      base[`experience.${key}`] = `${wh.employer} Experience`;
+      base[`experience.${key}.bullets`] = `${wh.employer} Bullets`;
+    }
+  }
+
+  return base;
+}
 
 // Patterns for dynamic paths like "selected_research.0.category_label"
 const SECTION_PATTERNS: [RegExp, string][] = [
@@ -36,19 +46,19 @@ const SECTION_PATTERNS: [RegExp, string][] = [
   [/^selected_research\.(\d+)\.title$/, "Research Title"],
   [/^selected_research\.(\d+)\.description$/, "Research Description"],
   [/^selected_research\.(\d+)$/, "Research Entry"],
-  [/^experience\.(\w+)\.bullets\.(\d+)$/, "Bullet"],
+  [/^experience\.(\w+)\.bullets\.(\d+)(?:\.text)?$/, "Bullet"],
   [/^publications\.(\d+)\.citation$/, "Publication"],
 ];
 
-function getSectionLabel(path: string): string {
+function getSectionLabel(path: string, sectionDisplay: Record<string, string>): string {
   // Try exact match first
-  if (SECTION_DISPLAY[path]) return SECTION_DISPLAY[path];
+  if (sectionDisplay[path]) return sectionDisplay[path];
   // Try regex patterns for dynamic paths
   for (const [pattern, label] of SECTION_PATTERNS) {
     if (pattern.test(path)) return label;
   }
   // Try partial matches (e.g. "experience.rand.bullets.2" -> "RAND Bullets")
-  for (const [key, label] of Object.entries(SECTION_DISPLAY)) {
+  for (const [key, label] of Object.entries(sectionDisplay)) {
     if (path.startsWith(key)) return label;
   }
   return path;
@@ -66,8 +76,10 @@ interface ChatPanelProps {
   disabled: boolean;
   selectedSection: string | null;
   onSend: (content: string, sectionContext?: string | null) => void;
+  onProofread?: () => void;
   onClear: () => void;
   onDeselectSection: () => void;
+  workHistory?: ProfileWorkHistory[];
 }
 
 export function ChatPanel({
@@ -78,9 +90,12 @@ export function ChatPanel({
   disabled,
   selectedSection,
   onSend,
+  onProofread,
   onClear,
   onDeselectSection,
+  workHistory,
 }: ChatPanelProps) {
+  const sectionDisplay = useMemo(() => buildSectionDisplay(workHistory), [workHistory]);
   const [input, setInput] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -110,6 +125,18 @@ export function ChatPanel({
       <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
         <span className="text-xs font-semibold text-muted-foreground">Chat</span>
         <div className="flex items-center gap-1">
+          {onProofread && !disabled && !showClearConfirm && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-[11px] text-muted-foreground hover:text-foreground"
+              disabled={isSending}
+              onClick={onProofread}
+              title="Scan for typos, grammar, and awkward phrasing — no edits made"
+            >
+              Proofread
+            </Button>
+          )}
           {showClearConfirm ? (
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted-foreground">Clear all?</span>
@@ -184,7 +211,7 @@ export function ChatPanel({
               {msg.section_context && msg.role === "user" && (
                 <div className="mb-1">
                   <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500 text-blue-100">
-                    {getSectionLabel(msg.section_context)}
+                    {getSectionLabel(msg.section_context, sectionDisplay)}
                   </Badge>
                 </div>
               )}
@@ -222,7 +249,7 @@ export function ChatPanel({
         <div className="px-3 py-1 border-t bg-blue-50 flex items-center gap-1.5">
           <span className="text-[10px] text-blue-600 font-medium">Editing:</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-            {getSectionLabel(selectedSection)}
+            {getSectionLabel(selectedSection, sectionDisplay)}
           </Badge>
           <button
             onClick={onDeselectSection}
@@ -245,7 +272,7 @@ export function ChatPanel({
               disabled
                 ? "Generate a resume first..."
                 : selectedSection
-                  ? `Edit ${getSectionLabel(selectedSection)}...`
+                  ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}...`
                   : "Ask me to edit your resume..."
             }
             disabled={disabled || isSending}

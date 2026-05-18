@@ -10,19 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.companies import Company, ScrapeRun
 from app.models.jobs import Job, JobSource, JobStatus
-from app.scrapers.ashby import AshbyScraper
+from app.scrapers import SCRAPERS_BY_ATS
 from app.scrapers.base import ScrapedJob
-from app.scrapers.greenhouse import GreenhouseScraper
 from app.scrapers.hn_who_is_hiring import scrape_hn_who_is_hiring
-from app.scrapers.lever import LeverScraper
 
 logger = logging.getLogger(__name__)
 
-SCRAPERS = [
-    GreenhouseScraper(),
-    LeverScraper(),
-    AshbyScraper(),
-]
+# Iteration order matches SCRAPERS_BY_ATS insertion order (Greenhouse →
+# Lever → Ashby → Eightfold). Each scraper self-checks `can_handle()`
+# against the company's per-ATS slug field.
+SCRAPERS = list(SCRAPERS_BY_ATS.values())
 
 
 async def run_scrape(
@@ -106,7 +103,8 @@ def _apply_filters(
 
     Matching is case-insensitive substring against title + department/team.
     If include_patterns is set, at least one must match.
-    If any exclude_pattern matches, the job is dropped.
+    If an include pattern matches, it overrides any exclude match (include wins).
+    If only exclude matches (no include match), the job is dropped.
     """
     include = company.include_patterns or []
     exclude = company.exclude_patterns or []
@@ -127,12 +125,15 @@ def _apply_filters(
                 parts.append(val)
         search_text = " ".join(parts).lower()
 
-        # Exclude check first
-        if any(pat.lower() in search_text for pat in exclude):
+        has_include = any(pat.lower() in search_text for pat in include)
+        has_exclude = any(pat.lower() in search_text for pat in exclude)
+
+        # Include match overrides exclude (e.g. "Engineer" overrides "Sales" dept)
+        if has_exclude and not has_include:
             continue
 
         # Include check (skip if no include patterns — accept all)
-        if include and not any(pat.lower() in search_text for pat in include):
+        if include and not has_include:
             continue
 
         kept.append(sj)

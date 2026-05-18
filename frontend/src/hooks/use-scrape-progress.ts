@@ -6,7 +6,7 @@ import { getScrapeProgress, ScrapeProgress } from "@/lib/api";
 const POLL_INTERVAL = 1500;
 
 const CHEEKY_MESSAGES = [
-  "Rummaging through their job board...",
+  "Rummaging through their careers page...",
   "Poking around for openings...",
   "Snooping on their careers page...",
   "Shaking the job tree...",
@@ -19,7 +19,7 @@ function pickMessage(seed: number): string {
 }
 
 function formatProgress(p: ScrapeProgress): string {
-  const name = p.company_name || "their job board";
+  const name = p.company_name || "their careers page";
 
   if (p.phase === "resolving") {
     return `Figuring out where ${name} hides their jobs...`;

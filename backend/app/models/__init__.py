@@ -1,3 +1,4 @@
+from app.models.app_settings import AppSetting
 from app.models.ats_learning import AtsDomainCache, AtsLearnedPattern
 from app.models.base import Base
 from app.models.chat import ChatMessage
@@ -14,14 +15,18 @@ from app.models.jobs import (
 )
 from app.models.locations import JobLocation, Location
 from app.models.profile import UserProfile
+from app.models.content_memory import ContentMemory
+from app.models.writing_memory import WritingMemory
 
 __all__ = [
+    "AppSetting",
     "AtsDomainCache",
     "AtsLearnedPattern",
     "Base",
     "ChatMessage",
     "Company",
     "ScrapeRun",
+    "ContentMemory",
     "Job",
     "JobSource",
     "JobStatus",
@@ -35,4 +40,5 @@ __all__ = [
     "Document",
     "DocType",
     "UserProfile",
+    "WritingMemory",
 ]

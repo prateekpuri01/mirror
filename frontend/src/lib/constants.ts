@@ -35,12 +35,14 @@ export const SOURCE_CONFIG: Record<
   ai_discovered: { label: "AI", color: "text-pink-700", bg: "bg-pink-50" },
   manual: { label: "Manual", color: "text-gray-700", bg: "bg-gray-50" },
   company_website: { label: "Website", color: "text-teal-700", bg: "bg-teal-50" },
+  eightfold: { label: "Eightfold", color: "text-indigo-700", bg: "bg-indigo-50" },
 };
 
 export const ALL_SOURCES: JobSource[] = [
   "greenhouse",
   "lever",
   "ashby",
+  "eightfold",
   "hn_who_is_hiring",
   "linkedin",
   "ai_discovered",

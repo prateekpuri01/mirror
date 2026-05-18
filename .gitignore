@@ -37,7 +37,11 @@ output/
 
 # ---- Corporate CA certs (machine-specific) ----
 backend/ca-certificates.crt
+backend/corporate-ca*.crt
+backend/corporate-ca*.crt.*
 frontend/ca-certificates.crt
+frontend/corporate-ca*.crt
+frontend/corporate-ca*.crt.*
 rand_cert/
 
 # ---- IDE ----
@@ -46,6 +50,12 @@ rand_cert/
 *.swp
 *.swo
 *~
+
+# ---- Local recovery / scratch ----
+.git.backup-*
+.playwright-mcp/
+.claude/plans/
+.claude/projects/
 
 # ---- OS ----
 .DS_Store
@@ -58,7 +68,15 @@ backend/alembic/versions/__pycache__/
 .claude/memory
 .claude/memory/
 
+# ---- MCP server config (per-machine paths + secrets — never commit) ----
+.mcp.json
+.mcp.local.json
+
 # ---- Personal documents (resumes, spreadsheets) ----
 docs/*.docx
 docs/*.xlsx
+docs/profile.yaml
+docs/profile_complete.yaml
+docs/resume_style.yaml
+docs/TICKETS.local.md
 resume/

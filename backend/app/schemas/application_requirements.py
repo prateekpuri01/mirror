@@ -24,6 +24,7 @@ class ApplicationField(BaseModel):
     max_length: int | None = None  # for short_answer fields
     description: str | None = None
     draft_response: str | None = None  # AI-generated draft answer
+    draft_history: list[dict] | None = None  # Editing history for iterative re-drafting
 
 
 class AppReqCreate(BaseModel):

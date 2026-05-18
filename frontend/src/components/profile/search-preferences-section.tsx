@@ -1,0 +1,264 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import { Plus, Trash2, GripVertical, Loader2, Sparkles } from "lucide-react";
+import type { ProfileSearchPreferences } from "@/lib/types";
+import { generateKeywords } from "@/lib/api";
+
+interface SearchPreferencesSectionProps {
+  data: ProfileSearchPreferences;
+  onChange: (data: ProfileSearchPreferences) => void;
+}
+
+function EditableList({
+  label,
+  description,
+  items,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  description?: string;
+  items: string[];
+  placeholder: string;
+  onChange: (items: string[]) => void;
+}) {
+  const [input, setInput] = useState("");
+
+  const add = () => {
+    const trimmed = input.trim();
+    if (trimmed) {
+      onChange([...items, trimmed]);
+      setInput("");
+    }
+  };
+
+  const remove = (index: number) => {
+    onChange(items.filter((_, i) => i !== index));
+  };
+
+  const update = (index: number, value: string) => {
+    const updated = [...items];
+    updated[index] = value;
+    onChange(updated);
+  };
+
+  return (
+    <div>
+      <label className="block text-xs font-medium text-gray-600 mb-0.5">{label}</label>
+      {description && (
+        <p className="text-[11px] text-gray-400 mb-1.5">{description}</p>
+      )}
+      <div className="space-y-1">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-1.5">
+            <GripVertical className="h-3 w-3 text-gray-300 shrink-0" />
+            <input
+              type="text"
+              value={item}
+              onChange={(e) => update(i, e.target.value)}
+              className="flex-1 rounded border px-2 py-1 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => remove(i)}
+              className="text-gray-400 hover:text-red-500 p-0.5"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-1.5">
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              add();
+            }
+          }}
+          className="flex-1 rounded border px-2 py-1 text-sm"
+          placeholder={placeholder}
+        />
+        <button
+          type="button"
+          onClick={add}
+          disabled={!input.trim()}
+          className="text-xs text-blue-600 hover:text-blue-800 px-2 disabled:opacity-50"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export function SearchPreferencesSection({
+  data,
+  onChange,
+}: SearchPreferencesSectionProps) {
+  const [generating, setGenerating] = useState(false);
+
+  // Migrate legacy fields on first render if new fields absent
+  const migrated = useMemo(() => {
+    if (data.looking_for !== undefined) return data;
+
+    const hasLegacy =
+      data.industries_ranked?.length ||
+      data.nice_to_haves?.length ||
+      data.deal_breakers?.length ||
+      data.org_anti_patterns?.length;
+
+    if (!hasLegacy) return data;
+
+    const lookingParts = [
+      ...(data.industries_ranked || []),
+      ...(data.nice_to_haves || []),
+    ];
+    const notLookingParts = [
+      ...(data.deal_breakers || []),
+      ...(data.org_anti_patterns || []),
+    ];
+
+    return {
+      ...data,
+      looking_for: lookingParts.join("\n"),
+      not_looking_for: notLookingParts.join("\n"),
+    };
+  }, [data]);
+
+  // If migration produced new data, trigger save via onChange on first render
+  if (migrated !== data && migrated.looking_for !== undefined) {
+    // Schedule to avoid setState-during-render
+    setTimeout(() => onChange(migrated), 0);
+  }
+
+  const current = migrated;
+
+  const handleGenerateKeywords = async () => {
+    setGenerating(true);
+    try {
+      const result = await generateKeywords(
+        current.looking_for || "",
+        current.not_looking_for || "",
+      );
+      onChange({
+        ...current,
+        positive_signals: result.positive_signals,
+        exclusions: result.exclusions,
+      });
+    } catch (err) {
+      // Keyword generation failed — error not surfaced to user (could add toast)
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const canGenerate = !!(current.looking_for?.trim() || current.not_looking_for?.trim());
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-0.5">
+          What I&apos;m Looking For
+        </label>
+        <p className="text-[11px] text-gray-400 mb-1.5">
+          Describe the kind of role, org, and work that excites you. This goes
+          directly to the AI when scoring jobs and searching for companies.
+        </p>
+        <textarea
+          value={current.looking_for || ""}
+          onChange={(e) => onChange({ ...current, looking_for: e.target.value })}
+          className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y"
+          placeholder="e.g., Research-heavy roles at mission-driven orgs working on AI safety, computational social science, or public interest tech..."
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-0.5">
+          What I&apos;m NOT Looking For
+        </label>
+        <p className="text-[11px] text-gray-400 mb-1.5">
+          Describe what to avoid. The AI uses this to filter out bad matches and
+          penalize jobs that slip through.
+        </p>
+        <textarea
+          value={current.not_looking_for || ""}
+          onChange={(e) =>
+            onChange({ ...current, not_looking_for: e.target.value })
+          }
+          className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y"
+          placeholder="e.g., Defense contractors, surveillance tech, companies with no remote flexibility, pure frontend roles..."
+        />
+      </div>
+
+      <div className="flex items-center gap-3 py-1">
+        <button
+          type="button"
+          onClick={handleGenerateKeywords}
+          disabled={!canGenerate || generating}
+          className="inline-flex items-center gap-1.5 rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {generating ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Sparkles className="h-3 w-3" />
+          )}
+          Generate Keywords
+        </button>
+        <span className="text-[11px] text-gray-400">
+          Auto-extract keywords from your descriptions for bulk filtering
+        </span>
+      </div>
+
+      <EditableList
+        label="Positive Signals"
+        description="Auto-generated from your description. These boost keyword-matched jobs in bulk scoring."
+        items={current.positive_signals || []}
+        placeholder="Add keyword..."
+        onChange={(items) => onChange({ ...current, positive_signals: items })}
+      />
+
+      <EditableList
+        label="Exclusions"
+        description="Auto-generated from your avoidances. Jobs matching these are filtered out or penalized."
+        items={current.exclusions || []}
+        placeholder="Add exclusion..."
+        onChange={(items) => onChange({ ...current, exclusions: items })}
+      />
+
+      <div>
+        <label className="block text-xs font-medium text-gray-600 mb-0.5">
+          Minimum Salary
+        </label>
+        <p className="text-[11px] text-gray-400 mb-1.5">
+          Your minimum acceptable annual salary (USD). Used by the AI to evaluate
+          salary competitiveness when scoring jobs. Leave blank to skip.
+        </p>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-500">$</span>
+          <input
+            type="number"
+            value={current.salary_minimum ?? ""}
+            onChange={(e) => {
+              const val = e.target.value;
+              onChange({
+                ...current,
+                salary_minimum: val === "" ? null : Number(val),
+              });
+            }}
+            className="w-32 rounded border px-2 py-1 text-sm"
+            placeholder="150000"
+            min={0}
+            step={5000}
+          />
+          <span className="text-xs text-gray-400">per year</span>
+        </div>
+      </div>
+
+    </div>
+  );
+}

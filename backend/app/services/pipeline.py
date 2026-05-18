@@ -1,14 +1,16 @@
 """Pipeline orchestrator — process jobs through clean → prefilter → score stages."""
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.prefilter import check_prefilter, run_prefilter_batch
-from app.ai.scoring import score_job, _get_profile_text, _get_example_jobs
+from app.ai.prefilter import run_prefilter_batch
+from app.ai.scoring import score_job, _get_profile, _build_compact_profile, _get_example_jobs
 from app.models import Job
+from app.services.auto_tagger import auto_tag_jobs
 from app.services.cleaning import clean_jobs_batch
 from app.services.extraction import extract_new_jobs
 
@@ -28,7 +30,7 @@ async def process_new_jobs(
 
     Returns stats: {cleaned, scored, skipped, errors, expired_excluded}.
     """
-    stats = {"cleaned": 0, "extracted": 0, "scored": 0, "skipped": 0, "errors": 0, "expired_excluded": 0}
+    stats = {"cleaned": 0, "extracted": 0, "scored": 0, "skipped": 0, "errors": 0, "expired_excluded": 0, "tagged": 0}
 
     # Step 1: Run Layer 2 cleaning (handles its own pipeline_stage updates)
     clean_stats = await clean_jobs_batch(session)
@@ -78,26 +80,46 @@ async def process_new_jobs(
     to_score = list(result.scalars().all())
 
     if to_score:
-        profile_text = await _get_profile_text(session)
+        profile = await _get_profile(session)
+        profile_text = _build_compact_profile(profile.data)
+        profile_data = profile.data
         positive_jobs, negative_jobs = await _get_example_jobs(session)
 
-        for job in to_score:
-            try:
-                await score_job(
-                    session,
-                    job.id,
-                    profile_text=profile_text,
-                    positive_jobs=positive_jobs,
-                    negative_jobs=negative_jobs,
-                )
-                stats["scored"] += 1
-            except Exception:
-                logger.exception("Failed to score job %s", job.id)
-                stats["errors"] += 1
+        # Score jobs in parallel, capped by detected API rate limits
+        from app.services.rate_limits import max_concurrent_scoring
+        scoring_semaphore = asyncio.Semaphore(max_concurrent_scoring())
+
+        async def _score_one(job: Job) -> bool:
+            async with scoring_semaphore:
+                try:
+                    await score_job(
+                        session,
+                        job.id,
+                        profile_text=profile_text,
+                        profile_data=profile_data,
+                        positive_jobs=positive_jobs,
+                        negative_jobs=negative_jobs,
+                    )
+                    return True
+                except Exception:
+                    logger.exception("Failed to score job %s", job.id)
+                    return False
+
+        results = await asyncio.gather(*[_score_one(j) for j in to_score])
+        stats["scored"] = sum(1 for r in results if r)
+        stats["errors"] = sum(1 for r in results if not r)
+
+    # Step 4: Auto-tag scored jobs with user-defined tags
+    if to_score:
+        try:
+            tag_stats = await auto_tag_jobs(session, to_score)
+            stats["tagged"] = tag_stats["tagged_jobs"]
+        except Exception:
+            logger.exception("Auto-tagging failed")
 
     logger.info(
-        "Pipeline complete: cleaned=%d extracted=%d scored=%d skipped=%d errors=%d",
-        stats["cleaned"], stats["extracted"], stats["scored"], stats["skipped"], stats["errors"],
+        "Pipeline complete: cleaned=%d extracted=%d scored=%d skipped=%d tagged=%d errors=%d",
+        stats["cleaned"], stats["extracted"], stats["scored"], stats["skipped"], stats["tagged"], stats["errors"],
     )
     return stats
 
@@ -144,22 +166,34 @@ async def rescore_outdated(session: AsyncSession, prompt_version: str) -> dict:
     if not jobs:
         return stats
 
-    profile_text = await _get_profile_text(session)
+    profile = await _get_profile(session)
+    profile_text = _build_compact_profile(profile.data)
+    profile_data = profile.data
     positive_jobs, negative_jobs = await _get_example_jobs(session)
 
-    for job in jobs:
-        try:
-            await score_job(
-                session,
-                job.id,
-                profile_text=profile_text,
-                positive_jobs=positive_jobs,
-                negative_jobs=negative_jobs,
-            )
-            stats["rescored"] += 1
-        except Exception:
-            logger.exception("Failed to rescore job %s", job.id)
-            stats["failed"] += 1
+    # Rescore in parallel, capped by detected API rate limits
+    from app.services.rate_limits import max_concurrent_scoring
+    rescore_sem = asyncio.Semaphore(max_concurrent_scoring())
+
+    async def _rescore_one(job: Job) -> bool:
+        async with rescore_sem:
+            try:
+                await score_job(
+                    session,
+                    job.id,
+                    profile_text=profile_text,
+                    profile_data=profile_data,
+                    positive_jobs=positive_jobs,
+                    negative_jobs=negative_jobs,
+                )
+                return True
+            except Exception:
+                logger.exception("Failed to rescore job %s", job.id)
+                return False
+
+    results = await asyncio.gather(*[_rescore_one(j) for j in jobs])
+    stats["rescored"] = sum(1 for r in results if r)
+    stats["failed"] = sum(1 for r in results if not r)
 
     logger.info(
         "Rescore complete: %d rescored, %d failed (version: %s)",

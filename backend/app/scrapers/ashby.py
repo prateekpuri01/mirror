@@ -55,13 +55,15 @@ async def _post_with_429_retry(
     payload: dict,
     *,
     label: str,
-    max_attempts: int = 6,
+    max_attempts: int = 4,
 ) -> httpx.Response:
     """POST to ASHBY_GQL with exponential backoff on 429. Total backoff
-    across 6 attempts is 1+2+4+8+16+32 = 63s. Ashby's GraphQL endpoint
-    rate-limits hard during heavy concurrency; without sufficient retries
-    we lose entire candidate evaluations to transient throttling that
-    would resolve on its own in under a minute.
+    across 4 attempts is 1+2+4+8 = 15s. Was 6 attempts (63s) until a
+    single hot-search run with concurrent Ashby-heavy candidates ground
+    for 1.5 hours waiting on per-call retry chains. 15s is still enough
+    to ride out transient throttling without letting any one call hijack
+    the search wall-clock; the orchestration's global wall-clock budget
+    handles the worst-case ceiling.
     """
     resp = None
     for attempt in range(max_attempts):

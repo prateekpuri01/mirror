@@ -18,6 +18,7 @@ class Company(UUIDPrimaryKey, TimestampMixin, Base):
     greenhouse_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
     ashby_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
     lever_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
+    eightfold_slug: Mapped[str | None] = mapped_column(Text, nullable=True)
     careers_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     include_patterns: Mapped[list | None] = mapped_column(

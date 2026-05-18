@@ -9,12 +9,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useUpdateJob, useScoreJob } from "@/hooks/use-jobs";
 import { useResumeGeneration } from "@/hooks/use-resume-generation";
 import { useChat } from "@/hooks/use-chat";
+import { useProfile, useCompleteProfile } from "@/hooks/use-profile";
+import { useExtractionTracking } from "@/hooks/use-extraction-tracking";
 import {
   ApplicationField,
   draftAllAnswers,
   draftSingleAnswer,
   fetchDocument,
   fetchRequirements,
+  generateBullet,
+  generateResearchEntry,
   generateResume,
   getDocumentDownloadUrl,
   getExtractionStatus,
@@ -22,10 +26,12 @@ import {
   updateDraftResponse,
   updateResumeSection,
 } from "@/lib/api";
+import type { CompanyResearch } from "@/lib/types";
 import { JobStatusSelect } from "./job-status-select";
 import { JobThumbs } from "./job-thumbs";
 import { ResumeEditor } from "./resume-editor";
 import { ChatPanel } from "./chat-panel";
+import { CompanyResearchPanel } from "./company-research-panel";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -505,6 +511,8 @@ function diffResumePaths(
 function ResumeTab({ job }: { job: Job }) {
   const queryClient = useQueryClient();
   const resumeGen = useResumeGeneration();
+  const { data: profile } = useProfile();
+  const { data: completeProfile } = useCompleteProfile();
   const [doc, setDoc] = useState<DocumentFull | null>(null);
   const [resumeJson, setResumeJson] = useState<ResumeJson | null>(null);
   const resumeJsonRef = useRef<ResumeJson | null>(null);
@@ -512,6 +520,12 @@ function ResumeTab({ job }: { job: Job }) {
   const [recentlyUpdatedPaths, setRecentlyUpdatedPaths] = useState<Set<string>>(new Set());
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
   const [genError, setGenError] = useState<string | null>(null);
+  const [swappingIndex, setSwappingIndex] = useState<number | null>(null);
+  const [generatingBullet, setGeneratingBullet] = useState<{
+    employer_key: string;
+    accomplishment_id: string;
+  } | null>(null);
+  const [bulletError, setBulletError] = useState<string | null>(null);
 
   // Keep ref in sync with state for use in handleResumeUpdate diff
   useEffect(() => {
@@ -683,6 +697,63 @@ function ResumeTab({ job }: { job: Job }) {
     onResumeUpdate: handleResumeUpdate,
   });
 
+  // Swap research entry — replaces selected_research[index] with a freshly
+  // tailored description for the given accomplishment_id.
+  const handleSwapResearch = useCallback(
+    async (index: number, accomplishmentId: string) => {
+      if (!doc) return;
+      setSwappingIndex(index);
+      setGenError(null);
+      try {
+        const updated = await generateResearchEntry(doc.id, accomplishmentId, index);
+        setDoc(updated);
+        if (updated.content_json) {
+          setResumeJson(updated.content_json as ResumeJson);
+        }
+        flashUpdatedPath(`selected_research.${index}`);
+      } catch (err) {
+        setGenError(err instanceof Error ? err.message : "Failed to swap research entry");
+      } finally {
+        setSwappingIndex(null);
+      }
+    },
+    [doc, flashUpdatedPath]
+  );
+
+  // Generate a bullet from an accomplishment for a specific employer.
+  const handleGenerateBullet = useCallback(
+    async (employerKey: string, accomplishmentId: string) => {
+      if (!doc) return;
+      setGeneratingBullet({ employer_key: employerKey, accomplishment_id: accomplishmentId });
+      setBulletError(null);
+      try {
+        const updated = await generateBullet(doc.id, employerKey, accomplishmentId);
+        setDoc(updated);
+        if (updated.content_json) {
+          setResumeJson(updated.content_json as ResumeJson);
+        }
+        flashUpdatedPath(`experience.${employerKey}.bullets`);
+      } catch (err) {
+        setBulletError(
+          err instanceof Error ? err.message : "Bullet generation failed"
+        );
+      } finally {
+        setGeneratingBullet(null);
+      }
+    },
+    [doc, flashUpdatedPath]
+  );
+
+  // Trigger a read-only proofread pass via the chat agent.
+  const handleProofread = useCallback(() => {
+    chat.sendMessage("/proofread", null, doc?.id ?? null, "proofread");
+  }, [chat, doc]);
+
+  // Cached company research from the document, if any.
+  const documentResearch =
+    ((resumeJson || doc?.content_json) as { _research?: CompanyResearch } | undefined)
+      ?._research ?? null;
+
   return (
     <div className="space-y-3" onClick={(e) => e.stopPropagation()}>
       {/* Header bar */}
@@ -754,17 +825,44 @@ function ResumeTab({ job }: { job: Job }) {
         </div>
       )}
 
+      {/* Bullet-generation error toast (non-blocking) */}
+      {bulletError && (
+        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 flex items-center justify-between">
+          <span>{bulletError}</span>
+          <button
+            onClick={() => setBulletError(null)}
+            className="ml-3 text-red-600 hover:text-red-800 font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Company research panel (above the editor) */}
+      {(resumeJson || doc?.content_json) && (
+        <CompanyResearchPanel jobId={job.id} documentResearch={documentResearch} />
+      )}
+
       {/* Split layout: Resume Editor + Chat Panel */}
       {(resumeJson || doc?.content_json) && (
         <div className={`flex gap-3 ${isWorking ? "opacity-50 pointer-events-none" : ""}`}>
           {/* Left: Resume Editor (60%) */}
           <div className="flex-[3] min-w-0 border rounded-lg p-4 bg-white max-h-[600px] overflow-y-auto">
             <ResumeEditor
+              docId={doc!.id}
               resumeJson={resumeJson || (doc!.content_json as ResumeJson)}
               selectedSection={selectedSection}
               recentlyUpdatedPaths={recentlyUpdatedPaths}
               onSelectSection={setSelectedSection}
               onSectionEdit={handleSectionEdit}
+              onSwapResearch={handleSwapResearch}
+              swappingIndex={swappingIndex}
+              onGenerateBullet={handleGenerateBullet}
+              generatingBullet={generatingBullet}
+              workHistory={profile?.work_history}
+              accomplishments={completeProfile?.accomplishments}
+              education={profile?.education}
+              profilePublications={completeProfile?.publications}
             />
           </div>
 
@@ -780,8 +878,10 @@ function ResumeTab({ job }: { job: Job }) {
               onSend={(content, sectionContext) =>
                 chat.sendMessage(content, sectionContext)
               }
+              onProofread={handleProofread}
               onClear={chat.clearMessages}
               onDeselectSection={() => setSelectedSection(null)}
+              workHistory={profile?.work_history}
             />
           </div>
         </div>
@@ -936,9 +1036,13 @@ function DraftEditor({
 }
 
 function AppRequirementsTab({ job }: { job: Job }) {
+  const tracking = useExtractionTracking();
   const [requirements, setRequirements] = useState<ExtractedRequirements | null>(null);
   const [loading, setLoading] = useState(true);
-  const [extracting, setExtracting] = useState(false);
+  // Local poll flag is OR-ed with the global tracking state so the spinner
+  // continues to show if the user navigates away and back.
+  const [localExtracting, setLocalExtracting] = useState(false);
+  const extracting = localExtracting || tracking.isExtracting(job.id);
   const [draftingAll, setDraftingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -969,11 +1073,11 @@ function AppRequirementsTab({ job }: { job: Job }) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
-    setExtracting(false);
+    setLocalExtracting(false);
   }, []);
 
   const startPolling = useCallback(() => {
-    setExtracting(true);
+    setLocalExtracting(true);
     pollRef.current = setInterval(async () => {
       try {
         const status = await getExtractionStatus(job.id);
@@ -992,6 +1096,9 @@ function AppRequirementsTab({ job }: { job: Job }) {
     setError(null);
     try {
       const result = await triggerRequirementsExtraction(job.id);
+      // Register globally so other pages can show the in-progress indicator
+      // even after this tab unmounts.
+      tracking.startTracking(job.id);
       if (result.status === "already_running") {
         startPolling();
       } else {

@@ -1,8 +1,8 @@
 """Zero-cost pre-filter: keyword-based screening before expensive LLM scoring.
 
 Two tiers:
-  Tier A — Hard exclusion (deal-breaker keywords from profile.yaml)
-  Tier B — Positive signal required (must match at least one target domain/role keyword)
+  Tier A — Hard exclusion (deal-breaker keywords derived from profile data)
+  Tier B — Positive signal required (target roles + domains + top skills from profile)
 
 No LLM calls. Runs on title + company + first 500 chars of description.
 """
@@ -14,47 +14,76 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Job
+from app.models import Job, UserProfile
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Tier A: Hard exclusion keywords (from profile.yaml deal_breakers)
-# ---------------------------------------------------------------------------
-EXCLUDE_KEYWORDS: list[str] = [
-    # Crypto / blockchain
-    "crypto", "blockchain", "web3", "defi", "decentralized finance",
-    "smart contract", "solidity", "ethereum", "nft",
-    # Ad-tech / growth hacking
-    "ad-tech", "adtech", "growth hacking", "engagement optimization",
-    "ad network", "programmatic advertising",
-    # Defense contractors
-    "raytheon", "lockheed martin", "northrop grumman", "general dynamics",
-    "l3harris", "bae systems",
-    # Enterprise SaaS with no research
-    "salesforce admin", "hubspot", "zendesk",
-]
 
-# ---------------------------------------------------------------------------
-# Tier B: Positive signal keywords (from target_roles + domains)
-# ---------------------------------------------------------------------------
-INCLUDE_KEYWORDS: list[str] = [
-    # Target roles
-    "research", "scientist", "researcher", "information scientist",
-    # Domains
-    "machine learning", "ml", "artificial intelligence", "ai",
-    "data science", "data scientist", "nlp", "natural language",
-    "policy", "governance", "economics", "labor",
-    "national security", "technology policy",
-    # Related signals
-    "llm", "large language model", "deep learning",
-    "causal inference", "bayesian", "statistics",
-    "analyst", "quantitative",
-]
+def _extract_keywords(text: str) -> list[str]:
+    """Extract keyword phrases from a deal-breaker or anti-pattern string.
 
-# Compile patterns for efficient matching
-_EXCLUDE_PATTERNS = [re.compile(re.escape(kw), re.IGNORECASE) for kw in EXCLUDE_KEYWORDS]
-_INCLUDE_PATTERNS = [re.compile(re.escape(kw), re.IGNORECASE) for kw in INCLUDE_KEYWORDS]
+    Splits on " / ", " - ", parentheticals, and common separators
+    to get individual matchable phrases.
+    """
+    # Remove parenthetical content like "(Raytheon, Lockheed)"
+    parens = re.findall(r"\(([^)]+)\)", text)
+    # Remove parentheticals from main text
+    main = re.sub(r"\([^)]*\)", "", text).strip()
+    # Split main text on common separators
+    parts = re.split(r"\s*/\s*|\s*-\s*|\s*,\s*", main)
+    # Add parenthetical items
+    for paren in parens:
+        parts.extend(re.split(r"\s*,\s*", paren))
+    # Clean and filter
+    return [p.strip().lower() for p in parts if len(p.strip()) >= 3]
+
+
+def build_keyword_lists(profile_data: dict) -> tuple[list[str], list[str]]:
+    """Build exclude/include keyword lists from profile data.
+
+    Returns (exclude_keywords, include_keywords).
+    """
+    prefs = profile_data.get("search_preferences", {})
+
+    # EXCLUDE: prefer new `exclusions` field (already clean keywords),
+    # fall back to legacy deal_breakers + org_anti_patterns
+    exclude = []
+    exclusions = prefs.get("exclusions", [])
+    if exclusions:
+        exclude.extend([kw.lower() for kw in exclusions])
+    else:
+        for text in prefs.get("deal_breakers", []) + prefs.get("org_anti_patterns", []):
+            exclude.extend(_extract_keywords(text))
+
+    # INCLUDE: target role titles + domains + top technical skills
+    include = []
+    for role in profile_data.get("target_roles", []):
+        title = role.get("title", "")
+        if title:
+            include.append(title.lower())
+            # Also add individual words from multi-word titles
+            for word in title.lower().split():
+                if len(word) >= 4:  # Skip short words like "of", "and"
+                    include.append(word)
+    for domain in profile_data.get("domains", []):
+        include.append(domain.lower())
+    # Add first 10 skills (from any category) as positive signals
+    from app.ai.skill_utils import flatten_skills
+    for skill in flatten_skills(profile_data.get("skills", {}))[:10]:
+        include.append(skill.lower())
+
+    return exclude, include
+
+
+def _compile_patterns(keywords: list[str]) -> list[re.Pattern]:
+    """Compile keyword list into regex patterns, deduplicating."""
+    seen = set()
+    patterns = []
+    for kw in keywords:
+        if kw not in seen and kw:
+            seen.add(kw)
+            patterns.append(re.compile(re.escape(kw), re.IGNORECASE))
+    return patterns
 
 
 def _build_search_text(job: Job) -> str:
@@ -65,7 +94,11 @@ def _build_search_text(job: Job) -> str:
     return " ".join(parts)
 
 
-def check_prefilter(job: Job) -> tuple[bool, str]:
+def check_prefilter(
+    job: Job,
+    exclude_patterns: list[re.Pattern],
+    include_patterns: list[re.Pattern],
+) -> tuple[bool, str]:
     """Check if a job passes the pre-filter.
 
     Returns (passes: bool, reason: str).
@@ -73,16 +106,26 @@ def check_prefilter(job: Job) -> tuple[bool, str]:
     text = _build_search_text(job)
 
     # Tier A: hard exclusion
-    for pattern in _EXCLUDE_PATTERNS:
+    for pattern in exclude_patterns:
         if pattern.search(text):
             return False, f"exclude:{pattern.pattern}"
 
     # Tier B: positive signal required
-    for pattern in _INCLUDE_PATTERNS:
+    for pattern in include_patterns:
         if pattern.search(text):
             return True, f"include:{pattern.pattern}"
 
     return False, "no_positive_signal"
+
+
+async def _load_profile_data(session: AsyncSession) -> dict:
+    """Load profile data from DB for building keyword lists."""
+    result = await session.execute(select(UserProfile).limit(1))
+    profile = result.scalar_one_or_none()
+    if profile is None:
+        logger.warning("No profile found — prefilter will have empty keyword lists")
+        return {}
+    return profile.data or {}
 
 
 async def run_prefilter_batch(session: AsyncSession) -> dict:
@@ -90,6 +133,12 @@ async def run_prefilter_batch(session: AsyncSession) -> dict:
 
     Returns stats: {passed, skipped, already_filtered}.
     """
+    # Load profile and build keyword patterns once
+    profile_data = await _load_profile_data(session)
+    exclude_kw, include_kw = build_keyword_lists(profile_data)
+    exclude_patterns = _compile_patterns(exclude_kw)
+    include_patterns = _compile_patterns(include_kw)
+
     result = await session.execute(
         select(Job).where(
             Job.pipeline_stage == "cleaned",
@@ -102,7 +151,7 @@ async def run_prefilter_batch(session: AsyncSession) -> dict:
     stats = {"passed": 0, "skipped": 0, "already_filtered": 0, "total": len(jobs)}
 
     for job in jobs:
-        passes, reason = check_prefilter(job)
+        passes, reason = check_prefilter(job, exclude_patterns, include_patterns)
         job.prefilter_pass = passes
 
         if not passes:

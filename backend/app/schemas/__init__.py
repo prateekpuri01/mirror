@@ -7,7 +7,6 @@ from app.schemas.search_profiles import (
     SearchProfileUpdate,
 )
 from app.schemas.tags import TagCreate, TagRead
-from app.schemas.webhook import NocDBWebhookPayload
 
 __all__ = [
     "AppReqCreate",
@@ -18,7 +17,6 @@ __all__ = [
     "JobList",
     "JobRead",
     "JobUpdate",
-    "NocDBWebhookPayload",
     "SearchProfileCreate",
     "SearchProfileRead",
     "SearchProfileUpdate",

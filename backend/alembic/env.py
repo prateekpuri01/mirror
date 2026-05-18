@@ -16,21 +16,13 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Tables managed by NocoDB or other services — Alembic must not touch them
+# Tables Alembic must not touch (e.g. its own bookkeeping)
 EXCLUDE_TABLES = {"alembic_version"}
-EXCLUDE_PREFIXES = ("nc_", "xc_knex_")
 
 
 def include_object(object, name, type_, reflected, compare_to):
-    if type_ == "table":
-        if name in EXCLUDE_TABLES:
-            return False
-        for prefix in EXCLUDE_PREFIXES:
-            if name.startswith(prefix):
-                return False
-        # Also exclude NocoDB-related tables
-        if name in ("notification", "workspace", "workspace_user"):
-            return False
+    if type_ == "table" and name in EXCLUDE_TABLES:
+        return False
     return True
 
 

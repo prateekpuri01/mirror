@@ -458,10 +458,20 @@ export function ReviewStep({
                   {row.getIsExpanded() && (
                     <TableRow>
                       <TableCell colSpan={columns.length} className="p-0">
-                        <div className="px-6 py-4 bg-muted/30 border-t">
+                        <div className="px-6 py-4 bg-muted/30 border-t space-y-3">
+                          {row.original.url && (
+                            <a
+                              href={row.original.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-sm text-blue-700 hover:underline"
+                            >
+                              View original posting →
+                            </a>
+                          )}
                           {row.original.description_html ? (
                             <div
-                              className="prose prose-sm max-w-none max-h-[300px] overflow-auto"
+                              className="prose prose-sm max-w-none"
                               dangerouslySetInnerHTML={{
                                 __html: row.original.description_html,
                               }}

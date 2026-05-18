@@ -1,0 +1,34 @@
+# Resume DOCX styling configuration
+#
+# Copy to resume_style.yaml and customize to match your personal resume style.
+# If this file doesn't exist, the app uses these neutral defaults.
+
+colors:
+  navy: "#2B3E50"        # Section headers and name
+  orange: "#E67E22"      # Accent color (section lines)
+  contact: "#555555"     # Contact info text
+  separator: "#999999"   # Separator characters
+  dark: "#333333"        # Body text
+  name_first: "#666666"  # First name (lighter)
+  link: "#2980B9"        # Hyperlinks
+  border: "#AABBCC"      # Section border lines
+
+fonts:
+  name_light: "Calibri Light"  # First name
+  name_bold: "Calibri"         # Last name (bold)
+  body: "Calibri Light"        # Body text + section headers
+  skill_label: "Calibri"       # Skill category labels
+
+sizes:
+  name: 28         # Name font size (pt)
+  tagline: 11      # Tagline font size
+  contact: 9.5     # Contact line font size
+  section_header: 12
+  body: 10
+  body_small: 9.5
+
+margins:
+  top: 0.5       # inches
+  bottom: 0.5
+  left: 0.6
+  right: 0.6

@@ -1,5 +1,6 @@
 """Orchestrates application requirements extraction: Playwright + LLM agent + DB persistence."""
 
+import asyncio
 import logging
 import time
 from datetime import datetime, timezone
@@ -24,6 +25,25 @@ def get_req_extraction_status(job_id: str) -> dict[str, Any] | None:
 
 def _reset_status(job_id: str) -> None:
     _job_extraction_status.pop(job_id, None)
+
+
+async def cleanup_stale_extractions(session: AsyncSession) -> int:
+    """Reset extraction_status='running' to null for jobs stuck from a previous server run.
+
+    Call this on app startup to recover from interrupted extractions.
+    Returns the number of jobs cleaned up.
+    """
+    from sqlalchemy import update
+    result = await session.execute(
+        update(ApplicationRequirements)
+        .where(ApplicationRequirements.extraction_status == "running")
+        .values(extraction_status=None, extraction_error="Interrupted by server restart")
+    )
+    count = result.rowcount
+    if count > 0:
+        await session.commit()
+        logger.info("Cleaned up %d stale extraction(s) from previous run", count)
+    return count
 
 
 async def extract_application_requirements(
@@ -84,12 +104,18 @@ async def extract_application_requirements(
             page = await context.new_page()
 
             try:
-                extraction_result = await run_extraction_agent(
-                    page=page,
-                    url=url,
-                    job_title=job.display_title,
-                    company=job.display_company,
+                extraction_result = await asyncio.wait_for(
+                    run_extraction_agent(
+                        page=page,
+                        url=url,
+                        job_title=job.display_title,
+                        company=job.display_company,
+                    ),
+                    timeout=300,  # 5-minute wall-clock timeout
                 )
+            except asyncio.TimeoutError:
+                logger.warning("Extraction agent timed out after 5 minutes for job %s", job_id)
+                raise RuntimeError("Extraction timed out after 5 minutes")
             finally:
                 await browser.close()
 

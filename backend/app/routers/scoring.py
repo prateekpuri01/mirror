@@ -100,12 +100,15 @@ async def scoring_status():
 
 
 async def _run_enrichment(force: bool = False, limit: int = 0):
-    """Run enrichment pipeline in a background task with its own session."""
+    """Run enrichment pipeline in a background task with its own session.
+
+    ``brave_api_key`` is no longer threaded through — Brave was retired
+    in v0.2. Enrichment now uses the unified ``web_search`` (native LLM
+    search → SearXNG).
+    """
     async with async_session() as session:
         try:
-            await run_enrichment_pipeline(
-                session, brave_api_key=settings.brave_api_key, force=force, limit=limit
-            )
+            await run_enrichment_pipeline(session, force=force, limit=limit)
         except Exception:
             logger.exception("Enrichment pipeline failed")
 
@@ -145,9 +148,7 @@ async def enrich_company(
 ):
     """Enrich a single company with AI-generated context."""
     try:
-        company = await enrich_single(
-            session, company_id, brave_api_key=settings.brave_api_key, force=force
-        )
+        company = await enrich_single(session, company_id, force=force)
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
     if company is None:

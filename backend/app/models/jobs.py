@@ -31,6 +31,7 @@ class JobSource(str, enum.Enum):
     lever = "lever"
     hn_who_is_hiring = "hn_who_is_hiring"
     company_website = "company_website"
+    eightfold = "eightfold"
 
 
 class JobStatus(str, enum.Enum):
@@ -119,7 +120,9 @@ class Job(UUIDPrimaryKey, TimestampMixin, Base):
     application_requirements: Mapped["ApplicationRequirements | None"] = relationship(
         back_populates="job", uselist=False, lazy="selectin"
     )
-    documents: Mapped[list["Document"]] = relationship(back_populates="job", lazy="selectin")
+    documents: Mapped[list["Document"]] = relationship(
+        back_populates="job", lazy="selectin", order_by="Document.created_at.desc()"
+    )
     normalized_locations: Mapped[list["Location"]] = relationship(  # noqa: F821
         secondary="job_locations", back_populates="jobs", lazy="selectin"
     )

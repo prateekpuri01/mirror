@@ -79,12 +79,26 @@ async def delete_company(
 @router.post("/companies/{company_id}/refresh", response_model=RefreshResponse)
 async def refresh_company_endpoint(
     company_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ):
     try:
         result = await refresh_company_jobs(session, company_id)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
+
+    # Run extraction + scoring pipeline on new jobs (same as import endpoint)
+    if result.get("total_jobs", 0) > 0:
+
+        async def _run_process():
+            async with async_session() as bg_session:
+                try:
+                    await process_new_jobs(bg_session)
+                except Exception:
+                    logger.exception("Pipeline processing after refresh failed")
+
+        background_tasks.add_task(_run_process)
+
     return RefreshResponse(**result)
 
 

@@ -92,7 +92,10 @@ async def list_companies_paginated(
         "created_at": Company.created_at,
     }
     sort_col = sort_map.get(sort_by, Company.name)
-    order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
+    if sort_dir == "desc":
+        order = sort_col.desc().nullslast()
+    else:
+        order = sort_col.asc().nullsfirst()
     base = base.order_by(order)
 
     # Count

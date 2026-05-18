@@ -1,13 +1,16 @@
 """Build tailored .docx resumes from LLM-generated content.
 
-Replicates the formatting of the base resume (Prateek_Puri_Base_Resume.docx)
-using python-docx from scratch.
+Loads styling from docs/resume_style.yaml (user-customizable, gitignored).
+Falls back to neutral defaults if the file doesn't exist.
 """
 
 import logging
 import os
+import re
 from datetime import datetime, timezone
+from pathlib import Path
 
+import yaml
 from docx import Document
 from docx.enum.section import WD_ORIENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -18,34 +21,103 @@ from docx.shared import Emu, Inches, Pt, RGBColor, Twips
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Formatting constants (extracted from base resume)
+# Style loading from YAML (with neutral fallbacks)
 # ---------------------------------------------------------------------------
-COLOR_NAVY = RGBColor(0x1F, 0x38, 0x64)
-COLOR_ORANGE = RGBColor(0xC4, 0x59, 0x11)
-COLOR_CONTACT = RGBColor(0x44, 0x54, 0x6A)  # dark blue-gray for contact text
-COLOR_SEPARATOR = RGBColor(0x76, 0x71, 0x71)  # gray for separators
-COLOR_DARK = RGBColor(0x32, 0x3E, 0x4F)  # last name, body text
-COLOR_NAME_FIRST = RGBColor(0x7F, 0x7F, 0x7F)  # first name gray
-COLOR_LINK = RGBColor(0x05, 0x63, 0xC1)  # hyperlink blue
-BORDER_COLOR = "8496B0"  # blue-gray for borders
 
-FONT_NAME_LIGHT = "Dubai Light"  # first name
-FONT_NAME_BOLD = "Dubai"  # last name
-FONT_BODY = "Calibri Light"  # body text + section headers
-FONT_SKILL_LABEL = "Calibri"  # skill category labels
+_DEFAULT_STYLE = {
+    "colors": {
+        "navy": "#2B3E50",
+        "orange": "#E67E22",
+        "contact": "#555555",
+        "separator": "#999999",
+        "dark": "#333333",
+        "name_first": "#666666",
+        "link": "#2980B9",
+        "border": "#AABBCC",
+    },
+    "fonts": {
+        "name_light": "Calibri Light",
+        "name_bold": "Calibri",
+        "body": "Calibri Light",
+        "skill_label": "Calibri",
+    },
+    "sizes": {
+        "name": 28,
+        "tagline": 11,
+        "contact": 9.5,
+        "section_header": 12,
+        "body": 10,
+        "body_small": 9.5,
+    },
+    "margins": {
+        "top": 0.5,
+        "bottom": 0.5,
+        "left": 0.6,
+        "right": 0.6,
+    },
+}
 
-NAME_SIZE = Pt(34)
-TAGLINE_SIZE = Pt(11)
-CONTACT_SIZE = Pt(9.5)
-SECTION_HEADER_SIZE = Pt(12)
-BODY_SIZE = Pt(10)
-BODY_SMALL = Pt(9.5)
 
-# Margins from base resume
-MARGIN_TOP = Emu(342900)     # 0.375"
-MARGIN_BOTTOM = Emu(342900)  # 0.375"
-MARGIN_LEFT = Emu(457200)    # 0.5"
-MARGIN_RIGHT = Emu(457200)   # 0.5"
+def _load_style() -> dict:
+    """Load resume style from YAML, falling back to defaults."""
+    for path in [
+        Path("/app/docs/resume_style.yaml"),
+        Path("docs/resume_style.yaml"),
+    ]:
+        if path.exists():
+            try:
+                with open(path) as f:
+                    user_style = yaml.safe_load(f) or {}
+                # Merge: user overrides defaults
+                merged = {}
+                for section in _DEFAULT_STYLE:
+                    merged[section] = {**_DEFAULT_STYLE[section], **(user_style.get(section) or {})}
+                logger.info("Loaded resume style from %s", path)
+                return merged
+            except Exception:
+                logger.warning("Failed to load resume style from %s, using defaults", path)
+    return _DEFAULT_STYLE
+
+
+def _hex_to_rgb(hex_str: str) -> RGBColor:
+    """Convert '#RRGGBB' hex string to RGBColor."""
+    h = hex_str.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _inches_to_emu(inches: float) -> int:
+    """Convert inches to EMU (English Metric Units)."""
+    return int(inches * 914400)
+
+
+# Load on import
+_STYLE = _load_style()
+
+COLOR_NAVY = _hex_to_rgb(_STYLE["colors"]["navy"])
+COLOR_ORANGE = _hex_to_rgb(_STYLE["colors"]["orange"])
+COLOR_CONTACT = _hex_to_rgb(_STYLE["colors"]["contact"])
+COLOR_SEPARATOR = _hex_to_rgb(_STYLE["colors"]["separator"])
+COLOR_DARK = _hex_to_rgb(_STYLE["colors"]["dark"])
+COLOR_NAME_FIRST = _hex_to_rgb(_STYLE["colors"]["name_first"])
+COLOR_LINK = _hex_to_rgb(_STYLE["colors"]["link"])
+BORDER_COLOR = _STYLE["colors"]["border"].lstrip("#")
+
+FONT_NAME_LIGHT = _STYLE["fonts"]["name_light"]
+FONT_NAME_BOLD = _STYLE["fonts"]["name_bold"]
+FONT_BODY = _STYLE["fonts"]["body"]
+FONT_SKILL_LABEL = _STYLE["fonts"]["skill_label"]
+
+NAME_SIZE = Pt(_STYLE["sizes"]["name"])
+TAGLINE_SIZE = Pt(_STYLE["sizes"]["tagline"])
+CONTACT_SIZE = Pt(_STYLE["sizes"]["contact"])
+SECTION_HEADER_SIZE = Pt(_STYLE["sizes"]["section_header"])
+BODY_SIZE = Pt(_STYLE["sizes"]["body"])
+BODY_SMALL = Pt(_STYLE["sizes"]["body_small"])
+
+MARGIN_TOP = Emu(_inches_to_emu(_STYLE["margins"]["top"]))
+MARGIN_BOTTOM = Emu(_inches_to_emu(_STYLE["margins"]["bottom"]))
+MARGIN_LEFT = Emu(_inches_to_emu(_STYLE["margins"]["left"]))
+MARGIN_RIGHT = Emu(_inches_to_emu(_STYLE["margins"]["right"]))
 
 OUTPUT_DIR = "/app/output/resumes"
 
@@ -172,42 +244,73 @@ def _add_header(doc, profile_data: dict, tagline: str):
     _set_run(run, font_name=FONT_BODY, size=TAGLINE_SIZE, color=COLOR_ORANGE)
     _add_bottom_border(p, sz="2", space="4", color=BORDER_COLOR)
 
-    # Contact line
+    # Contact line: 📱 phone    ✉ email    🌐 linkedin
     email = personal.get("email", "")
     phone = personal.get("phone", "")
-    location = personal.get("location", "")
-    contact_parts = [x for x in [email, phone, location] if x]
-    contact_line = "  |  ".join(contact_parts)
+    linkedin = personal.get("linkedin", "")
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.paragraph_format.space_before = Pt(2)
     p.paragraph_format.space_after = Pt(1)
-    run = p.add_run(contact_line)
-    _set_run(run, font_name=FONT_BODY, size=CONTACT_SIZE, color=COLOR_CONTACT)
 
-    # Links line with hyperlinks
-    linkedin = personal.get("linkedin", "")
+    contact_items: list[tuple[str, str, str | None]] = []
+    if phone:
+        # Format phone as xxx-xxx-xxxx if it's 10 raw digits
+        digits = "".join(c for c in phone if c.isdigit())
+        if len(digits) == 10:
+            formatted_phone = f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+        else:
+            formatted_phone = phone
+        contact_items.append(("\U0001f4f1 ", formatted_phone, None))  # 📱
+    if email:
+        contact_items.append(("\u2709 ", email, f"mailto:{email}"))  # ✉
+    if linkedin:
+        linkedin_url = linkedin if linkedin.startswith("http") else f"https://{linkedin}"
+        # Display as short path: linkedin.com/in/username
+        display = linkedin_url.replace("https://www.", "").replace("http://www.", "").replace("https://", "").replace("http://", "").rstrip("/")
+        contact_items.append(("\U0001f310 ", display, linkedin_url))  # 🌐
+
+    for i, (emoji, text, url) in enumerate(contact_items):
+        if i > 0:
+            run = p.add_run("    ")
+            _set_run(run, font_name=FONT_BODY, size=CONTACT_SIZE, color=COLOR_CONTACT)
+        run = p.add_run(emoji)
+        _set_run(run, font_name=FONT_BODY, size=CONTACT_SIZE, color=COLOR_CONTACT)
+        if url:
+            _add_hyperlink(p, url, text)
+        else:
+            run = p.add_run(text)
+            _set_run(run, font_name=FONT_BODY, size=CONTACT_SIZE, color=COLOR_CONTACT)
+
+    # Professional links line: Google Scholar | RAND Profile | etc.
+    # Built from google_scholar (auto) + personal.professional_links[]
     scholar = personal.get("google_scholar", "")
+    professional_links: list[dict] = personal.get("professional_links", [])
 
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(0)
-    p.paragraph_format.space_after = Pt(2)
-
-    links = []
+    links: list[tuple[str, str]] = []
     if scholar:
         scholar_url = scholar if scholar.startswith("http") else f"https://{scholar}"
         links.append(("Google Scholar", scholar_url))
-    if linkedin:
-        linkedin_url = linkedin if linkedin.startswith("http") else f"https://{linkedin}"
-        links.append(("LinkedIn", linkedin_url))
+    for pl in professional_links:
+        url = pl.get("url", "")
+        label = pl.get("label", "")
+        if url and label:
+            if not url.startswith("http"):
+                url = f"https://{url}"
+            links.append((label, url))
 
-    for i, (label, url) in enumerate(links):
-        if i > 0:
-            run = p.add_run("  |  ")
-            _set_run(run, font_name=FONT_BODY, size=CONTACT_SIZE, color=COLOR_SEPARATOR)
-        _add_hyperlink(p, url, label)
+    if links:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_before = Pt(0)
+        p.paragraph_format.space_after = Pt(2)
+
+        for i, (label, url) in enumerate(links):
+            if i > 0:
+                run = p.add_run("  |  ")
+                _set_run(run, font_name=FONT_BODY, size=CONTACT_SIZE, color=COLOR_SEPARATOR)
+            _add_hyperlink(p, url, label)
 
 
 def _add_section_header(doc, title: str):
@@ -283,57 +386,62 @@ def _add_experience_block(doc, org: str, title: str, location: str, dates: str, 
     run = p.add_run(f"  |  {dates}")
     _set_run(run, size=BODY_SMALL, color=COLOR_SEPARATOR)
 
-    # Bullets
-    for bullet_text in bullets:
+    # Bullets — support both old (string) and new (dict with "text") format
+    for bullet in bullets:
+        bullet_text = bullet["text"] if isinstance(bullet, dict) else bullet
         _add_bullet_paragraph(doc, bullet_text)
 
 
 def _add_experience(doc, experience_data: dict, profile_data: dict):
-    """Add the Professional Experience section."""
+    """Add the Professional Experience section.
+
+    Dynamically iterates over work_history from profile data, matching
+    employer keys to experience blocks from the LLM output.
+    """
+    from app.ai.utils import employer_key
+
     _add_section_header(doc, "Professional Experience")
 
     work_history = profile_data.get("work_history", [])
-    employer_info = {}
+
+    # Build a lookup from employer_key → work history metadata
+    wh_by_key = {}
     for wh in work_history:
-        employer = wh.get("employer", "")
-        key = employer.lower()
+        key = employer_key(wh.get("employer", ""))
         end = wh.get("end") or "Present"
-        employer_info[key] = {
-            "org": employer,
+        wh_by_key[key] = {
+            "org": wh.get("employer", ""),
             "title": wh.get("title", ""),
-            "location": wh.get("location", "Washington, D.C."),
+            "location": wh.get("location", ""),
             "dates": f"{wh.get('start', '')} – {end}",
         }
 
-    # RAND
-    rand_info = employer_info.get("the rand corporation", employer_info.get("rand corporation", {
-        "org": "The RAND Corporation", "title": "Information Scientist",
-        "location": "Washington, D.C.", "dates": "2022 – Present",
-    }))
-    rand_bullets = experience_data.get("rand", {}).get("bullets", [])
-    if rand_bullets:
-        _add_experience_block(doc, rand_info["org"], rand_info["title"],
-                              rand_info["location"], rand_info["dates"], rand_bullets)
+    # Iterate experience blocks in work_history order (most recent first)
+    for wh in work_history:
+        key = employer_key(wh.get("employer", ""))
+        emp_data = experience_data.get(key, {})
+        bullets = emp_data.get("bullets", [])
+        if not bullets:
+            continue
 
-    # FINRA
-    finra_info = employer_info.get("finra", {
-        "org": "FINRA", "title": "Senior Data Scientist",
-        "location": "Washington, D.C.", "dates": "2020 – 2022",
-    })
-    finra_bullets = experience_data.get("finra", {}).get("bullets", [])
-    if finra_bullets:
-        _add_experience_block(doc, finra_info["org"], finra_info["title"],
-                              finra_info["location"], finra_info["dates"], finra_bullets)
+        info = wh_by_key.get(key, {})
+        _add_experience_block(
+            doc,
+            info.get("org", key),
+            info.get("title", ""),
+            info.get("location", ""),
+            info.get("dates", ""),
+            bullets,
+        )
 
-    # UCLA
-    ucla_info = employer_info.get("ucla physics", employer_info.get("ucla", {
-        "org": "UCLA Physics", "title": "PhD Researcher",
-        "location": "Los Angeles, CA", "dates": "2014 – 2019",
-    }))
-    ucla_bullets = experience_data.get("ucla", {}).get("bullets", [])
-    if ucla_bullets:
-        _add_experience_block(doc, ucla_info["org"], ucla_info["title"],
-                              ucla_info["location"], ucla_info["dates"], ucla_bullets)
+    # Also render any experience blocks that didn't match a work_history entry
+    rendered_keys = {employer_key(wh.get("employer", "")) for wh in work_history}
+    for key, emp_data in experience_data.items():
+        if key in rendered_keys:
+            continue
+        bullets = emp_data.get("bullets", [])
+        if bullets:
+            _add_experience_block(doc, key, "", "", "", bullets)
 
 
 def _add_publications(doc, publications: list):
@@ -355,7 +463,6 @@ def _add_skills(doc, skills_data: dict):
         "ai_systems": "AI Systems",
         "data_science": "Data Science",
         "engineering": "Engineering",
-        "communication": "Communication",
     }
 
     for key, label in category_labels.items():
@@ -407,7 +514,20 @@ def _add_awards(doc, awards_text: str):
     _set_run(run, size=BODY_SMALL)
 
 
-def build_docx(resume_data: dict, profile_data: dict, job_id: str) -> str:
+def _sanitize_filename(s: str) -> str:
+    """Remove characters unsafe for filenames, preserve spaces."""
+    s = re.sub(r'[<>:"/\\|?*]', '', s)
+    s = re.sub(r'\s+', ' ', s.strip())
+    return s
+
+
+def build_docx(
+    resume_data: dict,
+    profile_data: dict,
+    job_id: str,
+    company: str | None = None,
+    title: str | None = None,
+) -> str:
     """Build a formatted .docx resume from LLM-generated content.
 
     Returns path to the written .docx file.
@@ -448,8 +568,17 @@ def build_docx(resume_data: dict, profile_data: dict, job_id: str) -> str:
     # Ensure output directory exists
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    filename = f"{job_id}_{timestamp}.docx"
+    if company and title:
+        # Use candidate name from profile if available
+        personal = profile_data.get("personal", {})
+        name = personal.get("name", "Resume")
+        safe_name = _sanitize_filename(name)
+        safe_company = _sanitize_filename(company)
+        safe_title = _sanitize_filename(title)
+        filename = f"{safe_name} {safe_company} {safe_title}.docx"
+    else:
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        filename = f"{job_id}_{timestamp}.docx"
     filepath = os.path.join(OUTPUT_DIR, filename)
 
     doc.save(filepath)

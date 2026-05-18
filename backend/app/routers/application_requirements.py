@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -17,6 +18,33 @@ from app.services.app_req_extraction_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["requirements"])
+
+
+async def _learn_from_answer_edit(
+    old_value: str,
+    new_value: str,
+    field_label: str,
+    job_id: uuid.UUID,
+    job_title: str,
+    company: str,
+) -> None:
+    """Background task: extract writing memory rules from a manual answer
+    edit. Owns its own DB session — the request-scoped one is closed by the
+    time this fires.
+    """
+    try:
+        from app.ai.writing_memory import extract_and_learn
+        async with async_session() as bg_session:
+            await extract_and_learn(
+                bg_session,
+                old_value, new_value,
+                f"answer.{field_label}", job_id,
+                domain="answer",
+                job_title=job_title, company=company,
+            )
+            await bg_session.commit()
+    except Exception:
+        logger.debug("Background writing memory extraction (answer) failed", exc_info=True)
 
 
 class DraftAnswersRequest(BaseModel):
@@ -103,6 +131,7 @@ async def extraction_status(
 async def draft_answers(
     job_id: uuid.UUID,
     body: DraftAnswersRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_session),
 ):
     """Draft AI-generated responses for short-answer application fields."""
@@ -130,7 +159,7 @@ async def draft_answers(
     if profile is None:
         raise HTTPException(status_code=500, detail="User profile not synced")
 
-    # 4. Load company notes
+    # 4. Load company notes + research
     company_notes = None
     if job.company_id:
         result = await session.execute(
@@ -139,6 +168,11 @@ async def draft_answers(
         company = result.scalar_one_or_none()
         if company and company.notes:
             company_notes = company.notes
+    company_research = (job.extra_metadata or {}).get("company_research")
+
+    # 4b. Load writing memory for answer drafting
+    from app.ai.writing_memory import format_writing_memory
+    answer_memory_text = await format_writing_memory(session, "answer")
 
     # 5. Get short answer fields
     fields = app_req.application_fields
@@ -151,6 +185,8 @@ async def draft_answers(
 
     if body.field_label:
         # --- Single field draft ---
+        from app.ai.answer_drafter import _prune_history
+
         field = next(
             (f for f in short_answers if f["label"] == body.field_label), None
         )
@@ -160,6 +196,33 @@ async def draft_answers(
                 detail=f"Field '{body.field_label}' not found",
             )
 
+        now = datetime.now(timezone.utc).isoformat()
+        history = field.get("draft_history") or []
+
+        # Detect manual edit: if draft_response differs from last ai_draft in history
+        current_draft = field.get("draft_response")
+        if current_draft and history:
+            last_ai = next(
+                (e for e in reversed(history) if e["type"] == "ai_draft"), None
+            )
+            if last_ai and last_ai["content"] != current_draft:
+                history.append({"type": "manual_edit", "content": current_draft, "timestamp": now})
+
+                # Fire writing memory extraction in the background — used to
+                # be `await`-ed inline, which kept the redraft request open
+                # for the 3–10s the extraction LLM takes. Now the redraft
+                # response goes out as soon as the new draft is saved.
+                background_tasks.add_task(
+                    _learn_from_answer_edit,
+                    last_ai["content"], current_draft,
+                    body.field_label, job_id,
+                    job.title or "", job.company or "",
+                )
+
+        # Append instruction if provided
+        if body.instructions:
+            history.append({"type": "instruction", "content": body.instructions, "timestamp": now})
+
         logger.info("Drafting single answer for '%s' on job %s", body.field_label, job_id)
         response_text = await draft_single_answer(
             job=job,
@@ -167,12 +230,20 @@ async def draft_answers(
             field=field,
             instructions=body.instructions,
             company_notes=company_notes,
+            draft_history=history if history else None,
+            company_research=company_research,
+            memory_text=answer_memory_text,
         )
 
-        # Update the field's draft_response in the JSONB
+        # Append AI draft to history and prune
+        history.append({"type": "ai_draft", "content": response_text, "timestamp": now})
+        history = _prune_history(history)
+
+        # Update the field's draft_response and draft_history in the JSONB
         for f in fields:
             if f["label"] == body.field_label:
                 f["draft_response"] = response_text
+                f["draft_history"] = history
                 break
 
         app_req.application_fields = fields
@@ -190,12 +261,19 @@ async def draft_answers(
             profile_data=profile.data,
             short_answer_fields=short_answers,
             company_notes=company_notes,
+            company_research=company_research,
+            memory_text=answer_memory_text,
         )
 
-        # Update each field's draft_response in the JSONB
+        now = datetime.now(timezone.utc).isoformat()
+
+        # Update each field's draft_response and reset draft_history
         for f in fields:
             if f["label"] in drafts:
                 f["draft_response"] = drafts[f["label"]]
+                f["draft_history"] = [
+                    {"type": "ai_draft", "content": drafts[f["label"]], "timestamp": now}
+                ]
 
         app_req.application_fields = fields
         from sqlalchemy.orm.attributes import flag_modified

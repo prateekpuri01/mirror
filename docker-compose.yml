@@ -1,17 +1,25 @@
+# Docker Compose stack for Mirror.
+#
+# Every env var has a sensible default — no .env file is required to boot.
+# API keys + provider choice are configured at runtime via the in-app
+# /setup wizard and persisted to the app_settings table in Postgres.
+# Power users can still pre-fill keys via env vars (or a .env file that
+# docker compose auto-loads from the working directory) if they prefer.
+
 services:
   db:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-jobboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-jobboard}
+      POSTGRES_DB: ${POSTGRES_DB:-jobboard}
     ports:
       - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-jobboard}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -32,20 +40,28 @@ services:
       context: backend/
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "8085:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      BRAVE_API_KEY: ${BRAVE_API_KEY:-}
-      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
-      HOT_SEARCH_MODEL: ${HOT_SEARCH_MODEL:-gpt-4o-mini}
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://jobboard:jobboard@db:5432/jobboard}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      SEARXNG_URL: ${SEARXNG_URL:-http://searxng:8080}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
       PROFILE_YAML_PATH: ${PROFILE_YAML_PATH:-/app/docs/profile.yaml}
+      PROFILE_COMPLETE_YAML_PATH: ${PROFILE_COMPLETE_YAML_PATH:-/app/docs/profile_complete.yaml}
+      HOT_SEARCH_MODEL: ${HOT_SEARCH_MODEL:-gpt-4o-mini}
+      # Provider + key env vars below are FALLBACKS — the /setup wizard
+      # writes into the app_settings table, which takes precedence at
+      # runtime. Leave these empty unless you want to skip the wizard.
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://localhost:11434/v1}
     volumes:
       - ./output:/app/output
       - ./docs:/app/docs:ro
       - ./resume:/app/resume:ro
+      # NOTE: no ./.env mount — runtime config lives in the app_settings
+      # table now. Persists across container rebuilds via the pgdata volume.
     depends_on:
       db:
         condition: service_healthy
@@ -56,25 +72,24 @@ services:
     build:
       context: frontend/
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: http://localhost:8085
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3050:3000"
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8085
     depends_on:
       - api
 
-  nocodb:
-    image: nocodb/nocodb:latest
+  searxng:
+    image: searxng/searxng:latest
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8888:8080"
+    volumes:
+      - ./searxng:/etc/searxng
     environment:
-      NC_DB: "pg://db:5432?u=${POSTGRES_USER}&p=${POSTGRES_PASSWORD}&d=${POSTGRES_DB}"
-    depends_on:
-      db:
-        condition: service_healthy
+      - SEARXNG_BASE_URL=http://searxng:8080
 
 volumes:
   pgdata:

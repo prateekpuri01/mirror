@@ -43,5 +43,21 @@ class LivenessStats(BaseModel):
     total_active: int = 0
 
 
+class RecheckExpiredResult(BaseModel):
+    checked: int = 0
+    revived: int = 0
+    confirmed_dead: int = 0
+    errors: int = 0
+
+
 class GCResult(BaseModel):
     archived: int = 0
+
+
+class ReprocessRequest(BaseModel):
+    job_ids: list[str]
+    operations: list[str]  # "score" | "extract" | "requirements"
+
+
+class ReprocessResult(BaseModel):
+    job_ids: list[str] = []

@@ -24,7 +24,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 from sqlalchemy import select, update
@@ -36,10 +36,9 @@ from app.models.ats_learning import AtsDomainCache, AtsLearnedPattern
 from app.models.companies import Company
 from app.models.jobs import Job, JobSource, JobStatus
 from app.models.profile import UserProfile
-from app.scrapers.ashby import AshbyScraper
+from app.scrapers import SCRAPERS_BY_ATS, make_temp_company
 from app.scrapers.base import ScrapedJob
-from app.scrapers.greenhouse import GreenhouseScraper
-from app.scrapers.lever import LeverScraper
+from app.services.scrape_cache import get_scraped_jobs, set_scraped_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +168,12 @@ _ASHBY_PATTERNS = [
     re.compile(r"(?P<slug>[^.]+)\.ashbyhq\.com"),
 ]
 
+# Eightfold: jobs.{domain}/careers or careers.{domain}/careers
+# The "slug" is the company domain (e.g. nvidia.com)
+_EIGHTFOLD_PATTERNS = [
+    re.compile(r"(?:jobs|careers)\.(?P<slug>[^/]+\.[a-z]{2,})/careers"),
+]
+
 
 def _regex_match(url: str) -> URLResolution | None:
     """Step 1b: Try regex patterns against known ATS domains."""
@@ -194,6 +199,27 @@ def _regex_match(url: str) -> URLResolution | None:
             return URLResolution(
                 ats="ashby", slug=m.group("slug"), job_url=url,
                 method="regex", confidence="high",
+            )
+
+    for pattern in _EIGHTFOLD_PATTERNS:
+        m = pattern.search(url)
+        if m:
+            parsed = urlparse(url)
+            careers_url = f"{parsed.scheme}://{parsed.netloc}/careers"
+            # Preserve filter_* query params in the slug (e.g. nvidia.com?filter_job_category=research)
+            slug = m.group("slug")
+            if parsed.query:
+                filter_params = "&".join(
+                    f"{k}={v}" for k, v in parse_qs(parsed.query).items()
+                    if k.startswith("filter_")
+                    for v in [v[0]]  # take first value
+                )
+                if filter_params:
+                    slug = f"{slug}?{filter_params}"
+            return URLResolution(
+                ats="eightfold", slug=slug, job_url=url,
+                method="regex", confidence="high",
+                careers_url=careers_url,
             )
 
     return None
@@ -233,6 +259,27 @@ async def _verify_ats_slug(
             data = resp.json()
             board = data.get("data", {}).get("jobBoard")
             return board is not None
+
+        elif ats == "eightfold":
+            from app.scrapers.eightfold import parse_eightfold_slug, _HEADERS
+            domain, _ = parse_eightfold_slug(slug)
+            api_base = f"https://jobs.{domain}"
+            # Need session cookie first
+            await http_client.get(
+                f"{api_base}/careers",
+                headers=_HEADERS,
+                follow_redirects=True,
+            )
+            resp = await http_client.get(
+                f"{api_base}/api/pcsx/search",
+                params={"domain": domain, "start": "0"},
+                headers={**_HEADERS, "Referer": f"{api_base}/careers"},
+            )
+            if resp.status_code != 200:
+                return False
+            body = resp.json()
+            data = body.get("data") or body
+            return data.get("count", 0) > 0
 
     except Exception:
         logger.debug("Verification failed for %s/%s", ats, slug)
@@ -344,6 +391,19 @@ def _fingerprint_html(html: str) -> tuple[str, str] | None:
         logger.info("Ashby presence detected (ashby_jid) but no slug extracted")
         return ("ashby", "__probe_needed__")
 
+    # --- Eightfold ---
+    # Eightfold pages reference pcsxConfig or eightfold-font-base
+    eightfold_markers = re.search(r'pcsxConfig|eightfold-font-base|/api/pcsx/', html)
+    if eightfold_markers:
+        # Extract domain from the page's pcsxConfig or URL references
+        domain_match = re.search(r'"domain"\s*:\s*"([^"]+)"', html)
+        if domain_match:
+            slug = domain_match.group(1)
+            logger.info("Fingerprinted Eightfold domain: %s", slug)
+            return ("eightfold", slug)
+        logger.info("Eightfold presence detected but no domain extracted")
+        return ("eightfold", "__probe_needed__")
+
     return None
 
 
@@ -395,6 +455,11 @@ def _slug_candidates_from_url(url: str) -> list[str]:
     if len(parts) >= 2:
         _add("".join(parts))
 
+    # Registrable domain (e.g. "nvidia.com") — needed for Eightfold where slug = domain
+    if len(parts) >= 2:
+        registrable = ".".join(parts[-2:])
+        _add(registrable)
+
     return candidates
 
 
@@ -424,11 +489,23 @@ def _hostname_from_url(url: str) -> str:
     return re.sub(r"^www\.", "", host)
 
 
+# Shared ATS domains — slug comes from URL path, NOT the domain.
+# Never cache these; the regex step handles them correctly.
+_SHARED_ATS_DOMAINS = {
+    "boards.greenhouse.io",
+    "job-boards.greenhouse.io",
+    "jobs.lever.co",
+    "jobs.ashbyhq.com",
+}
+
+
 async def _persist_domain_mapping(url: str, ats: str, slug: str, method: str) -> None:
     """Upsert into ats_domain_cache and update in-process cache."""
     domain = _hostname_from_url(url)
     if not domain:
         return
+    if domain in _SHARED_ATS_DOMAINS:
+        return  # slug is per-path, not per-domain
     try:
         async with async_session() as sess:
             stmt = pg_insert(AtsDomainCache).values(
@@ -587,7 +664,7 @@ _LLM_SYSTEM = """\
 You are an expert at identifying Applicant Tracking Systems (ATS) from career page HTML.
 
 Given raw HTML from a company careers page, identify:
-1. The ATS platform used (Greenhouse, Lever, Ashby, or null if unknown)
+1. The ATS platform used (Greenhouse, Lever, Ashby, Eightfold, or null if unknown)
 2. The company slug/identifier in that ATS
 
 Also suggest a **generalizable regex pattern** that would detect this ATS integration \
@@ -595,10 +672,10 @@ in HTML from other companies using the same setup. This pattern will be used to 
 automatically detect the ATS on future pages without needing LLM analysis.
 
 Look for:
-- References to greenhouse.io, lever.co, ashbyhq.com in links, scripts, iframes, fetch calls
+- References to greenhouse.io, lever.co, ashbyhq.com, eightfold/pcsx in links, scripts, iframes, fetch calls
 - Embedded job board widgets, iframe sources, API endpoint calls
 - JavaScript that loads job listings from an external ATS
-- URL patterns: boards.greenhouse.io/{slug}, jobs.lever.co/{slug}, jobs.ashbyhq.com/{slug}
+- URL patterns: boards.greenhouse.io/{slug}, jobs.lever.co/{slug}, jobs.ashbyhq.com/{slug}, jobs.{domain}/api/pcsx
 - Greenhouse board tokens in script tags or data attributes
 - Hidden form inputs with board_token values
 - JSON data embedded in script tags with ATS identifiers
@@ -789,9 +866,9 @@ async def resolve_job_url(url: str) -> URLResolution:
                         )
                         await _record_pattern_failure(pattern_id)
 
-        # --- Step 1e: Domain slug probing (try all 3 ATS APIs) ---
+        # --- Step 1e: Domain slug probing (try all ATS APIs) ---
         if html:
-            for probe_ats in ("greenhouse", "lever", "ashby"):
+            for probe_ats in ("greenhouse", "lever", "ashby", "eightfold"):
                 probed = await _probe_domain_slugs(probe_ats, url, http_client)
                 if probed:
                     logger.info("Step 1e (probe): %s/%s verified", probe_ats, probed)
@@ -892,16 +969,25 @@ def _build_keyword_sets(profile_data: dict) -> dict:
     for domain in profile_data.get("domains", []):
         keywords["domains"].add(domain.lower())
 
-    skills = profile_data.get("skills", {})
-    for skill in skills.get("technical", []):
+    from app.ai.skill_utils import flatten_skills
+    for skill in flatten_skills(profile_data.get("skills", {})):
         keywords["technical_skills"].add(skill.lower())
 
     prefs = profile_data.get("search_preferences", {})
-    for industry in prefs.get("industries_ranked", []):
-        keywords["industry_keywords"] |= _tokenize(industry)
+    # Prefer new fields, fall back to legacy
+    if prefs.get("positive_signals"):
+        for signal in prefs["positive_signals"]:
+            keywords["industry_keywords"] |= _tokenize(signal)
+    else:
+        for industry in prefs.get("industries_ranked", []):
+            keywords["industry_keywords"] |= _tokenize(industry)
 
-    for breaker in prefs.get("deal_breakers", []):
-        keywords["deal_breakers"].add(breaker.lower())
+    if prefs.get("exclusions"):
+        for excl in prefs["exclusions"]:
+            keywords["deal_breakers"].add(excl.lower())
+    else:
+        for breaker in prefs.get("deal_breakers", []):
+            keywords["deal_breakers"].add(breaker.lower())
 
     personal = profile_data.get("personal", {})
     keywords["remote_preference"] = personal.get("remote_preference")
@@ -974,11 +1060,11 @@ def score_job_relevance(job: ScrapedJob, profile_keywords: dict) -> int:
 # Discovery orchestration
 # ===========================================================================
 
-_SCRAPER_MAP = {
-    "greenhouse": GreenhouseScraper(),
-    "lever": LeverScraper(),
-    "ashby": AshbyScraper(),
-}
+# Backwards-compat aliases — both registries now live in app.scrapers
+# (see scrapers/__init__.py). Kept here so any in-module references and
+# external imports continue to work.
+_SCRAPER_MAP = SCRAPERS_BY_ATS
+_make_temp_company = make_temp_company
 
 
 async def _load_profile_keywords(session: AsyncSession) -> dict:
@@ -988,18 +1074,6 @@ async def _load_profile_keywords(session: AsyncSession) -> dict:
     if not profile or not profile.data:
         return {}
     return _build_keyword_sets(profile.data)
-
-
-def _make_temp_company(ats: str, slug: str) -> Company:
-    """Create a temporary (non-persisted) Company with the right slug set."""
-    company = Company(name=slug)
-    if ats == "greenhouse":
-        company.greenhouse_slug = slug
-    elif ats == "lever":
-        company.lever_slug = slug
-    elif ats == "ashby":
-        company.ashby_slug = slug
-    return company
 
 
 async def discover_company(
@@ -1049,12 +1123,21 @@ async def _discover_company_inner(
         }
 
     temp_company = _make_temp_company(resolution.ats, resolution.slug)
-    company_name = resolution.slug.replace("-", " ").title()
+    if resolution.careers_url:
+        temp_company.careers_url = resolution.careers_url
+    # Derive a display name from the slug (strip filters for Eightfold, strip TLD)
+    name_slug = resolution.slug.split("?")[0] if "?" in resolution.slug else resolution.slug
+    if resolution.ats == "eightfold":
+        name_slug = name_slug.rsplit(".", 1)[0]  # "nvidia.com" -> "nvidia"
+    company_name = name_slug.replace("-", " ").title()
     progress.company_name = company_name
     progress.listing()
 
     async with httpx.AsyncClient(timeout=60.0) as client:
         scraped_jobs = await scraper.scrape_company(temp_company, client, known_urls=known_urls)
+
+    # Cache the full scrape so import doesn't re-scrape
+    await set_scraped_jobs(resolution.ats, resolution.slug, scraped_jobs)
 
     # Score jobs
     profile_keywords = await _load_profile_keywords(session)
@@ -1099,7 +1182,21 @@ async def import_company(
     selected_urls: list[str] | None,
     monitoring_active: bool = True,
 ) -> dict:
-    """Create company record (persisting the discovered slug), scrape, persist selected jobs."""
+    """Create company record (persisting the discovered slug), scrape, persist selected jobs.
+
+    When ``ats == "direct"``, the hit came from the Hot Search preview for a
+    company without a supported ATS. Jobs are persisted from the per-URL
+    extraction cache rather than scraped from an ATS board.
+    """
+    if ats == "direct":
+        return await _import_direct_jobs(
+            session,
+            name=name,
+            website=website,
+            selected_urls=selected_urls or [],
+            monitoring_active=monitoring_active,
+        )
+
     # Build company data with the ATS slug
     company_data = {
         "name": name,
@@ -1112,14 +1209,17 @@ async def import_company(
         company_data["lever_slug"] = slug
     elif ats == "ashby":
         company_data["ashby_slug"] = slug
+    elif ats == "eightfold":
+        company_data["eightfold_slug"] = slug
 
-    # Check if company with same slug already exists
+    # Check if company with same slug already exists, fall back to name lookup
     existing = await _find_company_by_slug(session, ats, slug)
+    if not existing and name:
+        result = await session.execute(select(Company).where(Company.name == name))
+        existing = result.scalar_one_or_none()
 
     if existing:
         company = existing
-        if name and name != company.name:
-            company.name = name
         # Persist the slug if it wasn't already set
         _ensure_slug(company, ats, slug)
     else:
@@ -1127,14 +1227,19 @@ async def import_company(
         session.add(company)
         await session.flush()
 
-    # Scrape jobs
-    scraper = _SCRAPER_MAP.get(ats)
-    if not scraper:
-        await session.commit()
-        return {"company_id": str(company.id), "company_name": company.name, "jobs_imported": 0, "job_ids": []}
-
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        scraped_jobs = await scraper.scrape_company(company, client)
+    # Load jobs from cache first, fall back to fresh scrape
+    scraped_jobs = await get_scraped_jobs(ats, slug)
+    if scraped_jobs is None:
+        scraper = _SCRAPER_MAP.get(ats)
+        if not scraper:
+            await session.commit()
+            return {"company_id": str(company.id), "company_name": company.name, "jobs_imported": 0, "job_ids": []}
+        logger.info("Cache miss for %s/%s — re-scraping", ats, slug)
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            scraped_jobs = await scraper.scrape_company(company, client)
+        await set_scraped_jobs(ats, slug, scraped_jobs)
+    else:
+        logger.info("Using cached scrape for %s/%s (%d jobs)", ats, slug, len(scraped_jobs))
 
     # Filter to selected URLs if provided
     if selected_urls:
@@ -1188,6 +1293,92 @@ async def import_company(
 
 
 # ===========================================================================
+# Direct-URL import (non-ATS companies surfaced by Hot Search)
+# ===========================================================================
+
+
+async def _import_direct_jobs(
+    session: AsyncSession,
+    *,
+    name: str,
+    website: str | None,
+    selected_urls: list[str],
+    monitoring_active: bool,
+) -> dict:
+    """Persist user-confirmed Hot Search jobs whose source was a direct URL
+    (Perplexity/Lead/browser-agent drills or one-off job URLs).
+
+    Uses the per-URL extraction cache populated during the preview. Falls
+    back to re-extracting if the cache entry expired.
+    """
+    from app.services.job_url_importer import extract_job_from_url
+    from app.services.scrape_cache import get_direct_extract, set_direct_extract
+
+    # Find-or-create the company by name (no ATS slug here)
+    company: Company | None = None
+    if name:
+        result = await session.execute(select(Company).where(Company.name == name))
+        company = result.scalar_one_or_none()
+    if company is None:
+        company = Company(
+            name=name or "Unknown",
+            website=website,
+            monitoring_active=monitoring_active,
+        )
+        session.add(company)
+        await session.flush()
+
+    new_count = 0
+    job_ids: list[str] = []
+    for url in selected_urls:
+        if not url:
+            continue
+        # Skip if this URL is already imported
+        existing_job = (
+            await session.execute(select(Job).where(Job.url == url))
+        ).scalar_one_or_none()
+        if existing_job:
+            continue
+
+        job_data = await get_direct_extract(url)
+        if not job_data:
+            try:
+                job_data = await extract_job_from_url(url)
+                await set_direct_extract(url, job_data)
+            except Exception as e:
+                logger.warning("Direct import re-extract failed for %s: %s", url, e)
+                continue
+
+        job = Job(
+            title=job_data.get("title", ""),
+            company=company.name,
+            company_id=company.id,
+            location=job_data.get("location"),
+            remote=bool(job_data.get("remote", False)),
+            salary_min=job_data.get("salary_min"),
+            salary_max=job_data.get("salary_max"),
+            description=job_data.get("description") or "(no description extracted)",
+            url=url,
+            source=JobSource.manual,
+            status=JobStatus.new,
+        )
+        session.add(job)
+        await session.flush()
+        job_ids.append(str(job.id))
+        new_count += 1
+
+    company.last_scraped_at = datetime.now(timezone.utc)
+    await session.commit()
+    await session.refresh(company)
+    return {
+        "company_id": str(company.id),
+        "company_name": company.name,
+        "jobs_imported": new_count,
+        "job_ids": job_ids,
+    }
+
+
+# ===========================================================================
 # Refresh orchestration
 # ===========================================================================
 
@@ -1212,14 +1403,36 @@ async def refresh_company_jobs(
     if not company:
         raise ValueError("Company not found")
 
-    # Find a job URL to use as the probe — any existing job from this company
-    probe_result = await session.execute(
-        select(Job.url).where(
-            Job.company_id == company_id,
-            Job.url.isnot(None),
-        ).limit(1)
-    )
-    probe_url = probe_result.scalar_one_or_none()
+    # Determine ATS + slug from the company record (preferred) or a probe URL
+    ats_slug = None
+    if company.greenhouse_slug:
+        ats_slug = ("greenhouse", company.greenhouse_slug)
+    elif company.lever_slug:
+        ats_slug = ("lever", company.lever_slug)
+    elif company.ashby_slug:
+        ats_slug = ("ashby", company.ashby_slug)
+    elif company.eightfold_slug:
+        ats_slug = ("eightfold", company.eightfold_slug)
+
+    if ats_slug:
+        # Build a synthetic probe URL so discover_company resolves instantly
+        ats, slug = ats_slug
+        ats_url_templates = {
+            "greenhouse": "https://boards.greenhouse.io/{slug}/jobs/1",
+            "lever": "https://jobs.lever.co/{slug}/1",
+            "ashby": "https://jobs.ashbyhq.com/{slug}/1",
+            "eightfold": "https://jobs.{slug}/careers",
+        }
+        probe_url = ats_url_templates[ats].format(slug=slug)
+    else:
+        # Fallback: pick a job URL as the probe
+        probe_result = await session.execute(
+            select(Job.url).where(
+                Job.company_id == company_id,
+                Job.url.isnot(None),
+            ).limit(1)
+        )
+        probe_url = probe_result.scalar_one_or_none()
 
     if not probe_url:
         return {
@@ -1265,17 +1478,23 @@ async def refresh_company_jobs(
     )
     existing_urls = {row[0] for row in existing_result.all()}
 
-    # Mark expired: jobs in DB but no longer in discovery results
+    # Mark expired: jobs in DB but no longer in discovery results.
+    # Only expire jobs from the same ATS source — never expire manually-added
+    # or different-source jobs just because they aren't in this scraper's results.
     all_discovered_urls = {j["url"] for j in discovery.get("jobs", [])}
     expired_count = 0
     disappeared_urls = existing_urls - all_discovered_urls
-    if disappeared_urls:
+    if disappeared_urls and ats:
+        from app.models.jobs import JobSource
+        source_enum = getattr(JobSource, ats, None)
+        source_filter = Job.source == source_enum if source_enum else Job.source != "manual"
         result = await session.execute(
             update(Job)
             .where(
                 Job.company_id == company_id,
                 Job.url.in_(disappeared_urls),
                 Job.expired_at.is_(None),
+                source_filter,
             )
             .values(expired_at=datetime.now(timezone.utc))
         )
@@ -1309,11 +1528,18 @@ async def _find_company_by_slug(
         "greenhouse": Company.greenhouse_slug,
         "lever": Company.lever_slug,
         "ashby": Company.ashby_slug,
+        "eightfold": Company.eightfold_slug,
     }.get(ats)
     if not col:
         return None
     result = await session.execute(select(Company).where(col == slug))
-    return result.scalar_one_or_none()
+    found = result.scalar_one_or_none()
+    # For Eightfold, also try matching just the domain (slug may include filters)
+    if not found and ats == "eightfold" and "?" in slug:
+        domain = slug.split("?", 1)[0]
+        result = await session.execute(select(Company).where(col.startswith(domain)))
+        found = result.scalar_one_or_none()
+    return found
 
 
 def _ensure_slug(company: Company, ats: str, slug: str) -> None:
@@ -1324,3 +1550,5 @@ def _ensure_slug(company: Company, ats: str, slug: str) -> None:
         company.lever_slug = slug
     elif ats == "ashby" and not company.ashby_slug:
         company.ashby_slug = slug
+    elif ats == "eightfold" and not company.eightfold_slug:
+        company.eightfold_slug = slug

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, Fragment } from "react";
+import { useCallback, useMemo, Fragment } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -15,6 +15,7 @@ import { Job, JobsParams } from "@/lib/types";
 import { STATUS_CONFIG, SOURCE_CONFIG } from "@/lib/constants";
 import { useResumeGeneration } from "@/hooks/use-resume-generation";
 import { useJobProcessing } from "@/hooks/use-job-processing";
+import { useJobSelection } from "@/hooks/use-job-selection";
 import {
   Tooltip,
   TooltipTrigger,
@@ -35,6 +36,56 @@ import {
 } from "@/components/ui/table";
 
 const columnHelper = createColumnHelper<Job>();
+
+// Small components that subscribe to selection context directly so cell
+// renders reflect the latest selection state. Putting the subscription
+// inside `useMemo`'s captured cell fn freezes it at first render.
+function RowCheckbox({ jobId }: { jobId: string }) {
+  const { isSelected, toggleOne } = useJobSelection();
+  const checked = isSelected(jobId);
+  return (
+    <input
+      type="checkbox"
+      checked={checked}
+      onChange={() => toggleOne(jobId)}
+      onClick={(e) => e.stopPropagation()}
+      className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-foreground"
+      aria-label="Select job"
+    />
+  );
+}
+
+function HeaderCheckbox({ visibleIds }: { visibleIds: string[] }) {
+  const { selectedIds, setSelection, selectMany } = useJobSelection();
+  const allVisibleSelected =
+    visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+  const someVisibleSelected =
+    !allVisibleSelected && visibleIds.some((id) => selectedIds.has(id));
+
+  const toggleAllVisible = () => {
+    if (allVisibleSelected) {
+      const next = new Set(selectedIds);
+      for (const id of visibleIds) next.delete(id);
+      setSelection(next);
+    } else {
+      selectMany(visibleIds);
+    }
+  };
+
+  return (
+    <input
+      type="checkbox"
+      checked={allVisibleSelected}
+      ref={(el) => {
+        if (el) el.indeterminate = someVisibleSelected;
+      }}
+      onChange={toggleAllVisible}
+      onClick={(e) => e.stopPropagation()}
+      className="h-4 w-4 rounded border-gray-300 cursor-pointer accent-foreground"
+      aria-label="Select all jobs on this page"
+    />
+  );
+}
 
 function relativeDate(dateStr: string | null): string {
   if (!dateStr) return "—";
@@ -81,8 +132,17 @@ export function JobsTable({
   onPageChange,
   onPerPageChange,
 }: JobsTableProps) {
+  const visibleIds = useMemo(() => jobs.map((j) => j.id), [jobs]);
+
   const columns = useMemo(
     () => [
+      columnHelper.display({
+        id: "_select",
+        header: () => <HeaderCheckbox visibleIds={visibleIds} />,
+        size: 32,
+        enableSorting: false,
+        cell: ({ row }) => <RowCheckbox jobId={row.original.id} />,
+      }),
       columnHelper.accessor("status", {
         header: "Status",
         size: 110,
@@ -91,10 +151,10 @@ export function JobsTable({
       }),
       columnHelper.accessor("title", {
         header: "Title",
-        size: 999,
+        size: 350,
         enableSorting: true,
         cell: ({ row, getValue }) => (
-          <span className="font-medium truncate block max-w-[400px]">
+          <span className="font-medium truncate block max-w-[340px]">
             {getValue()}
             {row.original.expired_at && (
               <Badge variant="outline" className="ml-2 bg-red-50 text-red-600 border-red-200 text-[10px] py-0">
@@ -228,10 +288,15 @@ export function JobsTable({
           return <span className={`text-sm font-medium ${color}`}>{v}</span>;
         },
       }),
-      columnHelper.display({
-        id: "thumbs",
-        header: "",
+      columnHelper.accessor("relevance_score", {
+        id: "relevance_score",
+        header: () => (
+          <span title="Relevance" className="inline-flex items-center">
+            <ArrowUpDown className="w-3 h-3 text-muted-foreground" />
+          </span>
+        ),
         size: 80,
+        enableSorting: true,
         cell: ({ row }) => (
           <div className="flex items-center gap-0.5">
             <JobThumbs job={row.original} />
@@ -266,8 +331,30 @@ export function JobsTable({
     completedJobIds: completedProcessingIds,
   } = useJobProcessing();
 
+  // Pin newly-added jobs (in-flight processing + recently completed) to the
+  // top of the visible list regardless of sort. Users add jobs and then
+  // lose track of them when scoring lands them mid-list — pinning surfaces
+  // every just-added job until the completion glow fades.
+  const pinnedIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const id of processingJobIds) s.add(id);
+    for (const id of completedProcessingIds) s.add(id);
+    return s;
+  }, [processingJobIds, completedProcessingIds]);
+
+  const orderedJobs = useMemo(() => {
+    if (pinnedIds.size === 0) return jobs;
+    const pinned: Job[] = [];
+    const rest: Job[] = [];
+    for (const j of jobs) {
+      if (pinnedIds.has(j.id)) pinned.push(j);
+      else rest.push(j);
+    }
+    return [...pinned, ...rest];
+  }, [jobs, pinnedIds]);
+
   const table = useReactTable({
-    data: jobs,
+    data: orderedJobs,
     columns,
     state: {
       sorting,

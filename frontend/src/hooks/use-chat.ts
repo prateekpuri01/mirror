@@ -14,7 +14,12 @@ interface UseChatReturn {
   isLoading: boolean;
   isSending: boolean;
   error: string | null;
-  sendMessage: (content: string, sectionContext?: string | null) => Promise<void>;
+  sendMessage: (
+    content: string,
+    sectionContext?: string | null,
+    docId?: string | null,
+    intentOverride?: string | null,
+  ) => Promise<void>;
   clearMessages: () => Promise<void>;
   refreshMessages: () => Promise<void>;
 }
@@ -26,6 +31,13 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
   const [error, setError] = useState<string | null>(null);
   const onResumeUpdateRef = useRef(onResumeUpdate);
   onResumeUpdateRef.current = onResumeUpdate;
+  const mountedRef = useRef(true);
+
+  // Track mount state to avoid setState on unmounted component
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const refreshMessages = useCallback(async () => {
     setIsLoading(true);
@@ -46,7 +58,12 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
   }, [refreshMessages]);
 
   const sendMessage = useCallback(
-    async (content: string, sectionContext?: string | null) => {
+    async (
+      content: string,
+      sectionContext?: string | null,
+      docId?: string | null,
+      intentOverride?: string | null,
+    ) => {
       setIsSending(true);
       setError(null);
 
@@ -66,7 +83,12 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
         const response = await fetch(`${apiUrl}/api/jobs/${jobId}/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content, section_context: sectionContext }),
+          body: JSON.stringify({
+            content,
+            section_context: sectionContext,
+            doc_id: docId ?? undefined,
+            intent_override: intentOverride ?? undefined,
+          }),
         });
 
         if (!response.ok) {
@@ -150,19 +172,29 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
           // Split into complete lines; keep the last (possibly incomplete) line in buffer
           const lines = buffer.split("\n");
           buffer = lines.pop() || "";
-          processLines(lines);
+
+          // Only process if component is still mounted
+          if (mountedRef.current) {
+            processLines(lines);
+          }
         }
 
         // Process any remaining data in the buffer after stream ends
-        if (buffer.trim()) {
+        if (buffer.trim() && mountedRef.current) {
           processLines(buffer.split("\n"));
         }
+
+        // If we unmounted during streaming, reload from DB on next mount
+        // (the backend saved the response; refreshMessages() on mount picks it up)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to send message");
-        // Remove the temp assistant message on error
-        setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-assistant-")));
+        if (mountedRef.current) {
+          setError(err instanceof Error ? err.message : "Failed to send message");
+          setMessages((prev) => prev.filter((m) => !m.id.startsWith("temp-assistant-")));
+        }
       } finally {
-        setIsSending(false);
+        if (mountedRef.current) {
+          setIsSending(false);
+        }
       }
     },
     [jobId]
