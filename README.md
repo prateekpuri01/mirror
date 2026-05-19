@@ -85,16 +85,29 @@ get caught before they ship.
 ```bash
 git clone https://github.com/your-username/mirror.git
 cd mirror
-docker compose up --build -d
-open http://localhost:3050
+./start.sh
 ```
 
-That's it. No `.env` file to edit, no migrations to run by hand. The api
-container auto-runs alembic on boot, the frontend waits for it, and the
-first page you land on is `/setup` — pick a provider (OpenAI / Anthropic
-/ Ollama), paste your API key, and you're in. Keys persist in the local
-Postgres `app_settings` table, so they survive container rebuilds without
-ever touching a `.env` file.
+That's it. `start.sh` verifies Docker is running, checks the five host
+ports are free (3050, 8085, 5433, 6379, 8888), builds and starts the
+stack, waits for the api migrations to finish and the frontend to be
+responding, then opens your browser to `http://localhost:3050`. First
+run takes ~3-5 min for image pulls and build; subsequent runs are
+seconds.
+
+If you'd rather drive compose directly:
+
+```bash
+docker compose up --build -d
+open http://localhost:3050   # macOS — Linux: xdg-open
+```
+
+No `.env` file to edit, no migrations to run by hand. The api container
+auto-runs alembic on boot, the frontend waits for it, and the first
+page you land on is `/setup` — pick a provider (OpenAI / Anthropic /
+Ollama), paste your API key, and you're in. Keys persist in the local
+Postgres `app_settings` table, so they survive container rebuilds
+without ever touching a `.env` file.
 
 After `/setup`, the app routes you to `/onboarding`. Upload a resume PDF
 or DOCX and the app parses it into a structured profile (optionally
