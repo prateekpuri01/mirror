@@ -710,8 +710,11 @@ async def _fetch_jobs_for_candidate(
     if c.ats and c.slug and c.ats in SCRAPERS_BY_ATS:
         try:
             scraper = SCRAPERS_BY_ATS[c.ats]
-            company = make_temp_company(name=c.name, ats=c.ats, slug=c.slug)
-            scraped = await scraper.scrape(company, http_client=http_client)
+            company = make_temp_company(c.ats, c.slug)
+            # Override the placeholder name so jobs are tagged with the
+            # discovery-resolved company name, not the slug.
+            company.name = c.name
+            scraped = await scraper.scrape_company(company, http_client=http_client)
             jobs: list[dict] = []
             for sj in scraped:
                 jobs.append({

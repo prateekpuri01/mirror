@@ -266,11 +266,14 @@ search's primary intent.
 If a job violates a HARD CONSTRAINT (e.g. "must be in San Francisco" but \
 the job is NYC-only), score it 1 regardless of role fit.
 
-Output ONLY valid JSON: an array of objects, one per input job, in input \
-order, each shaped:
-  {"i": <1-indexed job number>, "r": <1-5 score>, "why": "<≤12 words>"}
+Output ONLY valid JSON in this exact shape:
+  {"results": [
+    {"i": <1-indexed job number>, "r": <1-5 score>, "why": "<≤12 words>"},
+    ...
+  ]}
 
-No prose, no markdown fences, no commentary outside the JSON array."""
+Include one object per input job, in input order. No prose, no markdown \
+fences, no commentary outside the JSON object."""
 
 
 # Few-shot examples are folded into the user prompt because we need
@@ -287,12 +290,12 @@ Jobs:
 4. Senior Data Scientist — Stripe (San Francisco)
 
 Output:
-[
+{"results": [
   {"i": 1, "r": 5, "why": "exact match: research eng on evals at safety lab"},
   {"i": 2, "r": 4, "why": "adjacent ML infra role at the right org"},
   {"i": 3, "r": 1, "why": "sales role, unrelated to research engineering"},
   {"i": 4, "r": 2, "why": "DS role at fintech, wrong domain for AI safety"}
-]
+]}
 """
 
 
@@ -430,12 +433,20 @@ async def batched_llm_rerank(
 
     if isinstance(parsed, dict):
         # Look for the array under common keys.
-        for key in ("results", "rankings", "jobs", "scores", "data"):
+        unwrapped = None
+        for key in ("results", "rankings", "jobs", "scores", "data", "ranked"):
             if key in parsed and isinstance(parsed[key], list):
-                parsed = parsed[key]
+                unwrapped = parsed[key]
                 break
+        if unwrapped is not None:
+            parsed = unwrapped
+        elif "i" in parsed and "r" in parsed:
+            # response_format=json_object forces an outer object. When
+            # the rerank scored only one job, the model emits the entry
+            # at the top level instead of inside a list. Treat the dict
+            # as a single-element list.
+            parsed = [parsed]
         else:
-            # Maybe it's a single-job result keyed by index — bail.
             logger.warning(
                 "batched_llm_rerank: unexpected dict shape, keys=%s",
                 list(parsed.keys())[:5],
