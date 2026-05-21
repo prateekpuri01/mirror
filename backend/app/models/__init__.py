@@ -3,6 +3,7 @@ from app.models.ats_learning import AtsDomainCache, AtsLearnedPattern
 from app.models.base import Base
 from app.models.chat import ChatMessage
 from app.models.companies import Company, ScrapeRun
+from app.models.discovered_companies import DiscoveredCompany
 from app.models.documents import ApplicationRequirements, DocType, Document
 from app.models.jobs import (
     Job,
@@ -26,6 +27,7 @@ __all__ = [
     "ChatMessage",
     "Company",
     "ScrapeRun",
+    "DiscoveredCompany",
     "ContentMemory",
     "Job",
     "JobSource",
