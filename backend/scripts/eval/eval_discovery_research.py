@@ -545,7 +545,17 @@ def variant_research_with_publications(scenario: Scenario, profile: dict) -> str
     )
 
 
-# --- Variant: recruiter-perspective framing
+# --- Variant: recruiter-perspective framing.
+#
+# This variant graduated to production — see
+# backend/app/services/hot_search/discovery_v2.py:_build_llm_web_query.
+# Eval data behind the choice in commits f4e13e3 + 6060fdc:
+#   - 4.55 mean / 94.6% ≥4 across non-pivot scenarios (winner)
+#   - 60-80% ≥4 on career pivots for 4 of 5 profiles (still winner)
+# A pivot-handling block was tried (research_recruiter_pivot, since
+# removed) but actually *hurt* — it pushed the agent so hard into the
+# new domain that it lost the skill-transfer reasoning that made plain
+# recruiter framing pivot-friendly in the first place.
 
 def variant_research_recruiter(scenario: Scenario, profile: dict) -> str:
     """Reframes the task as a recruiter pitching the candidate, rather
@@ -661,9 +671,8 @@ VARIANTS: dict[str, Callable[[Scenario, dict], str]] = {
     "research_with_history": variant_research_with_history,
     "research_with_accomplishments": variant_research_with_accomplishments,
     "research_full": variant_research_full,
-    # New variants for the "test several reasonable variants" round:
     "research_with_publications": variant_research_with_publications,
-    "research_recruiter": variant_research_recruiter,
+    "research_recruiter": variant_research_recruiter,  # ← shipped to production
     "research_funded_recent": variant_research_funded_recent,
     "research_concise": variant_research_concise,
 }
