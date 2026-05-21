@@ -1,0 +1,915 @@
+{
+  "eval": "hot_search",
+  "timestamp": "20260521T063852Z",
+  "max_hits": 8,
+  "total_elapsed_sec": 3983.9,
+  "db_snapshot_url_count": 4,
+  "aggregate": {
+    "n_scenarios": 9,
+    "coverage_rate": 0.222,
+    "coverage_count": "2/9",
+    "mean_novelty_rate": 1.0,
+    "mean_relevance": 2.86,
+    "total_imported_jobs": 55,
+    "total_novel_jobs": 55,
+    "total_judged_jobs": 17,
+    "mean_elapsed_sec": 441.8,
+    "source_breakdown": {
+      "hn_who_is_hiring": 6,
+      "direct_url": 9,
+      "web": 1
+    }
+  },
+  "examples": {
+    "best_finds": [
+      {
+        "title": "Machine Learning Engineer",
+        "url": "https://job-boards.greenhouse.io/radar/jobs/7354751",
+        "company": "Radar Labs",
+        "location": "Sunnyvale, CA",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Technical Governance Researcher",
+        "url": "https://jobs.ashbyhq.com/miri/54142b55-b061-4f11-980e-73d9986ff1b9?utm_source=openai",
+        "company": "Machine Intelligence Research Institute (MIRI)",
+        "location": "Berkeley, CA",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Data & Policy Graduate Fellow - AI Policy & Public Projects",
+        "url": "https://jobs.lever.co/NJStateOfficeofInnovation/26f79ad3-813b-4c59-9fa8-2a39dfdfed77",
+        "company": "New Jersey State Office of Innovation",
+        "location": "New Brunswick, New Jersey",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Societal Defense Researcher",
+        "url": "https://jobs.lever.co/futureof-life/e433cd23-7f2d-4790-a2bf-257f50b91c58",
+        "company": "CARMA (Center for AI Risk Management & Alignment)",
+        "location": "Anywhere (Open Globally)",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Data Scientist",
+        "url": "https://job-boards.greenhouse.io/radar/jobs/7802187",
+        "company": "Radar Labs",
+        "location": "Sunnyvale, CA",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 4,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      }
+    ],
+    "worst_finds": [
+      {
+        "title": "Bilingual Senior Specialist, Store Technical Support (FR/EN) / Sp\u00e9cialiste Senior Bilingue, Support Technique en Magasin (Fran\u00e7ais/Anglais)",
+        "url": "https://job-boards.greenhouse.io/radar/jobs/7852123",
+        "company": "Radar Labs",
+        "location": "Remote",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 1,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Senior Associate, Program Management, Deployment Operations",
+        "url": "https://job-boards.greenhouse.io/radar/jobs/7842903",
+        "company": "Radar Labs",
+        "location": "New York City",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 1,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Senior Manager, Customer Experience",
+        "url": "https://job-boards.greenhouse.io/radar/jobs/7872214",
+        "company": "Radar Labs",
+        "location": "New York, NY",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 1,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Senior Product Marketing Manager",
+        "url": "https://job-boards.greenhouse.io/radar/jobs/7861777",
+        "company": "Radar Labs",
+        "location": "New York, New York",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 1,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Member of Technical Staff, Applied ML (RecSys)",
+        "url": "https://remoteOK.com/remote-jobs/remote-member-of-technical-staff-applied-ml-recsys-liquid-ai-1131627",
+        "company": "Liquid AI",
+        "location": "Cambridge",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 1,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "persona": "ml_engineer_loose",
+      "guidance": "machine learning engineer",
+      "locations": null,
+      "min_salary": null,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 2.3,
+      "hits_ats": 8,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 22,
+      "errors": 0,
+      "imported_job_count": 48,
+      "novel_job_count": 48,
+      "t_first_hit_sec": 50.04,
+      "elapsed_sec": 56.41,
+      "source_breakdown": {
+        "hn_who_is_hiring": 6,
+        "direct_url": 2
+      },
+      "funnel": {
+        "aggregator_entries": 66,
+        "seed_candidates": 66,
+        "candidates_seen": 66,
+        "full_miss": 20,
+        "tentative_hit": 4,
+        "direct_miss": 2,
+        "full_hit": 2,
+        "direct_hit": 2,
+        "final_hits": 8
+      },
+      "top_skip_reasons": [
+        [
+          "ATS board not reachable",
+          3
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/hive.co",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/stream",
+          1
+        ],
+        [
+          "Considered 66 role(s); Best match 'Senior Database Administrator (PostgreSQL, An",
+          1
+        ],
+        [
+          "Considered 16 role(s); Best match 'Principal ASIC Design Engineer' scored 1/5 \u2014 ",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/fullstory",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/synthesia",
+          1
+        ],
+        [
+          "No open jobs found",
+          1
+        ]
+      ],
+      "judged_jobs": [
+        {
+          "title": "Machine Learning Engineer",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7354751",
+          "company": "Radar Labs",
+          "location": "Sunnyvale, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior DevOps Engineer",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7760213",
+          "company": "Radar Labs",
+          "location": "Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Bilingual Senior Specialist, Store Technical Support (FR/EN) / Sp\u00e9cialiste Senior Bilingue, Support Technique en Magasin (Fran\u00e7ais/Anglais)",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7852123",
+          "company": "Radar Labs",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 1
+        },
+        {
+          "title": "Senior Associate, Program Management, Deployment Operations",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7842903",
+          "company": "Radar Labs",
+          "location": "New York City",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 1
+        },
+        {
+          "title": "Senior RFID Systems Engineer",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7647853",
+          "company": "Radar Labs",
+          "location": "San Diego, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 2
+        },
+        {
+          "title": "Senior Technical Specialist, Retail Systems",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7246348",
+          "company": "Radar Labs",
+          "location": "New York City",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 2
+        },
+        {
+          "title": "Data Scientist",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7802187",
+          "company": "Radar Labs",
+          "location": "Sunnyvale, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Senior Manager, Customer Experience",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7872214",
+          "company": "Radar Labs",
+          "location": "New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 1
+        },
+        {
+          "title": "Senior Product Marketing Manager",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7861777",
+          "company": "Radar Labs",
+          "location": "New York, New York",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 1
+        },
+        {
+          "title": "Software Engineer I/II",
+          "url": "https://job-boards.greenhouse.io/radar/jobs/7789091",
+          "company": "Radar Labs",
+          "location": "Sunnyvale, CA or San Diego, CA or Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "ml_engineer_sf",
+      "guidance": "senior machine learning engineer at AI startup",
+      "locations": [
+        "San Francisco",
+        "Remote"
+      ],
+      "min_salary": 220000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 80,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 530.48,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 34,
+        "seed_candidates": 34,
+        "candidates_seen": 81,
+        "full_miss": 19,
+        "direct_miss": 54,
+        "already_checked": 7,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Failed location/salary verification",
+          31
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          18
+        ],
+        [
+          "No jobs matching location/salary filters (after LLM verification)",
+          9
+        ],
+        [
+          "No jobs in target location / above salary threshold",
+          6
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          5
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/hive.co",
+          1
+        ],
+        [
+          "Considered 2 role(s); LLM judged no job in the listing matches the search topic",
+          1
+        ],
+        [
+          "Considered 4 role(s); LLM judged no job in the listing matches the search topic",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "fintech_ds",
+      "guidance": "data scientist at fintech or crypto",
+      "locations": [
+        "New York",
+        "Remote"
+      ],
+      "min_salary": 180000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 57,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 544.65,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 18,
+        "seed_candidates": 16,
+        "candidates_seen": 63,
+        "full_miss": 20,
+        "direct_miss": 32,
+        "already_checked": 5,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Failed location/salary verification",
+          16
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          10
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          6
+        ],
+        [
+          "No jobs matching location/salary filters (after LLM verification)",
+          6
+        ],
+        [
+          "Lead skipped (filters active, can't verify)",
+          4
+        ],
+        [
+          "No jobs in target location / above salary threshold",
+          2
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/hive.co",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/spruceid",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "ai_policy",
+      "guidance": "AI policy or governance researcher",
+      "locations": [
+        "Washington DC",
+        "Remote"
+      ],
+      "min_salary": null,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 46,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 633.84,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 21,
+        "seed_candidates": 18,
+        "candidates_seen": 54,
+        "full_miss": 30,
+        "direct_miss": 13,
+        "already_checked": 3,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Lead skipped (filters active, can't verify)",
+          20
+        ],
+        [
+          "Failed location/salary verification",
+          9
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          3
+        ],
+        [
+          "No jobs in target location / above salary threshold",
+          2
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/comity",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/everai",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/telus-digital",
+          1
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "ai_policy_open",
+      "guidance": "AI policy or governance researcher",
+      "locations": null,
+      "min_salary": null,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 3.4285714285714284,
+      "hits_ats": 7,
+      "hits_lead": 1,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 18,
+      "errors": 0,
+      "imported_job_count": 7,
+      "novel_job_count": 7,
+      "t_first_hit_sec": 80.49,
+      "elapsed_sec": 122.7,
+      "source_breakdown": {
+        "direct_url": 7,
+        "web": 1
+      },
+      "funnel": {
+        "aggregator_entries": 20,
+        "seed_candidates": 20,
+        "candidates_seen": 30,
+        "full_miss": 6,
+        "direct_miss": 12,
+        "direct_hit": 7,
+        "full_hit": 1,
+        "final_hits": 8
+      },
+      "top_skip_reasons": [
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          4
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          3
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/comity",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/everai",
+          1
+        ],
+        [
+          "Dropped: The role of Tech Lead Full-Stack Rails Engineer is focused on software ",
+          1
+        ],
+        [
+          "Considered 35 role(s); Best match 'Principal Product Security Engineer' scored 1",
+          1
+        ],
+        [
+          "No open jobs found",
+          1
+        ],
+        [
+          "Dropped: Flow Traders is a proprietary trading firm focused on trading models an",
+          1
+        ]
+      ],
+      "judged_jobs": [
+        {
+          "title": "Member of Technical Staff",
+          "url": "https://civai.org/jobs/member-of-technical-staff",
+          "company": "CivAI",
+          "location": "Berkeley, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "AI Engineer",
+          "url": "https://remotive.com/remote-jobs/artificial-intelligence/ai-engineer-2089958",
+          "company": "Dry Ground AI",
+          "location": "Brazil, Colombia, Philippines",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Technical Governance Researcher",
+          "url": "https://jobs.ashbyhq.com/miri/54142b55-b061-4f11-980e-73d9986ff1b9?utm_source=openai",
+          "company": "Machine Intelligence Research Institute (MIRI)",
+          "location": "Berkeley, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Forward Deployed Engineer, Agentic Platform",
+          "url": "https://remoteOK.com/remote-jobs/remote-forward-deployed-engineer-agentic-platform-cohere-1131611",
+          "company": "Cohere",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 2
+        },
+        {
+          "title": "Data & Policy Graduate Fellow - AI Policy & Public Projects",
+          "url": "https://jobs.lever.co/NJStateOfficeofInnovation/26f79ad3-813b-4c59-9fa8-2a39dfdfed77",
+          "company": "New Jersey State Office of Innovation",
+          "location": "New Brunswick, New Jersey",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Societal Defense Researcher",
+          "url": "https://jobs.lever.co/futureof-life/e433cd23-7f2d-4790-a2bf-257f50b91c58",
+          "company": "CARMA (Center for AI Risk Management & Alignment)",
+          "location": "Anywhere (Open Globally)",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Member of Technical Staff, Applied ML (RecSys)",
+          "url": "https://remoteOK.com/remote-jobs/remote-member-of-technical-staff-applied-ml-recsys-liquid-ai-1131627",
+          "company": "Liquid AI",
+          "location": "Cambridge",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 1
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "healthcare_ml",
+      "guidance": "machine learning engineer in healthcare or biotech",
+      "locations": [
+        "Boston",
+        "Remote"
+      ],
+      "min_salary": 160000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 70,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 486.13,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 19,
+        "seed_candidates": 19,
+        "candidates_seen": 72,
+        "direct_miss": 43,
+        "full_miss": 12,
+        "already_checked": 15,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Failed location/salary verification",
+          29
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          9
+        ],
+        [
+          "No jobs in target location / above salary threshold",
+          5
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          5
+        ],
+        [
+          "No jobs matching location/salary filters (after LLM verification)",
+          2
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/sheerhealth",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/stellar",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): greenhouse/embed",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "security_eng",
+      "guidance": "security engineer at cybersecurity company",
+      "locations": [
+        "Remote"
+      ],
+      "min_salary": 170000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 55,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 518.64,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 15,
+        "seed_candidates": 15,
+        "candidates_seen": 60,
+        "full_miss": 18,
+        "direct_miss": 26,
+        "already_checked": 11,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Failed location/salary verification",
+          11
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          9
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          6
+        ],
+        [
+          "No jobs in target location / above salary threshold",
+          5
+        ],
+        [
+          "No jobs matching location/salary filters (after LLM verification)",
+          4
+        ],
+        [
+          "Lead skipped (filters active, can't verify)",
+          3
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/duck-duck-go",
+          1
+        ],
+        [
+          "Considered 1 role(s); best profile match was 'Territory Account Executive, Easte",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "technical_pm",
+      "guidance": "technical product manager AI or ML product",
+      "locations": [
+        "New York"
+      ],
+      "min_salary": 200000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 63,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 532.73,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 20,
+        "seed_candidates": 19,
+        "candidates_seen": 66,
+        "full_miss": 17,
+        "direct_miss": 38,
+        "already_checked": 8,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Failed location/salary verification",
+          24
+        ],
+        [
+          "No jobs in target location / above salary threshold",
+          7
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          7
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          7
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/radai",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/baseten",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/surge-ai",
+          1
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/uncountable",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "research_scientist",
+      "guidance": "research scientist computer vision or NLP",
+      "locations": null,
+      "min_salary": 180000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 60,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 550.81,
+      "source_breakdown": {},
+      "funnel": {
+        "aggregator_entries": 30,
+        "seed_candidates": 30,
+        "candidates_seen": 62,
+        "full_miss": 26,
+        "direct_miss": 32,
+        "already_checked": 2,
+        "final_hits": 0
+      },
+      "top_skip_reasons": [
+        [
+          "Failed location/salary verification",
+          16
+        ],
+        [
+          "Extraction failed: Page has very little content. The site may require login or J",
+          9
+        ],
+        [
+          "Extraction failed: This URL doesn't look like a job posting.",
+          7
+        ],
+        [
+          "Lead skipped (filters active, can't verify)",
+          6
+        ],
+        [
+          "No jobs matching location/salary filters (after LLM verification)",
+          4
+        ],
+        [
+          "Considered 100 role(s); LLM judged no job in the listing matches the search topi",
+          3
+        ],
+        [
+          "Evaluation timed out",
+          2
+        ],
+        [
+          "ATS slug recently failed (cached, retry in 24h): ashby/synthesia",
+          1
+        ]
+      ],
+      "judged_jobs": [],
+      "error_msg": null
+    }
+  ]
+}
