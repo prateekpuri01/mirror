@@ -83,6 +83,24 @@ SCENARIOS: list[Scenario] = [
         locations=["San Francisco", "Remote"],
         notes="No query, but geo bias. Tests the 'filters as context' principle.",
     ),
+    # Pivot scenarios — explicit guidance for a domain that doesn't
+    # match the candidate's work history. Tests whether the variant
+    # honors the stated intent or hedges back toward the background.
+    Scenario(
+        name="pivot_ag",
+        guidance="AI for agriculture",
+        notes="Candidate-stated PIVOT — should surface ag-tech / ag-AI companies regardless of work history.",
+    ),
+    Scenario(
+        name="pivot_drug_discovery",
+        guidance="AI for drug discovery and computational biology",
+        notes="Candidate-stated PIVOT into biology — see whether non-bio profiles still get bio companies.",
+    ),
+    Scenario(
+        name="pivot_climate",
+        guidance="AI for climate and energy",
+        notes="Candidate-stated PIVOT into climate-tech. Wide industry — many companies should exist.",
+    ),
 ]
 
 
