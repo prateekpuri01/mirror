@@ -626,12 +626,14 @@ async def run_hot_company_search_v2(
 
         # Cache misses too — embed and store their descriptions so they
         # become recallable for similar future queries.
+        upserted_names = {r["name"] for r in upsert_rows}
         for cname in emit_order:
-            if cname in [r["name"] for r in upsert_rows]:
+            if cname in upserted_names:
                 continue
             cand = candidate_by_name.get(cname)
             if not cand:
                 continue
+            upserted_names.add(cname)
             upsert_rows.append({
                 "name": cand.name,
                 "ats": cand.ats,
@@ -644,6 +646,28 @@ async def run_hot_company_search_v2(
                 "last_status": "no_match",
             })
             outcome_no_match.append(normalize_name(cand.name))
+
+        # Resolved companies that had NO jobs at all — still cache them
+        # so we don't re-pay the slug-probe / careers-page-search cost
+        # next time. Use the resolution metadata (ats/slug/careers_url)
+        # learned during Phase C. last_status="no_jobs" so the
+        # 2-strikes-out filter in recall_relevant can mute repeated
+        # offenders.
+        for cand in resolved:
+            if cand.name in upserted_names:
+                continue
+            upsert_rows.append({
+                "name": cand.name,
+                "ats": cand.ats,
+                "slug": cand.slug,
+                "careers_url": cand.url,
+                "description": None,
+                "description_embedding": None,
+                "source": cand.source or "unknown",
+                "last_query": guidance or "(profile-driven)",
+                "last_status": "no_jobs",
+            })
+            upserted_names.add(cand.name)
 
         # Compute description embeddings in one batched call so future
         # recall_relevant has something to match against. Use the job
