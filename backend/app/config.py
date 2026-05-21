@@ -41,15 +41,6 @@ class Settings(BaseSettings):
     # flip to True via HOT_SEARCH_BROWSER_AGENT=1 for one-off broad
     # searches where latency is acceptable.
     hot_search_browser_agent: bool = False
-    # Hot search v2 — single-pass orchestrator built around LLM-web
-    # discovery + embeddings/LLM rerank scoring + persistent discovery
-    # cache. Default ON after two consecutive green gate runs vs the v1
-    # baseline (mean_relevance 4.38 vs 2.86, coverage 7/9 vs 2/9, 40%
-    # faster end-to-end). The v1 path remains intact behind the
-    # dispatcher and can be forced via HOT_SEARCH_V2=0 if regression
-    # surfaces. Per plan, v1 deletion follows after one release cycle
-    # of being default-on.
-    hot_search_v2: bool = True
     profile_yaml_path: str = "/app/docs/profile.yaml"
     profile_complete_yaml_path: str = "/app/docs/profile_complete.yaml"
 

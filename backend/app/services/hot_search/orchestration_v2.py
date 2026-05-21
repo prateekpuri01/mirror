@@ -33,6 +33,7 @@ Single pass, no iteration. 4-minute wall-clock budget (down from v1's 8).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from collections import Counter
@@ -40,6 +41,7 @@ from typing import AsyncGenerator
 
 import httpx
 
+from app.ai.client import EXTRACTION_MODEL, get_openai_client
 from app.scrapers.discovery_adapters import DISCOVERY_ADAPTERS
 from app.services.company_discovery import _build_keyword_sets
 from app.services.hot_search.discovery import (
@@ -71,7 +73,6 @@ from app.services.hot_search.evaluation import (
     _job_passes_salary_filter,
     _verify_jobs_with_extraction,
 )
-from app.services.hot_search.orchestration import _prefilter_aggregator_entries
 from app.services.hot_search.ranking import (
     build_job_doc,
     build_query_doc,
@@ -95,6 +96,108 @@ _CACHE_RECALL_K = 30
 _CACHE_RECALL_MIN_COSINE = 0.50
 _COSINE_POOL_SIZE = 80
 _TOP_K_DEFAULT = 20
+
+
+# ---------------------------------------------------------------------------
+# Aggregator pre-filter — one batched LLM call to drop guidance-incompatible
+# aggregator entries before they enter the candidate pool. Originally lived
+# in v1 orchestration.py; relocated here when v1 was deleted.
+# ---------------------------------------------------------------------------
+
+
+async def _prefilter_aggregator_entries(
+    entries: list,
+    guidance: str,
+    *,
+    max_entries: int = 250,
+) -> list:
+    """Batch-LLM-filter aggregator harvest entries by guidance fit.
+
+    Without this, the harvest dumps ~200 guidance-blind entries (Bank of
+    America, Uber, generic GmbH consultancies, etc.) into the candidate
+    pool, polluting downstream phases. One ~$0.01 LLM call drops the
+    off-topic majority. Returns the original list unfiltered if guidance
+    is empty or the LLM call fails — better to over-include than to
+    swallow real matches on a parse error.
+    """
+    if not guidance or not entries:
+        return entries
+
+    sample = entries[:max_entries]
+    lines = []
+    for i, e in enumerate(sample):
+        company = (getattr(e, "company_name", "") or "Unknown").strip()
+        title = (getattr(e, "job_title", "") or "unknown role").strip()
+        if len(title) > 100:
+            title = title[:97] + "..."
+        lines.append(f"{i}. {company} — {title}")
+
+    user_msg = (
+        f"User is searching for jobs matching this guidance:\n\n"
+        f"  {guidance.strip()}\n\n"
+        f"Below are {len(sample)} candidate (company — job-title) pairs "
+        f"from aggregator feeds. Return the indices of entries that are "
+        f"PLAUSIBLY relevant to the guidance. Be generous — include "
+        f"anything that could plausibly fit, even loosely. Exclude only "
+        f"entries that clearly don't match (e.g. retail, hospitality, "
+        f"generic admin/sales roles at unrelated companies, foreign-"
+        f"language consultancies in unrelated fields).\n\n"
+        + "\n".join(lines)
+        + '\n\nReturn ONLY valid JSON: {"relevant": [<indices>]}'
+    )
+
+    try:
+        client = get_openai_client()
+        # reasoning_effort=minimal: this is a straightforward
+        # classification task, no chain-of-thought needed. Without it,
+        # gpt-5-mini used the full max_completion_tokens budget on
+        # reasoning and returned empty content — silent corruption.
+        response = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            messages=[
+                {"role": "system", "content": (
+                    "You filter aggregator job listings by relevance to a "
+                    "user's search guidance. Be SELECTIVE — when guidance "
+                    "names a clear domain, keep only entries plausibly in "
+                    "that domain. Better to lose a borderline match than "
+                    "flood the result list with off-topic noise. Return "
+                    "ONLY JSON."
+                )},
+                {"role": "user", "content": user_msg},
+            ],
+            response_format={"type": "json_object"},
+            max_completion_tokens=8000,
+            reasoning_effort="minimal",
+        )
+        text = (response.choices[0].message.content or "").strip()
+        if not text:
+            logger.warning(
+                "Aggregator pre-filter returned empty content "
+                "(finish_reason=%s) — falling back to unfiltered set",
+                getattr(response.choices[0], "finish_reason", "?"),
+            )
+            return entries
+        parsed = json.loads(text)
+        indices = parsed.get("relevant", [])
+        if not isinstance(indices, list):
+            return entries
+        kept = {int(i) for i in indices if isinstance(i, (int, float))}
+        filtered = [sample[i] for i in sorted(kept) if 0 <= i < len(sample)]
+        if not filtered and sample:
+            logger.info(
+                "Aggregator pre-filter returned 0 of %d — falling back to unfiltered",
+                len(sample),
+            )
+            return entries
+        logger.info(
+            "Aggregator pre-filter: %d → %d entries (%.0f%% dropped)",
+            len(sample), len(filtered),
+            (1 - len(filtered) / max(1, len(sample))) * 100,
+        )
+        return filtered
+    except Exception:
+        logger.exception("Aggregator pre-filter failed — using unfiltered set")
+        return entries
 
 
 async def _verify_jobs_v2_loose(

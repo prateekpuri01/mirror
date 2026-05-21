@@ -83,7 +83,7 @@ async def run_one(persona: Persona, max_hits: int) -> dict:
     print(f"  locations: {persona.locations or '—'}")
     print(f"  min_salary: ${persona.min_salary:,}" if persona.min_salary else "  min_salary: —")
 
-    settings.hot_search_v2 = True  # force v2
+    # v2 is the only path now; no flag to flip.
 
     t0 = time.monotonic()
     hits: list[dict] = []
