@@ -515,23 +515,42 @@ async def run_hot_company_search_v2(
         # -------------------------------------------------------------
         verified_jobs: list[tuple[dict, int, bool]] = []
         if locations or min_salary:
-            top_job_dicts = [j for j, _r in ranked]
-            try:
-                verified_list = await _verify_jobs_with_extraction(
-                    top_job_dicts, locations or [], min_salary,
-                )
-            except Exception:
-                logger.exception("verify_with_extraction failed; using rerank order unchanged")
-                verified_list = top_job_dicts
-            verified_urls = {j.get("url") for j in verified_list if j.get("url")}
-            for job, rj in ranked:
-                if not job.get("url") or job["url"] in verified_urls:
-                    # Find the verified version (may have extracted fields attached)
-                    vmatch = next(
-                        (v for v in verified_list if v.get("url") == job.get("url")),
-                        job,
+            # _verify_jobs_with_extraction caps its input at jobs[:10]
+            # internally to bound LLM cost. When rerank returned more
+            # than 10 (top_k = max_hits * 4 by default), the tail was
+            # silently dropped — appearing in the funnel as
+            # f_filter_rejected. We chunk through in groups of 10 and
+            # stop once we have enough verified to satisfy max_hits.
+            CHUNK = 10
+            verified_by_url: dict[str, dict] = {}
+            i = 0
+            while i < len(ranked) and len(verified_by_url) < max_hits:
+                batch = [j for j, _r in ranked[i : i + CHUNK]]
+                try:
+                    vl = await _verify_jobs_with_extraction(
+                        batch, locations or [], min_salary,
                     )
-                    verified_jobs.append((vmatch, rj.relevance, rj.is_tentative))
+                except Exception:
+                    logger.exception("verify_with_extraction failed; chunk skipped")
+                    vl = []
+                for v in vl:
+                    u = v.get("url")
+                    if u and u not in verified_by_url:
+                        verified_by_url[u] = v
+                i += CHUNK
+
+            verified_urls = set(verified_by_url.keys())
+            for job, rj in ranked:
+                u = job.get("url")
+                if not u:
+                    # No URL means we couldn't pre-filter — keep the
+                    # job; orchestrator's emission logic will handle.
+                    verified_jobs.append((job, rj.relevance, rj.is_tentative))
+                    continue
+                if u in verified_urls:
+                    # Replace with the verified job dict (may carry
+                    # extracted_salary_* / extracted_locations fields).
+                    verified_jobs.append((verified_by_url[u], rj.relevance, rj.is_tentative))
                 else:
                     funnel["f_filter_rejected"] += 1
         else:
