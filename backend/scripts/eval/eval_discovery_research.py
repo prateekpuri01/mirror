@@ -734,9 +734,46 @@ class CellResult:
     raw_answer: str = ""
     citations: list[dict] = field(default_factory=list)
     companies: list[dict] = field(default_factory=list)
+    # Token / tool usage from the llm_web_search call (when available).
+    # Keys: input_tokens, output_tokens, reasoning_tokens,
+    #       cached_input_tokens, search_calls.
+    usage: dict = field(default_factory=dict)
     # Judge fields — populated by _judge_cell after the run
     judge_scores: list[dict] = field(default_factory=list)  # [{i, score, reason}, ...]
     judge_error: str = ""
+
+
+# Per-token rates ($/M tokens) and per-search-call rates ($/call). Used for
+# rough cost estimates in the report — change these if your account's
+# rates differ. Constants chosen to match OpenAI's published list-prices
+# as of the eval date; treat the cost numbers as ±30% accurate.
+_RATE_GPT55_INPUT_PER_M = 1.25
+_RATE_GPT55_OUTPUT_PER_M = 10.0
+_RATE_GPT55_CACHED_INPUT_PER_M = 0.125
+_RATE_WEB_SEARCH_CALL = 0.025
+
+
+def estimate_usd(usage: dict) -> float:
+    """Apply per-tier rates to a usage dict, return USD cost.
+
+    Reasoning tokens are billed as output tokens — they're already
+    included in usage.output_tokens. Cached input tokens (when prompt
+    caching kicked in) are billed at ~10% of standard input.
+    """
+    if not usage:
+        return 0.0
+    in_tok = usage.get("input_tokens", 0) or 0
+    cached = usage.get("cached_input_tokens", 0) or 0
+    uncached = max(0, in_tok - cached)
+    out_tok = usage.get("output_tokens", 0) or 0
+    search = usage.get("search_calls", 0) or 0
+    cost = (
+        uncached * (_RATE_GPT55_INPUT_PER_M / 1_000_000)
+        + cached * (_RATE_GPT55_CACHED_INPUT_PER_M / 1_000_000)
+        + out_tok * (_RATE_GPT55_OUTPUT_PER_M / 1_000_000)
+        + search * _RATE_WEB_SEARCH_CALL
+    )
+    return cost
 
 
 # ---------------------------------------------------------------------------
@@ -927,6 +964,7 @@ async def run_one(
         raw_answer=res.answer,
         citations=citations,
         companies=companies,
+        usage=dict(res.usage) if getattr(res, "usage", None) else {},
     )
 
     if judge and companies:
@@ -1251,6 +1289,8 @@ async def main():
                         "n_citations": len(r.citations),
                         "companies": r.companies,
                         "citations": r.citations,
+                        "usage": r.usage,
+                        "est_usd": estimate_usd(r.usage),
                         "judge_scores": r.judge_scores,
                         "judge_error": r.judge_error,
                         "raw_answer": r.raw_answer,
@@ -1260,11 +1300,14 @@ async def main():
                         summary = f"ERR: {r.error[:40]}"
                     else:
                         summ = _cell_summary(r)
+                        cost = estimate_usd(r.usage)
+                        cost_str = f"${cost:.3f}" if cost else "—"
                         if summ["mean"] is None:
-                            summary = f"{summ['n']:2d} co · {r.elapsed_sec:5.1f}s · no judge"
+                            summary = f"{summ['n']:2d} co · {r.elapsed_sec:5.1f}s · {cost_str} · no judge"
                         else:
                             summary = (
                                 f"{summ['n']:2d} co · {r.elapsed_sec:5.1f}s · "
+                                f"{cost_str} · "
                                 f"mean {summ['mean']} · {summ['pct_geq_4']}%≥4"
                             )
                     print(f"  {r.variant:36s} → {summary}")

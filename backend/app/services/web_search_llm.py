@@ -61,12 +61,15 @@ _ANTHROPIC_WEB_SEARCH_MODEL_DEFAULT = "claude-opus-4-7"
 
 # Default reasoning effort for the OpenAI Responses API. Supported values:
 # "none" | "low" | "medium" (default) | "high" | "xhigh".
-# We default to "high" because the search work goes through a reasoning
-# model that uses its chain-of-thought to plan + interpret search results;
-# without high effort the model burns most of its inference budget on
-# answer formatting rather than search quality. Override via env var
-# (``LLM_WEB_SEARCH_EFFORT``) to dial back cost.
-_OPENAI_REASONING_EFFORT_DEFAULT = "high"
+# Was "high" historically — calibrated for the broadest open-ended
+# discovery searches. In practice the dominant caller is company-specific
+# fact gathering ("what does Foxglove do; what does the eng team work
+# on") where "high" effort doubled wall-clock without measurably better
+# results: per-resume Phase 0 was eating 4-5 min on first-time research.
+# Medium has been a clean win across the company_research call sites.
+# Override via env var (``LLM_WEB_SEARCH_EFFORT``) when a specific call
+# site needs more reasoning.
+_OPENAI_REASONING_EFFORT_DEFAULT = "medium"
 
 # OpenAI's production web-search tool type. ``web_search_preview`` is the
 # legacy variant kept around for backward compat but doesn't support
@@ -93,6 +96,18 @@ class WebSearchResult:
     """Uniform shape returned by every native-LLM-search adapter."""
     answer: str
     citations: list[Citation] = field(default_factory=list)
+    # Token-usage diagnostics. Populated when the provider returns
+    # structured usage (OpenAI Responses API does). Empty dict when the
+    # provider doesn't expose it. Keys mirror OpenAI's shape:
+    #   {
+    #     "input_tokens": int,
+    #     "output_tokens": int,                  # includes reasoning
+    #     "reasoning_tokens": int,               # subset of output
+    #     "cached_input_tokens": int,            # may be 0
+    #     "search_calls": int,                   # web_search tool calls
+    #   }
+    # Callers that want cost estimates can apply per-tier rates.
+    usage: dict = field(default_factory=dict)
 
 
 def _web_search_model(default_for: str) -> str:
@@ -205,7 +220,42 @@ async def _openai_web_search(query: str, num_results: int) -> Optional[WebSearch
 
     answer = (getattr(response, "output_text", "") or "").strip()
     citations = _extract_openai_citations(response, num_results)
-    return WebSearchResult(answer=answer, citations=citations)
+    usage = _extract_openai_usage(response)
+    return WebSearchResult(answer=answer, citations=citations, usage=usage)
+
+
+def _extract_openai_usage(response) -> dict:
+    """Pull token counts + web-search tool calls out of the Responses
+    API response. Returns an empty dict if the shape isn't recognized.
+
+    The Responses API exposes:
+      response.usage.input_tokens
+      response.usage.output_tokens          # includes reasoning
+      response.usage.output_tokens_details.reasoning_tokens
+      response.usage.input_tokens_details.cached_tokens   # may be 0
+
+    Web-search tool calls show up as items in ``response.output`` with
+    type == "web_search_call"; we count them to estimate tool-fee cost.
+    """
+    out: dict = {}
+    usage = getattr(response, "usage", None)
+    if usage is not None:
+        out["input_tokens"] = getattr(usage, "input_tokens", 0) or 0
+        out["output_tokens"] = getattr(usage, "output_tokens", 0) or 0
+        out_details = getattr(usage, "output_tokens_details", None)
+        if out_details is not None:
+            out["reasoning_tokens"] = getattr(out_details, "reasoning_tokens", 0) or 0
+        in_details = getattr(usage, "input_tokens_details", None)
+        if in_details is not None:
+            out["cached_input_tokens"] = getattr(in_details, "cached_tokens", 0) or 0
+    # Count web_search tool invocations
+    search_calls = 0
+    for item in getattr(response, "output", []) or []:
+        t = getattr(item, "type", "")
+        if t == "web_search_call" or t == "web_search_preview_call":
+            search_calls += 1
+    out["search_calls"] = search_calls
+    return out
 
 
 def _extract_openai_citations(response, num_results: int) -> list[Citation]:
