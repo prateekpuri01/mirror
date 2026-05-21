@@ -36,9 +36,14 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-# OpenAI's embeddings API caps inputs at 2048 per request. We chunk just
-# under that to leave margin for retries.
-_EMBED_BATCH_LIMIT = 2000
+# OpenAI's embeddings API caps inputs at 2048 per request AND total
+# tokens at 300K. We chunk small enough that even the long-tail of large
+# job descriptions fits under the token cap:
+#   1000 inputs × ~200 tokens (after build_job_doc truncation) ≈ 200K
+# Hit the 300K cap once during overnight eval — chunking at 2000 with
+# 600-char descriptions overshot at 3220 jobs. Lowering both limits
+# gives 2× headroom.
+_EMBED_BATCH_LIMIT = 1000
 
 # text-embedding-3-small: 1536-d, $0.02/1M tokens. Cheap and fast.
 # text-embedding-3-large would be better quality but ~6x cost; revisit
@@ -79,9 +84,16 @@ class RankedJob:
 async def embed_batch(texts: Sequence[str]) -> list[list[float]]:
     """Embed a batch of texts using ``text-embedding-3-small``.
 
-    Chunks at the OpenAI 2048-input cap. Empty strings are replaced with
-    a single space — OpenAI rejects truly empty input, and we want the
-    output list to align positionally with the input.
+    Two limits enforced when chunking:
+      - ``_EMBED_BATCH_LIMIT`` inputs per call (OpenAI hard cap = 2048)
+      - ``_EMBED_TOKEN_BUDGET`` total tokens per call (OpenAI hard cap
+        = 300K). We estimate tokens as ``chars // 4`` — conservative for
+        English; if a chunk would overshoot, we cut the chunk early and
+        push the remainder to the next request.
+
+    Empty strings are replaced with a single space — OpenAI rejects
+    truly empty input, and we want the output list to align positionally
+    with the input.
 
     Returns a list of 1536-d vectors, one per input, in input order.
     """
@@ -89,17 +101,36 @@ async def embed_batch(texts: Sequence[str]) -> list[list[float]]:
         return []
     client = get_openai_client()
     sanitized = [(t if t and t.strip() else " ") for t in texts]
+
+    # Pre-split into chunks that obey BOTH the input-count and
+    # total-token caps. Token estimate is chars / 4 (roughly accurate
+    # for English; happy to be conservative — the cost of an extra
+    # API call is far less than the cost of a 300K-token rejection).
+    _TOKEN_BUDGET = 250_000  # leaves 50K headroom under the 300K cap
+    chunks: list[list[str]] = []
+    cur: list[str] = []
+    cur_tokens = 0
+    for t in sanitized:
+        est = max(1, len(t) // 4)
+        if cur and (len(cur) >= _EMBED_BATCH_LIMIT or cur_tokens + est > _TOKEN_BUDGET):
+            chunks.append(cur)
+            cur = []
+            cur_tokens = 0
+        cur.append(t)
+        cur_tokens += est
+    if cur:
+        chunks.append(cur)
+
     out: list[list[float]] = []
-    for start in range(0, len(sanitized), _EMBED_BATCH_LIMIT):
-        chunk = sanitized[start : start + _EMBED_BATCH_LIMIT]
+    for i, chunk in enumerate(chunks):
         try:
             resp = await client.embeddings.create(
                 model=_EMBED_MODEL, input=chunk,
             )
         except Exception as e:
             logger.warning(
-                "embed_batch chunk %d-%d failed: %s — returning zero vectors for chunk",
-                start, start + len(chunk), e,
+                "embed_batch chunk %d (size=%d) failed: %s — returning zero vectors",
+                i, len(chunk), e,
             )
             # Return zero vectors so downstream cosine treats these as
             # orthogonal to everything (effective rank = bottom). Better
@@ -239,7 +270,11 @@ def build_job_doc(job: dict) -> str:
         # Strip basic HTML; this is good-enough for embedding signal.
         desc = re.sub(r"<[^>]+>", " ", desc)
         desc = re.sub(r"\s+", " ", desc)
-        parts.append(desc[:600])
+        # Cap aggressively — embeddings need just the topical gist, not
+        # the whole JD. 250 chars is enough for the title-relevant signal
+        # while keeping us well under the 300K-tokens-per-request cap
+        # for batches of 1000+ jobs.
+        parts.append(desc[:250])
     return " ".join(parts) or "untitled role"
 
 
