@@ -226,6 +226,45 @@ async def run_hot_company_search_v2(
 
     funnel: Counter = Counter()
     skip_reasons: Counter = Counter()
+    # Track which candidate names received a terminal event (hit or skip).
+    # At the end of the run we emit safety-net skips for any candidate
+    # that was emitted as a `candidate` event but didn't receive a
+    # terminal — otherwise their UI row spins forever. Sources of silent
+    # drops include: post-resolution dedup losers, companies whose jobs
+    # didn't survive rerank, companies past max_hits.
+    terminal_names_emitted: set[str] = set()
+
+    def _mark_terminal(name: str | None) -> None:
+        if name:
+            terminal_names_emitted.add(name.lower().strip())
+
+    def _safety_net_events() -> list[SearchEvent]:
+        """Return skip events for every candidate that received a
+        candidate-event but no terminal. Called immediately before each
+        ``done`` emission so UI rows always resolve out of the spinner.
+        Idempotent — once a candidate gets a skip here, it's added to
+        terminal_names_emitted and won't double-emit on subsequent
+        calls (relevant only if the function is called more than once
+        in unusual control flow)."""
+        out: list[SearchEvent] = []
+        # unique_candidates may not exist yet if we early-return from
+        # very early in the pipeline; the nonlocal lookup handles that
+        # via try/except — there's nothing to clean up before then.
+        try:
+            candidates_iter = list(unique_candidates)
+        except (NameError, UnboundLocalError):
+            return out
+        for c in candidates_iter:
+            key = (c.name or "").lower().strip()
+            if not key or key in terminal_names_emitted:
+                continue
+            terminal_names_emitted.add(key)
+            funnel["safety_net_skip"] += 1
+            out.append(SearchEvent("skip", {
+                "name": c.name, "source": c.source,
+                "reason": "Reviewed but didn't make the top results",
+            }))
+        return out
 
     yield SearchEvent("status", {
         "message": "Loading profile and existing companies...",
@@ -414,9 +453,12 @@ async def run_hot_company_search_v2(
                 if th:
                     funnel["b_tracked_hits"] += 1
                     tracked_hits.append(th)
+                    _mark_terminal(th.name)
+                    _mark_terminal(c.name)  # might be a spelling variant
                     yield SearchEvent("hit", _hit_event_data(th))
                 else:
                     funnel["b_tracked_no_match"] += 1
+                    _mark_terminal(c.name)
                     yield SearchEvent("skip", {
                         "name": c.name, "source": c.source,
                         "reason": "Already tracked, no matching jobs right now",
@@ -424,6 +466,7 @@ async def run_hot_company_search_v2(
                 continue
             if dup_of:
                 funnel["b_dedup_dropped"] += 1
+                _mark_terminal(c.name)
                 yield SearchEvent("skip", {
                     "name": c.name, "source": c.source,
                     "reason": f"Duplicate of '{dup_of}'",
@@ -433,6 +476,8 @@ async def run_hot_company_search_v2(
 
         # If we've already filled max_hits from tracked alone, we're done.
         if len(tracked_hits) >= max_hits:
+            for _sn_ev in _safety_net_events():
+                yield _sn_ev
             yield SearchEvent("done", _done_event_data(
                 len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
             ))
@@ -442,6 +487,8 @@ async def run_hot_company_search_v2(
         # Phase C — ATS resolution per candidate (parallel)
         # -------------------------------------------------------------
         if _budget_left() <= 0:
+            for _sn_ev in _safety_net_events():
+                yield _sn_ev
             yield SearchEvent("done", _done_event_data(
                 len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
             ))
@@ -495,6 +542,7 @@ async def run_hot_company_search_v2(
             if r is None:
                 unresolvable.append(candidate)
                 funnel["c_unresolvable"] += 1
+                _mark_terminal(candidate.name)
                 yield SearchEvent("skip", {
                     "name": candidate.name, "source": candidate.source,
                     "reason": "Couldn't find ATS slug or careers page",
@@ -521,6 +569,11 @@ async def run_hot_company_search_v2(
 
         from app.services.hot_search.discovery_cache import normalize_name
         resolved_by_key: dict[str, CompanyCandidate] = {}
+        # Track (loser_name, winner_name) pairs so we can emit informative
+        # skip events after dedup. The UI shows a spinner for every
+        # candidate event until a terminal lands — silent dedup leaves
+        # the loser spinning forever.
+        dedup_collapses: list[tuple[CompanyCandidate, CompanyCandidate]] = []
         for c in resolved_raw:
             if c.ats and c.slug:
                 key = f"{c.ats}:{c.slug}"
@@ -533,21 +586,35 @@ async def run_hot_company_search_v2(
             if key in resolved_by_key:
                 existing = resolved_by_key[key]
                 if _name_quality(c.name) > _name_quality(existing.name):
+                    dedup_collapses.append((existing, c))  # existing is the loser
                     resolved_by_key[key] = c
+                else:
+                    dedup_collapses.append((c, existing))  # c is the loser
                 funnel["c_post_resolution_dedup"] += 1
-                # Silent dedup — these two ARE the same company; no
-                # skip event because the user already saw them in the
-                # candidate stream.
             else:
                 resolved_by_key[key] = c
         resolved = list(resolved_by_key.values())
         funnel["c_resolved"] = len(resolved)
+
+        # Emit a skip for each dedup loser so its UI row resolves out
+        # of the spinner. Don't deduplicate by name first — both names
+        # were in the candidate stream, both need terminals.
+        for loser, winner in dedup_collapses:
+            if loser.name.lower().strip() in terminal_names_emitted:
+                continue
+            _mark_terminal(loser.name)
+            yield SearchEvent("skip", {
+                "name": loser.name, "source": loser.source,
+                "reason": f"Same company as '{winner.name}' (collapsed after ATS lookup)",
+            })
 
         # -------------------------------------------------------------
         # Phase D — job fetching per candidate (parallel)
         # -------------------------------------------------------------
         if _budget_left() <= 0 or not resolved:
             # We may still have tracked hits; emit done.
+            for _sn_ev in _safety_net_events():
+                yield _sn_ev
             yield SearchEvent("done", _done_event_data(
                 len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
             ))
@@ -585,6 +652,7 @@ async def run_hot_company_search_v2(
             c, jobs = await fut
             if not jobs:
                 funnel["d_no_jobs"] += 1
+                _mark_terminal(c.name)
                 yield SearchEvent("skip", {
                     "name": c.name, "source": c.source,
                     "reason": "No jobs found at this company",
@@ -597,6 +665,7 @@ async def run_hot_company_search_v2(
                 jobs = _cheap_filter(jobs, locations, min_salary)
             if not jobs:
                 funnel["d_cheap_filtered_to_zero"] += 1
+                _mark_terminal(c.name)
                 yield SearchEvent("skip", {
                     "name": c.name, "source": c.source,
                     "reason": "All jobs failed cheap location/salary filter",
@@ -613,6 +682,8 @@ async def run_hot_company_search_v2(
         funnel["d_total_jobs"] = len(all_jobs)
 
         if not all_jobs:
+            for _sn_ev in _safety_net_events():
+                yield _sn_ev
             yield SearchEvent("done", _done_event_data(
                 len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
             ))
@@ -645,6 +716,8 @@ async def run_hot_company_search_v2(
             )
         except Exception:
             logger.exception("ranking failed; emitting done with no hits")
+            for _sn_ev in _safety_net_events():
+                yield _sn_ev
             yield SearchEvent("done", _done_event_data(
                 len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
             ))
@@ -653,6 +726,8 @@ async def run_hot_company_search_v2(
         funnel["e_ranked_jobs"] = len(ranked)
 
         if not ranked:
+            for _sn_ev in _safety_net_events():
+                yield _sn_ev
             yield SearchEvent("done", _done_event_data(
                 len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
             ))
@@ -735,6 +810,7 @@ async def run_hot_company_search_v2(
             if rejected:
                 funnel["e_summary_rejected"] += 1
                 outcome_no_match.append(normalize_name(cand.name))
+                _mark_terminal(cand.name)
                 yield SearchEvent("skip", {
                     "name": cand.name, "source": cand.source,
                     "reason": f"Dropped: {reject_reason}",
@@ -762,6 +838,7 @@ async def run_hot_company_search_v2(
             )
             emitted.append(hit)
             outcome_hits.append(normalize_name(cand.name))
+            _mark_terminal(cand.name)
             yield SearchEvent("hit", _hit_event_data(hit))
 
             # Defer cache upsert; collect for one bulk write at the end
@@ -863,6 +940,8 @@ async def run_hot_company_search_v2(
         except Exception:
             logger.exception("mark_outcome failed")
 
+        for _sn_ev in _safety_net_events():
+            yield _sn_ev
         yield SearchEvent("done", _done_event_data(
             len(emitted), len(unique_candidates), funnel, skip_reasons,
         ))
