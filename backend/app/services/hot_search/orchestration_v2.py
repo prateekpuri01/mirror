@@ -64,7 +64,9 @@ from app.services.hot_search.evaluation import (
     _batch_check_duplicates,
     _evaluate_tracked_company,
     _extract_direct_job_url,
+    _extract_from_preview,
     _generate_hit_summary,
+    _get_verify_semaphore,
     _job_passes_location_filter,
     _job_passes_salary_filter,
     _verify_jobs_with_extraction,
@@ -93,6 +95,114 @@ _CACHE_RECALL_K = 30
 _CACHE_RECALL_MIN_COSINE = 0.50
 _COSINE_POOL_SIZE = 80
 _TOP_K_DEFAULT = 20
+
+
+async def _verify_jobs_v2_loose(
+    jobs: list[dict],
+    locations: list[str] | None,
+    min_salary: int | None,
+) -> list[dict]:
+    """v2 verifier with looser unknown-policy semantics.
+
+    Phase E (rerank) already vetted topic relevance and HARD CONSTRAINTS
+    via the LLM. By the time a job reaches Phase F, it has been LLM-
+    judged as on-topic AND not-in-conflict with locations/min_salary.
+    The structured verification here is a second-pass sanity check on
+    structured signals — when we can prove a job violates a filter,
+    drop it; when we cannot, trust the rerank.
+
+    Compare to v1's ``_verify_jobs_with_extraction`` which hard-rejects
+    on unknown salary/location. That makes sense for v1 where the
+    picker only sees per-company snippets and can't reason about
+    constraints; for v2 it's too strict — every ATS scrape without a
+    salary field gets dropped even when the rerank confidently picked
+    it as a match.
+
+    Per-job logic:
+      - Cheap structured filter (scraper-provided fields): if explicit
+        miss, drop.
+      - If structured passes OR is unknown: run LLM extraction.
+        * If extracted location_match is False → drop.
+        * If extracted salary is set AND below min_salary → drop.
+        * Otherwise (including unknown salary / unknown location) → keep.
+
+    Returns the kept jobs annotated with any extracted_salary_min/max
+    and extracted_locations fields.
+    """
+    if not jobs:
+        return []
+
+    from types import SimpleNamespace
+
+    async def _check_one(job: dict) -> dict | None:
+        # Cheap filter on scraper-provided fields first
+        fake = SimpleNamespace(
+            title=job.get("title", ""),
+            location=job.get("location"),
+            remote=job.get("remote", False),
+            salary_min=job.get("salary_min"),
+            salary_max=job.get("salary_max"),
+        )
+        if locations:
+            passes, _ = _job_passes_location_filter(fake, locations)
+            if not passes:
+                # Scraper-provided location explicitly mismatched —
+                # this is a confirmed miss, drop.
+                return None
+        if min_salary:
+            if (
+                job.get("salary_max") is not None
+                and job["salary_max"] < min_salary
+            ):
+                return None  # scraper-confirmed below threshold
+
+        # LLM extraction pass (only when we have enough description text)
+        desc = job.get("description_html") or job.get("description") or ""
+        if not desc.strip():
+            # No body text — trust the rerank's LLM judgment.
+            return job
+
+        async with _get_verify_semaphore():
+            try:
+                extracted = await _extract_from_preview(
+                    title=job.get("title", ""),
+                    company=job.get("company", ""),
+                    location=job.get("location"),
+                    description=desc,
+                    filter_locations=locations if locations else None,
+                )
+            except Exception:
+                extracted = None
+
+        if not extracted:
+            # Extraction failed — fall back to the rerank's judgment.
+            return job
+
+        # Definite-miss rejections only — unknowns pass through.
+        if locations and extracted.get("location_match") is False:
+            return None
+        if min_salary and extracted.get("salary_max") is not None:
+            if extracted["salary_max"] < min_salary:
+                return None
+
+        out = dict(job)
+        if extracted.get("salary_min"):
+            out["extracted_salary_min"] = extracted["salary_min"]
+        if extracted.get("salary_max"):
+            out["extracted_salary_max"] = extracted["salary_max"]
+        if extracted.get("work_model"):
+            out["extracted_work_model"] = extracted["work_model"]
+        if extracted.get("locations"):
+            out["extracted_locations"] = extracted["locations"]
+        return out
+
+    results = await asyncio.gather(*[_check_one(j) for j in jobs])
+    kept = [r for r in results if r is not None]
+    logger.info(
+        "_verify_jobs_v2_loose: kept %d/%d (locations=%s, min_salary=%s)",
+        len(kept), len(jobs), locations, min_salary,
+    )
+    return kept
 
 
 async def run_hot_company_search_v2(
@@ -515,41 +625,27 @@ async def run_hot_company_search_v2(
         # -------------------------------------------------------------
         verified_jobs: list[tuple[dict, int, bool]] = []
         if locations or min_salary:
-            # _verify_jobs_with_extraction caps its input at jobs[:10]
-            # internally to bound LLM cost. When rerank returned more
-            # than 10 (top_k = max_hits * 4 by default), the tail was
-            # silently dropped — appearing in the funnel as
-            # f_filter_rejected. We chunk through in groups of 10 and
-            # stop once we have enough verified to satisfy max_hits.
-            CHUNK = 10
-            verified_by_url: dict[str, dict] = {}
-            i = 0
-            while i < len(ranked) and len(verified_by_url) < max_hits:
-                batch = [j for j, _r in ranked[i : i + CHUNK]]
-                try:
-                    vl = await _verify_jobs_with_extraction(
-                        batch, locations or [], min_salary,
-                    )
-                except Exception:
-                    logger.exception("verify_with_extraction failed; chunk skipped")
-                    vl = []
-                for v in vl:
-                    u = v.get("url")
-                    if u and u not in verified_by_url:
-                        verified_by_url[u] = v
-                i += CHUNK
-
+            # Use the v2 looser verifier — definite-miss rejections only
+            # (e.g. extracted salary < threshold), unknown-policy items
+            # pass through. The rerank already vetted topic-fit and
+            # HARD CONSTRAINTS via LLM judgment, so we don't double-
+            # gate. See _verify_jobs_v2_loose docstring.
+            top_job_dicts = [j for j, _r in ranked]
+            try:
+                verified_list = await _verify_jobs_v2_loose(
+                    top_job_dicts, locations, min_salary,
+                )
+            except Exception:
+                logger.exception("v2 verifier failed; passing rerank through unchanged")
+                verified_list = top_job_dicts
+            verified_by_url = {v.get("url"): v for v in verified_list if v.get("url")}
             verified_urls = set(verified_by_url.keys())
             for job, rj in ranked:
                 u = job.get("url")
                 if not u:
-                    # No URL means we couldn't pre-filter — keep the
-                    # job; orchestrator's emission logic will handle.
                     verified_jobs.append((job, rj.relevance, rj.is_tentative))
                     continue
                 if u in verified_urls:
-                    # Replace with the verified job dict (may carry
-                    # extracted_salary_* / extracted_locations fields).
                     verified_jobs.append((verified_by_url[u], rj.relevance, rj.is_tentative))
                 else:
                     funnel["f_filter_rejected"] += 1
