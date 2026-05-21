@@ -44,4 +44,25 @@ from app.services.hot_search.evaluation import (  # noqa: F401
 )
 
 # Orchestration entry point — what the router and eval scripts call.
-from app.services.hot_search.orchestration import run_hot_company_search  # noqa: F401
+# v1 lives at `orchestration.run_hot_company_search`; v2 at
+# `orchestration_v2.run_hot_company_search_v2`. The dispatcher below
+# picks one based on the runtime flag so the router signature is stable.
+from app.services.hot_search.orchestration import (  # noqa: F401
+    run_hot_company_search as _run_v1,
+)
+from app.services.hot_search.orchestration_v2 import (  # noqa: F401
+    run_hot_company_search_v2 as _run_v2,
+)
+
+
+def run_hot_company_search(*args, **kwargs):
+    """Dispatch to v1 or v2 based on ``settings.hot_search_v2``.
+
+    Returns the same ``AsyncGenerator[SearchEvent, None]`` either way,
+    so callers (router, eval scripts) need no change. The flag is read
+    on each call so config can be flipped without process restart.
+    """
+    from app.config import settings
+    if settings.hot_search_v2:
+        return _run_v2(*args, **kwargs)
+    return _run_v1(*args, **kwargs)

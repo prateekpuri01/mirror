@@ -41,6 +41,13 @@ class Settings(BaseSettings):
     # flip to True via HOT_SEARCH_BROWSER_AGENT=1 for one-off broad
     # searches where latency is acceptable.
     hot_search_browser_agent: bool = False
+    # Hot search v2 — single-pass orchestrator built around LLM-web
+    # discovery + embeddings/LLM rerank scoring + persistent discovery
+    # cache. Off by default during rollout; flip to True via
+    # HOT_SEARCH_V2=1 once the eval gate at backend/scripts/eval/eval_hot_search.py
+    # passes twice against the v1 baseline. Will be deleted after one
+    # release of being default-on (see plan-out-the-next-goofy-wreath.md).
+    hot_search_v2: bool = False
     profile_yaml_path: str = "/app/docs/profile.yaml"
     profile_complete_yaml_path: str = "/app/docs/profile_complete.yaml"
 
