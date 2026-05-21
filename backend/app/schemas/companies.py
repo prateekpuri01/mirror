@@ -137,3 +137,13 @@ class HotSearchRequest(BaseModel):
     min_salary: int | None = None
     reference_job_ids: list[str] | None = None
     candidate_concurrency: int = 8
+    # Minimum profile-fit score (0-100) a job must hit to count as a "hit".
+    # Default 50 instead of the legacy hard-coded 75 since the scorer is
+    # calibrated tight against fully-populated profiles; cross-domain
+    # exploratory searches almost never pass 75 on first try.
+    profile_fit_threshold: int = 50
+    # Phase A2 LLM-web reasoning effort. "low" (default) runs ~4 queries
+    # at ~$0.10/call, "high" runs ~3 queries at ~$0.40/call but with
+    # more inference depth. Frontend exposes this as a "Deep search"
+    # toggle (off → low, on → high).
+    effort: str = "low"

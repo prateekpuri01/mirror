@@ -69,7 +69,7 @@ _ANTHROPIC_WEB_SEARCH_MODEL_DEFAULT = "claude-opus-4-7"
 # Medium has been a clean win across the company_research call sites.
 # Override via env var (``LLM_WEB_SEARCH_EFFORT``) when a specific call
 # site needs more reasoning.
-_OPENAI_REASONING_EFFORT_DEFAULT = "medium"
+_OPENAI_REASONING_EFFORT_DEFAULT = "low"
 
 # OpenAI's production web-search tool type. ``web_search_preview`` is the
 # legacy variant kept around for backward compat but doesn't support
@@ -144,6 +144,8 @@ def native_web_search_supported() -> bool:
 async def llm_web_search(
     query: str,
     num_results: int = 5,
+    *,
+    effort: Optional[str] = None,
 ) -> Optional[WebSearchResult]:
     """Run a native LLM web search for the configured provider.
 
@@ -152,12 +154,16 @@ async def llm_web_search(
       - no API key is configured for the provider
       - the call fails (logged at WARNING)
 
+    ``effort`` overrides ``settings.llm_web_search_effort`` for this
+    call. Hot search v2 uses this to let users opt into deeper search
+    per-request without changing the global default.
+
     Callers that want a hard guarantee of a result should fall back to
     ``app.services.web_search`` after a ``None`` return.
     """
     provider = (settings.llm_provider or "openai").lower()
     if provider == "openai":
-        return await _openai_web_search(query, num_results)
+        return await _openai_web_search(query, num_results, effort=effort)
     if provider == "anthropic":
         return await _anthropic_web_search(query, num_results)
     return None
@@ -168,34 +174,49 @@ async def llm_web_search(
 # ---------------------------------------------------------------------------
 
 
-def _openai_reasoning_effort() -> str:
+def _openai_reasoning_effort(override: Optional[str] = None) -> str:
     """Resolve the reasoning effort for the OpenAI Responses API call.
 
-    Env override → default. Validated against the allowed set so a typo
-    doesn't get silently swallowed by the API.
+    Resolution order:
+      1. Per-call ``override`` argument (passed from callers that want
+         this knob to be a runtime toggle, e.g. hot search v2).
+      2. ``settings.llm_web_search_effort`` env override.
+      3. ``_OPENAI_REASONING_EFFORT_DEFAULT`` constant (currently "low").
+
+    Validated against the allowed set so a typo doesn't get silently
+    swallowed by the API.
     """
+    _ALLOWED = {"none", "low", "medium", "high", "xhigh"}
+    if override:
+        val = override.strip().lower()
+        if val in _ALLOWED:
+            return val
     val = (settings.llm_web_search_effort or "").strip().lower()
-    if val in {"none", "low", "medium", "high", "xhigh"}:
+    if val in _ALLOWED:
         return val
     return _OPENAI_REASONING_EFFORT_DEFAULT
 
 
-async def _openai_web_search(query: str, num_results: int) -> Optional[WebSearchResult]:
+async def _openai_web_search(
+    query: str,
+    num_results: int,
+    *,
+    effort: Optional[str] = None,
+) -> Optional[WebSearchResult]:
     if not settings.openai_api_key:
         return None
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.openai_api_key)
-        # ``web_search`` (production tool) + ``gpt-5.5`` (reasoning model) +
-        # ``reasoning.effort=high`` is the recommended "agentic search"
-        # configuration per OpenAI's docs — the model uses its chain-of-
-        # thought to plan + interpret search results rather than just
-        # dumping a single-shot answer. Materially better than the legacy
-        # ``web_search_preview`` + non-reasoning model pairing.
+        # ``web_search`` (production tool) + ``gpt-5.5`` + reasoning effort
+        # is the agentic search configuration. Default effort is now "low"
+        # (4x cheaper than medium with ~11pt judge-quality drop, offset by
+        # running 4 queries instead of 3 — see eval data in commits
+        # dab70af and the deep-search toggle flow).
         response = await client.responses.create(
             model=_web_search_model("openai"),
             tools=[{"type": _OPENAI_WEB_SEARCH_TOOL_TYPE}],
-            reasoning={"effort": _openai_reasoning_effort()},
+            reasoning={"effort": _openai_reasoning_effort(effort)},
             input=query,
         )
     except Exception as e:

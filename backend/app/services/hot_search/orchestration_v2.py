@@ -215,6 +215,7 @@ async def run_hot_company_search_v2(
     reference_job_ids: list[str] | None = None,
     candidate_concurrency: int = 16,
     profile_fit_threshold: int = 50,  # signature compat; rerank floor lives in ranking module
+    effort: str = "low",
 ) -> AsyncGenerator[SearchEvent, None]:
     """v2 entry point. Signature mirrors v1's run_hot_company_search so
     the router + eval script can route through the dispatcher unchanged.
@@ -336,7 +337,15 @@ async def run_hot_company_search_v2(
                 funnel["a1_failed"] = 1
                 return []
 
-        # A2: LLM-web discovery
+        # A2: LLM-web discovery. Effort-aware fan-out: low effort uses 4
+        # queries (~33% more candidates at ~25% the per-call cost — net
+        # ~3x cheaper AND offsets the per-call quality drop). High effort
+        # uses 3 queries (the medium baseline; deeper reasoning per call).
+        a2_effort = (effort or "low").strip().lower()
+        a2_n_queries = 4 if a2_effort == "low" else 3
+        funnel["a2_effort"] = a2_effort
+        funnel["a2_n_queries"] = a2_n_queries
+
         async def _phase_a2() -> list[CompanyCandidate]:
             try:
                 candidates = await discover_via_llm_web(
@@ -349,7 +358,8 @@ async def run_hot_company_search_v2(
                     locations=locations,
                     min_salary=min_salary,
                     sources=sources,
-                    n_queries=3,
+                    n_queries=a2_n_queries,
+                    effort=a2_effort,
                 )
                 funnel["a2_llm_web_candidates"] = len(candidates)
                 return candidates

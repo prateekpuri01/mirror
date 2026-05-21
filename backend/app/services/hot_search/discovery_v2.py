@@ -306,6 +306,7 @@ async def _one_query_to_candidates(
     locations: list[str] | None,
     min_salary: int | None,
     num_results: int = 10,
+    effort: str | None = None,
 ) -> list[CompanyCandidate]:
     """Run one recruiter-style LLM-web call and convert its output to
     candidates from TWO sources:
@@ -329,7 +330,7 @@ async def _one_query_to_candidates(
         min_salary=min_salary,
     )
 
-    res = await llm_web_search(full_query, num_results=num_results)
+    res = await llm_web_search(full_query, num_results=num_results, effort=effort)
     if res is None:
         logger.warning("llm_web_search returned None for query: %s", query[:80])
         return []
@@ -469,6 +470,7 @@ async def discover_via_llm_web(
     sources: list[str] | None = None,
     n_queries: int = 3,
     num_results: int = 10,
+    effort: str | None = None,
 ) -> list[CompanyCandidate]:
     """Generate N queries from guidance + profile, fan out to llm_web_search
     in parallel, classify every returned URL, return deduplicated
@@ -512,6 +514,7 @@ async def discover_via_llm_web(
             locations=locations,
             min_salary=min_salary,
             num_results=num_results,
+            effort=effort,
         )
         for q in queries
     ]

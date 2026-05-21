@@ -60,6 +60,7 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
     guidance, setGuidance,
     selectedLocations, setSelectedLocations,
     minSalary, setMinSalary,
+    deepSearch, setDeepSearch,
     selectedRefIds, setSelectedRefIds,
     expandedHit, setExpandedHit,
     selectedSlugs, setSelectedSlugs,
@@ -241,6 +242,7 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
       locations: selectedLocations.length > 0 ? selectedLocations : undefined,
       minSalary: minSalary ? parseInt(minSalary) * 1000 : undefined,
       referenceJobIds: selectedRefIds.size > 0 ? Array.from(selectedRefIds) : undefined,
+      deepSearch,
     });
   }
 
@@ -424,14 +426,26 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
             />
           </div>
 
-          <button
-            onClick={handleSearch}
-            disabled={isSearching}
-            className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors flex items-center gap-2"
-          >
-            <Flame className="h-3.5 w-3.5" />
-            Search
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="h-9 px-4 rounded-md bg-foreground text-background text-sm font-medium hover:bg-foreground/90 disabled:opacity-50 transition-colors flex items-center gap-2"
+            >
+              <Flame className="h-3.5 w-3.5" />
+              Search
+            </button>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={deepSearch}
+                onChange={(e) => setDeepSearch(e.target.checked)}
+                className="h-3.5 w-3.5 rounded border-muted-foreground/30"
+              />
+              Deep search
+              <span className="text-xs text-muted-foreground/60">(slower, costs more, marginally higher quality)</span>
+            </label>
+          </div>
         </div>
       )}
 
@@ -537,6 +551,19 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
             </div>
           )}
 
+          {/* Tentative-hit banner — surfaces when the strict threshold
+              was too tight and we fell back to the loose tier. Tells the
+              user "not finding a great fit, but here's what's closest"
+              so they don't think the search is broken. */}
+          {hits.some((h) => h.is_tentative) && (
+            <div className="text-xs text-slate-700 bg-slate-50 border border-slate-200 rounded-md px-3 py-2">
+              Some matches below are <strong>tentative</strong> — their best
+              role scored below the strong-fit threshold (dashed border,
+              labeled with score). Use them as exploratory leads when no
+              strong fits are available.
+            </div>
+          )}
+
           {/* Hit list */}
           {hits.length > 0 && (
             <div className="space-y-2 max-h-[600px] overflow-auto">
@@ -551,11 +578,14 @@ export function HotCompanySearch({ onClose }: HotCompanySearchProps) {
                 const isSelected = selectedSlugs.has(hitKey);
                 const jobSel = isAts ? getJobSelections(hit) : new Set<string>();
 
+                const isTentative = hit.is_tentative === true;
                 const bgClass = isLead
                   ? "bg-amber-50/30 border-amber-200"
                   : isTracked
                     ? "bg-blue-50/30 border-blue-200"
-                    : "";
+                    : isTentative
+                      ? "bg-slate-50/40 border-slate-200 border-dashed"
+                      : "";
 
                 return (
                   <div

@@ -29,6 +29,8 @@ async def hot_search(body: HotSearchRequest) -> StreamingResponse:
                 min_salary=body.min_salary,
                 reference_job_ids=body.reference_job_ids,
                 candidate_concurrency=body.candidate_concurrency,
+                profile_fit_threshold=body.profile_fit_threshold,
+                effort=body.effort,
             ):
                 yield f"event: {event.event}\ndata: {json.dumps(event.data)}\n\n"
         except Exception:

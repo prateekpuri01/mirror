@@ -19,6 +19,15 @@ export interface HotSearchOptions {
   locations?: string[];
   minSalary?: number;
   referenceJobIds?: string[];
+  /** Minimum 0-100 profile-fit score a job must hit to count as a hit.
+   *  Default 50 server-side; users can lower for exploratory cross-domain
+   *  searches where no job will perfectly match an established profile. */
+  profileFitThreshold?: number;
+  /** When true, the Phase A2 discovery agent runs with higher reasoning
+   *  effort and slightly fewer queries — ~4x cost, marginally better
+   *  quality. Off by default; surfaced as a "Deep search" toggle in the
+   *  UI for users who want the extra signal. */
+  deepSearch?: boolean;
 }
 
 // Per-hit selections (slug → set of selected job URLs) — survives navigation
@@ -45,6 +54,8 @@ interface HotSearchState {
   setSelectedLocations: (v: string[] | ((prev: string[]) => string[])) => void;
   minSalary: string;
   setMinSalary: (v: string) => void;
+  deepSearch: boolean;
+  setDeepSearch: (v: boolean) => void;
   selectedRefIds: Set<string>;
   setSelectedRefIds: (v: Set<string> | ((prev: Set<string>) => Set<string>)) => void;
   // Post-results selection state
@@ -82,6 +93,8 @@ const HotSearchContext = createContext<HotSearchState>({
   setSelectedLocations: () => {},
   minSalary: "",
   setMinSalary: () => {},
+  deepSearch: false,
+  setDeepSearch: () => {},
   selectedRefIds: new Set(),
   setSelectedRefIds: () => {},
   expandedHit: null,
@@ -114,6 +127,7 @@ export function useHotSearchProvider(): HotSearchState {
   const [guidance, setGuidance] = useState("");
   const [selectedLocations, setSelectedLocations] = useState<string[]>([]);
   const [minSalary, setMinSalary] = useState("");
+  const [deepSearch, setDeepSearch] = useState(false);
   const [selectedRefIds, setSelectedRefIds] = useState<Set<string>>(new Set());
   const [expandedHit, setExpandedHit] = useState<string | null>(null);
   const [selectedSlugs, setSelectedSlugs] = useState<Set<string>>(new Set());
@@ -142,6 +156,7 @@ export function useHotSearchProvider(): HotSearchState {
     setGuidance("");
     setSelectedLocations([]);
     setMinSalary("");
+    setDeepSearch(false);
     setSelectedRefIds(new Set());
     setExpandedHit(null);
     setSelectedSlugs(new Set());
@@ -168,13 +183,17 @@ export function useHotSearchProvider(): HotSearchState {
       // optional fields with their default empty/null values. Backend
       // Pydantic handles absent fields fine, but keeping the wire format
       // identical removes one variable from result-divergence debugging.
-      const body = {
+      const body: Record<string, unknown> = {
         sources,
         guidance,
         locations: options?.locations || [],
         min_salary: options?.minSalary ?? null,
         reference_job_ids: options?.referenceJobIds || [],
+        effort: options?.deepSearch ? "high" : "low",
       };
+      if (options?.profileFitThreshold !== undefined) {
+        body.profile_fit_threshold = options.profileFitThreshold;
+      }
 
       (async () => {
         try {
@@ -320,6 +339,8 @@ export function useHotSearchProvider(): HotSearchState {
     setSelectedLocations,
     minSalary,
     setMinSalary,
+    deepSearch,
+    setDeepSearch,
     selectedRefIds,
     setSelectedRefIds,
     expandedHit,
