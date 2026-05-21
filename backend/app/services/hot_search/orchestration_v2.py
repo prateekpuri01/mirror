@@ -776,9 +776,18 @@ async def run_hot_company_search_v2(
         # of each company is what we emit first).
         company_jobs_ordered: dict[str, list[dict]] = {}
         company_scores: dict[str, int] = {}
-        for job, rel, _tent in verified_jobs:
+        for job, rel, tent in verified_jobs:
             cname = job.get("_candidate_name") or job.get("company") or "?"
-            company_jobs_ordered.setdefault(cname, []).append(dict(job))
+            # Annotate the per-job dict with its rerank score (0-100 scale,
+            # matching the company-level match_score and what the frontend
+            # threshold UI compares against — see job-row-expanded.tsx
+            # threshold ≥ 75). Without these fields the UI Relevance
+            # column renders as "—" and the threshold slider can't filter.
+            job_out = dict(job)
+            job_out["relevance"] = rel * 20  # 1-5 → 20/40/60/80/100
+            job_out["relevance_score"] = rel * 20  # alt name used elsewhere
+            job_out["is_tentative"] = tent
+            company_jobs_ordered.setdefault(cname, []).append(job_out)
             company_scores[cname] = max(company_scores.get(cname, 0), rel)
 
         # Sort companies by their best-job's relevance, then alphabetic
