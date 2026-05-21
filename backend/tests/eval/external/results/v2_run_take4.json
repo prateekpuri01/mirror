@@ -1,0 +1,1146 @@
+{
+  "eval": "hot_search",
+  "timestamp": "20260521T083820Z",
+  "max_hits": 8,
+  "total_elapsed_sec": 2377.1,
+  "db_snapshot_url_count": 4,
+  "aggregate": {
+    "n_scenarios": 9,
+    "coverage_rate": 0.778,
+    "coverage_count": "7/9",
+    "mean_novelty_rate": 1.0,
+    "mean_relevance": 4.38,
+    "total_imported_jobs": 119,
+    "total_novel_jobs": 119,
+    "total_judged_jobs": 69,
+    "mean_elapsed_sec": 260.8,
+    "source_breakdown": {
+      "cache_recall": 12,
+      "llm_web": 30,
+      "hn_who_is_hiring": 1
+    }
+  },
+  "examples": {
+    "best_finds": [
+      {
+        "title": "Senior Machine Learning Engineer, RL / Locomotion",
+        "url": "https://boards.greenhouse.io/andurilindustries/jobs/5136528007?gh_jid=5136528007",
+        "company": "Andurilindustries",
+        "location": "Costa Mesa, California, United States",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Senior Machine Learning (ML) Engineer",
+        "url": "https://boards.greenhouse.io/andurilindustries/jobs/5121715007?gh_jid=5121715007",
+        "company": "Andurilindustries",
+        "location": "Fort Collins, Colorado, United States",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Applied Machine Learning Engineer",
+        "url": "https://boards.greenhouse.io/andurilindustries/jobs/4998882007?gh_jid=4998882007",
+        "company": "Andurilindustries",
+        "location": "Washington, District of Columbia, United States",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "Senior Machine Learning Engineer",
+        "url": "https://boards.greenhouse.io/andurilindustries/jobs/5016403007?gh_jid=5016403007",
+        "company": "Andurilindustries",
+        "location": "Sydney, New South Wales, Australia",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      },
+      {
+        "title": "ML/Research Engineer, Safeguards",
+        "url": "https://job-boards.greenhouse.io/anthropic/jobs/4949336008",
+        "company": "Anthropic",
+        "location": "San Francisco, CA | New York City, NY",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 5,
+        "persona": "ml_engineer_loose",
+        "guidance": "machine learning engineer"
+      }
+    ],
+    "worst_finds": [
+      {
+        "title": "Researcher / Senior Researcher",
+        "url": "https://jobs.lever.co/epoch-ai/de7b4c71-ece2-454a-be70-e7b75c5f3b23",
+        "company": "Epoch Ai",
+        "location": "Remote",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 3,
+        "persona": "ai_policy",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Data Scientist (Contract)",
+        "url": "https://jobs.lever.co/epoch-ai/ab88ba6e-6a92-44cc-8830-a2dafca31f1a",
+        "company": "Epoch AI",
+        "location": "Remote",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 3,
+        "persona": "ai_policy",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Transformative AI Research Economist, Economic Research\u00a0",
+        "url": "https://job-boards.greenhouse.io/anthropic/jobs/5149802008",
+        "company": "Anthropic",
+        "location": "San Francisco, CA",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 3,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Transformative AI Research Economist, Economic Research\u00a0",
+        "url": "https://job-boards.greenhouse.io/anthropic/jobs/5149802008",
+        "company": "Anthropic",
+        "location": "San Francisco, CA",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 3,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      },
+      {
+        "title": "Research Engineer / Scientist, Alignment Science - London",
+        "url": "https://job-boards.greenhouse.io/anthropic/jobs/4610158008",
+        "company": "Anthropic",
+        "location": "London, UK",
+        "kind": "ats",
+        "novel": true,
+        "relevance": 3,
+        "persona": "ai_policy_open",
+        "guidance": "AI policy or governance researcher"
+      }
+    ]
+  },
+  "scenarios": [
+    {
+      "persona": "ml_engineer_loose",
+      "guidance": "machine learning engineer",
+      "locations": null,
+      "min_salary": null,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 5.0,
+      "hits_ats": 8,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 61,
+      "errors": 0,
+      "imported_job_count": 22,
+      "novel_job_count": 22,
+      "t_first_hit_sec": 224.84,
+      "elapsed_sec": 259.74,
+      "source_breakdown": {
+        "cache_recall": 3,
+        "llm_web": 4,
+        "hn_who_is_hiring": 1
+      },
+      "funnel": {
+        "a3_cache_recalls": 26,
+        "a1_aggregator_entries": 71,
+        "a1_aggregator_candidates": 71,
+        "a2_llm_web_candidates": 56,
+        "candidates_pre_dedup": 153,
+        "c_resolved": 148,
+        "d_no_jobs": 61,
+        "d_fetch_timeout": 16,
+        "d_total_jobs": 5703,
+        "e_ranked_jobs": 32,
+        "f_post_verify": 32
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Senior Machine Learning Engineer, RL / Locomotion",
+          "url": "https://boards.greenhouse.io/andurilindustries/jobs/5136528007?gh_jid=5136528007",
+          "company": "Andurilindustries",
+          "location": "Costa Mesa, California, United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Machine Learning (ML) Engineer",
+          "url": "https://boards.greenhouse.io/andurilindustries/jobs/5121715007?gh_jid=5121715007",
+          "company": "Andurilindustries",
+          "location": "Fort Collins, Colorado, United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Applied Machine Learning Engineer",
+          "url": "https://boards.greenhouse.io/andurilindustries/jobs/4998882007?gh_jid=4998882007",
+          "company": "Andurilindustries",
+          "location": "Washington, District of Columbia, United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Machine Learning Engineer",
+          "url": "https://boards.greenhouse.io/andurilindustries/jobs/5016403007?gh_jid=5016403007",
+          "company": "Andurilindustries",
+          "location": "Sydney, New South Wales, Australia",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "ML/Research Engineer, Safeguards",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4949336008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Research Engineer, Machine Learning (Reinforcement Learning)",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5115935008",
+          "company": "Anthropic",
+          "location": "London, UK",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Research Engineer, Machine Learning (RL Velocity)",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5198074008",
+          "company": "Anthropic",
+          "location": "London, UK",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Machine Learning Engineer",
+          "url": "https://job-boards.greenhouse.io/checkr/jobs/7940098",
+          "company": "Checkr",
+          "location": "San Francisco, California, United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Machine Learning Engineer",
+          "url": "https://job-boards.greenhouse.io/checkr/jobs/7940098",
+          "company": "Checkr",
+          "location": "San Francisco, California, United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Machine Learning Engineer Intern (Summer 2026)",
+          "url": "https://boards.greenhouse.io/cloudflare/jobs/7914628?gh_jid=7914628",
+          "company": "Cloudflare",
+          "location": "In-Office",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "ml_engineer_sf",
+      "guidance": "senior machine learning engineer at AI startup",
+      "locations": [
+        "San Francisco",
+        "Remote"
+      ],
+      "min_salary": 220000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 62,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 262.53,
+      "source_breakdown": {},
+      "funnel": {
+        "a3_cache_recalls": 30,
+        "a1_aggregator_entries": 36,
+        "a1_aggregator_candidates": 36,
+        "a2_llm_web_candidates": 39,
+        "candidates_pre_dedup": 105,
+        "c_resolved": 99,
+        "d_no_jobs": 50,
+        "d_fetch_timeout": 19,
+        "d_cheap_filtered_to_zero": 12,
+        "d_total_jobs": 464,
+        "e_ranked_jobs": 0
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "fintech_ds",
+      "guidance": "data scientist at fintech or crypto",
+      "locations": [
+        "New York",
+        "Remote"
+      ],
+      "min_salary": 180000,
+      "coverage": false,
+      "novelty_rate": null,
+      "mean_relevance": null,
+      "hits_ats": 0,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 39,
+      "errors": 0,
+      "imported_job_count": 0,
+      "novel_job_count": 0,
+      "t_first_hit_sec": null,
+      "elapsed_sec": 240.36,
+      "source_breakdown": {},
+      "funnel": {
+        "a3_cache_recalls": 13,
+        "a1_aggregator_entries": 10,
+        "a1_aggregator_candidates": 7,
+        "a2_llm_web_candidates": 43,
+        "candidates_pre_dedup": 63,
+        "c_resolved": 62,
+        "d_no_jobs": 35,
+        "d_cheap_filtered_to_zero": 4,
+        "d_fetch_timeout": 22,
+        "d_total_jobs": 250,
+        "e_ranked_jobs": 0
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [],
+      "error_msg": null
+    },
+    {
+      "persona": "ai_policy",
+      "guidance": "AI policy or governance researcher",
+      "locations": [
+        "Washington DC",
+        "Remote"
+      ],
+      "min_salary": null,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 3.9,
+      "hits_ats": 5,
+      "hits_lead": 3,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 30,
+      "errors": 0,
+      "imported_job_count": 15,
+      "novel_job_count": 15,
+      "t_first_hit_sec": 225.98,
+      "elapsed_sec": 260.25,
+      "source_breakdown": {
+        "llm_web": 6,
+        "cache_recall": 2
+      },
+      "funnel": {
+        "a3_cache_recalls": 20,
+        "a1_aggregator_entries": 16,
+        "a1_aggregator_candidates": 13,
+        "a2_llm_web_candidates": 32,
+        "candidates_pre_dedup": 65,
+        "c_resolved": 61,
+        "d_cheap_filtered_to_zero": 7,
+        "d_no_jobs": 21,
+        "d_fetch_timeout": 7,
+        "d_total_jobs": 1139,
+        "e_ranked_jobs": 32,
+        "f_post_verify": 32,
+        "e_summary_rejected": 2
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Privacy Governance Lead ",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5208136008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Washington, DC",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Privacy Governance Lead ",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5208136008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Washington, DC",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Safeguards Policy Analyst, Fraud & Scams",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5174857008",
+          "company": "Anthropic",
+          "location": "Remote-Friendly (Travel-Required) | San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Safeguards Policy Analyst, Fraud & Scams",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5174857008",
+          "company": "Anthropic",
+          "location": "Remote-Friendly (Travel-Required) | San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Policy Design Manager, Age-Appropriate Design",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5156326008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Washington, DC",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Frontier AI Research Lead",
+          "url": "https://cset.georgetown.edu/job/research-or-senior-fellow-frontier-ai/",
+          "company": "Cset",
+          "location": null,
+          "kind": "lead",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Researcher / Senior Researcher",
+          "url": "https://jobs.lever.co/epoch-ai/de7b4c71-ece2-454a-be70-e7b75c5f3b23",
+          "company": "Epoch Ai",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Researcher / Senior Researcher",
+          "url": "https://jobs.lever.co/epoch-ai/de7b4c71-ece2-454a-be70-e7b75c5f3b23",
+          "company": "Epoch Ai",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Research Lead - AI Cyber Testing & Evaluation",
+          "url": "https://rand.wd5.myworkdayjobs.com/en-US/External_Career_Site/job/Research-Lead----AI-Cyber-Testing---Evaluation_R3122?utm_source=openai",
+          "company": "Research Lead",
+          "location": "Washington, DC; Pittsburgh, PA; Santa Monica, CA; Boston, MA; San Francisco, CA; USA - Remote",
+          "kind": "lead",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Data Scientist (Contract)",
+          "url": "https://jobs.lever.co/epoch-ai/ab88ba6e-6a92-44cc-8830-a2dafca31f1a",
+          "company": "Epoch AI",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "ai_policy_open",
+      "guidance": "AI policy or governance researcher",
+      "locations": null,
+      "min_salary": null,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 4.1,
+      "hits_ats": 8,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 23,
+      "errors": 0,
+      "imported_job_count": 20,
+      "novel_job_count": 20,
+      "t_first_hit_sec": 190.93,
+      "elapsed_sec": 225.52,
+      "source_breakdown": {
+        "llm_web": 8
+      },
+      "funnel": {
+        "a3_cache_recalls": 21,
+        "a1_aggregator_entries": 18,
+        "a1_aggregator_candidates": 17,
+        "a2_llm_web_candidates": 30,
+        "candidates_pre_dedup": 68,
+        "c_resolved": 63,
+        "d_no_jobs": 23,
+        "d_fetch_timeout": 5,
+        "d_total_jobs": 1788,
+        "e_ranked_jobs": 32,
+        "f_post_verify": 32
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Transformative AI Research Economist, Economic Research\u00a0",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5149802008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Transformative AI Research Economist, Economic Research\u00a0",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5149802008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Privacy Governance Lead",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5210242008",
+          "company": "Anthropic",
+          "location": "Dublin, IE",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Privacy Governance Lead",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5210242008",
+          "company": "Anthropic",
+          "location": "Dublin, IE",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "Research Engineer / Scientist, Alignment Science - London",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4610158008",
+          "company": "Anthropic",
+          "location": "London, UK",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Senior Technical Specialist, AI Risk Assessment",
+          "url": "https://jobs.lever.co/futureof-life/a72cd411-9af3-458a-932b-16cca3ce07dd",
+          "company": "Futureof Life",
+          "location": "Anywhere (Open Globally)",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Societal Defense Researcher",
+          "url": "https://jobs.lever.co/futureof-life/e433cd23-7f2d-4790-a2bf-257f50b91c58",
+          "company": "Futureof Life",
+          "location": "Anywhere (Open Globally)",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Economist - Effects of Transformative AI",
+          "url": "https://jobs.lever.co/futureof-life/55ef0ec0-09fa-49f6-98ba-db26f85d2090",
+          "company": "Futureof Life",
+          "location": "Anywhere (Open Globally)",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "AI Offense-Defense Dynamics Lead Researcher",
+          "url": "https://jobs.lever.co/futureof-life/bbd4da5f-322b-449a-b839-41da13862ca8",
+          "company": "Futureof Life",
+          "location": "Anywhere (Open Globally)",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Director of Legal Research - Emergency Preparedness & Civil Defense",
+          "url": "https://jobs.lever.co/futureof-life/16b7ebd7-a5be-4d3a-bc70-cce1b937b313",
+          "company": "Futureof Life",
+          "location": "Washington DC",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "healthcare_ml",
+      "guidance": "machine learning engineer in healthcare or biotech",
+      "locations": [
+        "Boston",
+        "Remote"
+      ],
+      "min_salary": 160000,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 5.0,
+      "hits_ats": 5,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 47,
+      "errors": 0,
+      "imported_job_count": 19,
+      "novel_job_count": 19,
+      "t_first_hit_sec": 222.95,
+      "elapsed_sec": 243.7,
+      "source_breakdown": {
+        "llm_web": 3,
+        "cache_recall": 2
+      },
+      "funnel": {
+        "a3_cache_recalls": 18,
+        "a1_aggregator_entries": 36,
+        "a1_aggregator_candidates": 36,
+        "a2_llm_web_candidates": 28,
+        "candidates_pre_dedup": 82,
+        "c_resolved": 79,
+        "d_no_jobs": 33,
+        "d_cheap_filtered_to_zero": 13,
+        "d_fetch_timeout": 13,
+        "d_total_jobs": 416,
+        "e_ranked_jobs": 32,
+        "f_post_verify": 32,
+        "e_summary_rejected": 1
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Staff Machine Learning Engineer (Health)",
+          "url": "https://jobs.lever.co/whoop/44a1154e-9580-4ba6-8dc0-6f87684697ba",
+          "company": "Whoop",
+          "location": "Boston, MA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Staff Machine Learning Engineer (Health)",
+          "url": "https://jobs.lever.co/whoop/44a1154e-9580-4ba6-8dc0-6f87684697ba",
+          "company": "Whoop",
+          "location": "Boston, MA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Machine Learning Research Engineer (Sensor Intelligence Group)",
+          "url": "https://jobs.lever.co/whoop/7c8164e9-b17e-4287-9180-e1f19137c92c",
+          "company": "Whoop",
+          "location": "Boston, MA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Machine Learning Research Engineer (Sensor Intelligence Group)",
+          "url": "https://jobs.lever.co/whoop/7c8164e9-b17e-4287-9180-e1f19137c92c",
+          "company": "Whoop",
+          "location": "Boston, MA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Machine Learning Scientist (Sensor Intelligence)",
+          "url": "https://jobs.lever.co/whoop/0a8999cd-e413-47e8-8091-d031e53ce4a1",
+          "company": "Whoop",
+          "location": "Boston, MA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Staff Machine Learning Engineer",
+          "url": "https://job-boards.greenhouse.io/hs/jobs/7891873",
+          "company": "Hs",
+          "location": "Remote - United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Principal Machine Learning Engineer",
+          "url": "https://job-boards.greenhouse.io/hs/jobs/7891502",
+          "company": "Hs",
+          "location": "Remote - United States",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "AI/ML Research Engineer",
+          "url": "https://job-boards.greenhouse.io/manifoldbio/jobs/5106191007",
+          "company": "Manifold Bio",
+          "location": "Boston, MA or San Francisco, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "AI/ML Scientist",
+          "url": "https://job-boards.greenhouse.io/manifoldbio/jobs/5106949007",
+          "company": "Manifold Bio",
+          "location": "Boston, MA or San Francisco, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "AI/ML Scientist, Protein Foundation Models",
+          "url": "https://job-boards.greenhouse.io/manifoldbio/jobs/5106955007",
+          "company": "Manifold Bio",
+          "location": "Boston, MA or San Francisco, CA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "security_eng",
+      "guidance": "security engineer at cybersecurity company",
+      "locations": [
+        "Remote"
+      ],
+      "min_salary": 170000,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 5.0,
+      "hits_ats": 6,
+      "hits_lead": 2,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 50,
+      "errors": 0,
+      "imported_job_count": 22,
+      "novel_job_count": 22,
+      "t_first_hit_sec": 259.89,
+      "elapsed_sec": 312.13,
+      "source_breakdown": {
+        "cache_recall": 4,
+        "llm_web": 4
+      },
+      "funnel": {
+        "a3_cache_recalls": 30,
+        "a1_aggregator_entries": 17,
+        "a1_aggregator_candidates": 17,
+        "a2_llm_web_candidates": 41,
+        "candidates_pre_dedup": 88,
+        "c_resolved": 83,
+        "d_no_jobs": 29,
+        "d_cheap_filtered_to_zero": 20,
+        "d_fetch_timeout": 10,
+        "d_total_jobs": 375,
+        "e_ranked_jobs": 32,
+        "f_post_verify": 32,
+        "e_summary_rejected": 1
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Sr. Security Engineer (Penetration Testing)",
+          "url": "https://jobs.lever.co/certik/305d508f-1b1a-4b64-ac41-903b14329764",
+          "company": "CertiK",
+          "location": "US / Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Blockchain Security Engineer - Senior Level (Solidity / Rust / Golang )",
+          "url": "https://jobs.lever.co/certik/e15a5a75-137f-4e37-a402-85079dd12b94",
+          "company": "CertiK",
+          "location": "US / Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Blockchain Security Expert - Security Audit Track",
+          "url": "https://jobs.lever.co/certik/d3b215da-1367-4a98-9fcf-4a63249125da",
+          "company": "CertiK",
+          "location": "US / Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "AI Security Engineer - Mid-Atlantic region (Remote in VA, MD, PA, NC, DE, NJ, or DC)",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5891628004?gh_jid=5891628004",
+          "company": "GuidePoint Security",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "AI Security Engineer - Mid-Atlantic region (Remote in VA, MD, PA, NC, DE, NJ, or DC)",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5891628004?gh_jid=5891628004",
+          "company": "GuidePoint Security",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Application Security Engineer - North Central region (Remote in the U.S.)",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5813056004?gh_jid=5813056004",
+          "company": "GuidePoint Security",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Application Security Engineer - North Central region (Remote in the U.S.)",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5813056004?gh_jid=5813056004",
+          "company": "GuidePoint Security",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Team Lead, Data Security - Northeast region (Remote)",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5837957004?gh_jid=5837957004",
+          "company": "GuidePoint Security",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Security Engineer - Northwest region ",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5973290004?gh_jid=5973290004",
+          "company": "Guidepointsecurity",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Senior Security Engineer (Firewall) - Mid-Atlantic region ",
+          "url": "https://boards.greenhouse.io/guidepointsecurity/jobs/5843886004?gh_jid=5843886004",
+          "company": "Guidepointsecurity",
+          "location": "Remote",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "technical_pm",
+      "guidance": "technical product manager AI or ML product",
+      "locations": [
+        "New York"
+      ],
+      "min_salary": 200000,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 3.8,
+      "hits_ats": 3,
+      "hits_lead": 1,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 67,
+      "errors": 0,
+      "imported_job_count": 12,
+      "novel_job_count": 12,
+      "t_first_hit_sec": 250.05,
+      "elapsed_sec": 262.12,
+      "source_breakdown": {
+        "llm_web": 3,
+        "cache_recall": 1
+      },
+      "funnel": {
+        "a3_cache_recalls": 30,
+        "a1_aggregator_entries": 22,
+        "a1_aggregator_candidates": 21,
+        "a2_llm_web_candidates": 42,
+        "candidates_pre_dedup": 93,
+        "c_resolved": 88,
+        "d_no_jobs": 44,
+        "d_fetch_timeout": 21,
+        "d_cheap_filtered_to_zero": 23,
+        "d_total_jobs": 592,
+        "e_ranked_jobs": 32,
+        "f_post_verify": 32
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Applied AI Product Manager (New York)",
+          "url": "https://job-boards.greenhouse.io/automatticcareers/jobs/7218097",
+          "company": "Automatticcareers",
+          "location": "New York City",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Staff Product Manager - AI Platform",
+          "url": "https://job-boards.greenhouse.io/addepar1/jobs/8332168002",
+          "company": "Addepar1",
+          "location": "New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Product Manager, Developer Productivity",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5220143008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Product Manager, Developer Productivity",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5220143008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Machine Learning Systems Engineer, Research Tools",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4952079008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Machine Learning Systems Engineer, RL Engineering",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4952051008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Engineering Manager, GPU (ML Accelerator)",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4741104008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Design Engineer, AI Capability Development (Education Labs)\n\nSan Francisco, CA | New York City, NY",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5097186008",
+          "company": "Product Manager, Research",
+          "location": null,
+          "kind": "lead",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Research Engineer, Machine Learning (Reinforcement Learning)\n\nSan Francisco, CA | New York City, NY",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4613568008",
+          "company": "Product Manager, Research",
+          "location": null,
+          "kind": "lead",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Research Engineer, Machine Learning (RL Velocity)\n\nRemote-Friendly (Travel-Required) | San Francisco, CA | New York City, NY",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/5198108008",
+          "company": "Product Manager, Research",
+          "location": null,
+          "kind": "lead",
+          "novel": true,
+          "relevance": 3
+        }
+      ],
+      "error_msg": null
+    },
+    {
+      "persona": "research_scientist",
+      "guidance": "research scientist computer vision or NLP",
+      "locations": null,
+      "min_salary": 180000,
+      "coverage": true,
+      "novelty_rate": 1.0,
+      "mean_relevance": 3.888888888888889,
+      "hits_ats": 2,
+      "hits_lead": 0,
+      "hits_tracked": 0,
+      "hits_no_match": 0,
+      "no_match_companies": [],
+      "skips": 41,
+      "errors": 0,
+      "imported_job_count": 9,
+      "novel_job_count": 9,
+      "t_first_hit_sec": 276.49,
+      "elapsed_sec": 280.47,
+      "source_breakdown": {
+        "llm_web": 2
+      },
+      "funnel": {
+        "a3_cache_recalls": 12,
+        "a1_aggregator_entries": 32,
+        "a1_aggregator_candidates": 30,
+        "a2_llm_web_candidates": 53,
+        "candidates_pre_dedup": 95,
+        "c_resolved": 92,
+        "d_no_jobs": 40,
+        "d_fetch_timeout": 16,
+        "d_cheap_filtered_to_zero": 1,
+        "d_total_jobs": 2789,
+        "e_ranked_jobs": 15,
+        "f_post_verify": 15
+      },
+      "top_skip_reasons": [],
+      "judged_jobs": [
+        {
+          "title": "Tech Lead/Manager, Machine Learning Research Scientist- LLM Evals",
+          "url": "https://job-boards.greenhouse.io/scaleai/jobs/4304790005",
+          "company": "Scale AI",
+          "location": "San Francisco, CA; Seattle, WA; New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Staff Machine Learning Research Scientist, LLM Evals",
+          "url": "https://job-boards.greenhouse.io/scaleai/jobs/4628044005",
+          "company": "Scale AI",
+          "location": "San Francisco, CA; Seattle, WA; New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Machine Learning Research Scientist, Post-Training",
+          "url": "https://job-boards.greenhouse.io/scaleai/jobs/4528009005",
+          "company": "Scale AI",
+          "location": "San Francisco, CA; Seattle, WA; New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 5
+        },
+        {
+          "title": "Research Scientist, AI Controls and Monitoring",
+          "url": "https://job-boards.greenhouse.io/scaleai/jobs/4675694005",
+          "company": "Scale AI",
+          "location": "San Francisco, CA; New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Research Scientist, Agent Robustness",
+          "url": "https://job-boards.greenhouse.io/scaleai/jobs/4675684005",
+          "company": "Scale AI",
+          "location": "San Francisco, CA; New York, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Machine Learning Systems Engineer, Research Tools",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4952079008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "Machine Learning Systems Engineer, Research Tools",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4952079008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY | Seattle, WA",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 3
+        },
+        {
+          "title": "ML/Research Engineer, Safeguards",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4949336008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        },
+        {
+          "title": "ML/Research Engineer, Safeguards",
+          "url": "https://job-boards.greenhouse.io/anthropic/jobs/4949336008",
+          "company": "Anthropic",
+          "location": "San Francisco, CA | New York City, NY",
+          "kind": "ats",
+          "novel": true,
+          "relevance": 4
+        }
+      ],
+      "error_msg": null
+    }
+  ]
+}
