@@ -44,12 +44,36 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from sqlalchemy import select
 
 from app.ai.client import EXTRACTION_MODEL, get_openai_client
+from app.config import settings
 from app.database import async_session
 from app.models.jobs import Job
+from app.services import app_settings_service
 from app.services.hot_company_search import run_hot_company_search
 
 logger = logging.getLogger(__name__)
 RESULTS_DIR = Path(__file__).resolve().parents[2] / "tests" / "eval" / "external" / "results"
+
+
+async def _hydrate_runtime_settings() -> None:
+    """Standalone-script bootstrap: the running app loads provider + API
+    keys from the ``app_settings`` DB table on startup
+    (``app.main:lifespan``). When this script runs as ``python -m`` we
+    bypass the FastAPI lifespan, so ``settings.openai_api_key`` is empty
+    and every LLM call inside the pipeline raises. Hydrate explicitly
+    before any pipeline code runs.
+
+    Without this hook the eval silently produces zero hits (every LLM
+    call inside ``run_hot_company_search`` fails with "OPENAI_API_KEY is
+    not set"), which looks like a pipeline regression but is just the
+    eval harness missing config.
+    """
+    async with async_session() as session:
+        await app_settings_service.load_into_settings(session, settings)
+    if not settings.openai_api_key:
+        raise RuntimeError(
+            "Runtime settings hydrated but openai_api_key is still empty. "
+            "Configure via /setup or env var before running this eval."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -544,6 +568,13 @@ async def main() -> None:
             print(f"No personas matched --personas={args.personas}", file=sys.stderr)
             print("Available:", ", ".join(s.persona for s in SCENARIOS), file=sys.stderr)
             return
+
+    # Hydrate runtime settings (provider + API keys) from the DB —
+    # the running app does this on startup but standalone scripts bypass
+    # that path. See _hydrate_runtime_settings for the full reason.
+    print("Hydrating runtime settings from app_settings table...")
+    await _hydrate_runtime_settings()
+    print(f"  provider={settings.llm_provider}, openai_key=set")
 
     # Snapshot DB URLs for novelty check
     print(f"Taking DB snapshot for novelty detection...")
