@@ -485,7 +485,7 @@ async def run_hot_company_search_v2(
         resolve_tasks = [
             asyncio.create_task(_resolve(c)) for c in post_dedup
         ]
-        resolved: list[CompanyCandidate] = []
+        resolved_raw: list[CompanyCandidate] = []
         unresolvable: list[CompanyCandidate] = []
         for task, candidate in zip(resolve_tasks, post_dedup):
             try:
@@ -500,8 +500,47 @@ async def run_hot_company_search_v2(
                     "reason": "Couldn't find ATS slug or careers page",
                 })
                 continue
-            resolved.append(r)
+            resolved_raw.append(r)
 
+        # Post-resolution dedup. Candidates that started with different
+        # names (e.g. "Manifold Bio" from LLM extraction vs "Manifoldbio"
+        # derived from a boards.greenhouse.io/manifoldbio URL slug) only
+        # collide once Phase C resolves both to the same (ats, slug).
+        # Pre-resolution dedup couldn't catch them. Collapse by:
+        #   (ats, slug)        — same ATS company surfaced via different paths
+        #   direct_job_url     — same posting URL extracted twice
+        #   normalized name    — same company, neither resolved
+        # When two collide, keep the candidate with the better display
+        # name (more word boundaries beats kebab/concat).
+        def _name_quality(name: str) -> tuple[int, int]:
+            """Higher tuple wins. Prefer (1) more whitespace-separated
+            tokens, (2) longer overall length. So "Manifold Bio" beats
+            "Manifoldbio", "Atomic AI" beats "Atomai"."""
+            n = (name or "").strip()
+            return (len(n.split()), len(n))
+
+        from app.services.hot_search.discovery_cache import normalize_name
+        resolved_by_key: dict[str, CompanyCandidate] = {}
+        for c in resolved_raw:
+            if c.ats and c.slug:
+                key = f"{c.ats}:{c.slug}"
+            elif c.direct_job_url:
+                key = f"direct:{c.direct_job_url}"
+            elif c.url:
+                key = f"careers:{c.url.rstrip('/').lower()}"
+            else:
+                key = f"name:{normalize_name(c.name)}"
+            if key in resolved_by_key:
+                existing = resolved_by_key[key]
+                if _name_quality(c.name) > _name_quality(existing.name):
+                    resolved_by_key[key] = c
+                funnel["c_post_resolution_dedup"] += 1
+                # Silent dedup — these two ARE the same company; no
+                # skip event because the user already saw them in the
+                # candidate stream.
+            else:
+                resolved_by_key[key] = c
+        resolved = list(resolved_by_key.values())
         funnel["c_resolved"] = len(resolved)
 
         # -------------------------------------------------------------
