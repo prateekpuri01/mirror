@@ -39,8 +39,18 @@ async def list_jobs(
 
     # Filters
     if status is not None:
+        # Honor explicit status filter — including status=archived, so
+        # the user can recover soft-deleted rows by surfacing them
+        # intentionally.
         query = query.where(Job.status == status)
         count_query = count_query.where(Job.status == status)
+    else:
+        # Default-exclude soft-deleted (archived) jobs from the active
+        # list. They're kept in the DB for scoring calibration (see
+        # delete_job() docstring) but the user expects "delete" to
+        # remove them from view.
+        query = query.where(Job.status != JobStatus.archived)
+        count_query = count_query.where(Job.status != JobStatus.archived)
     if source is not None:
         query = query.where(Job.source == source)
         count_query = count_query.where(Job.source == source)
