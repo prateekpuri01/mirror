@@ -86,6 +86,36 @@ export async function importJobFromUrl(url: string): Promise<Job> {
   });
 }
 
+/** Bulk-delete jobs by ID. Fans out to the per-job DELETE endpoint in
+ *  parallel; resolves with the count of successful deletions and any
+ *  errors so the UI can report partial failures. */
+export async function deleteJobs(ids: string[]): Promise<{
+  succeeded: string[];
+  failed: { id: string; error: string }[];
+}> {
+  const results = await Promise.all(
+    ids.map(async (id) => {
+      try {
+        await apiFetch<void>(`/api/jobs/${id}`, { method: "DELETE" });
+        return { id, ok: true as const };
+      } catch (err) {
+        return {
+          id,
+          ok: false as const,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+    }),
+  );
+  return {
+    succeeded: results.filter((r) => r.ok).map((r) => r.id),
+    failed: results
+      .filter((r): r is { id: string; ok: false; error: string } => !r.ok)
+      .map((r) => ({ id: r.id, error: r.error })),
+  };
+}
+
+
 export async function updateJob(id: string, data: JobUpdate): Promise<Job> {
   return apiFetch<Job>(`/api/jobs/${id}`, {
     method: "PATCH",

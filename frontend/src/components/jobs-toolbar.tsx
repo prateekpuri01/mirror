@@ -7,6 +7,7 @@ import {
   Plus,
   SlidersHorizontal,
   Tag as TagIcon,
+  Trash2,
   X,
   Check,
   Eye,
@@ -35,6 +36,7 @@ import { useJobProcessing } from "@/hooks/use-job-processing";
 import { useJobSelection } from "@/hooks/use-job-selection";
 import { useExtractionTracking } from "@/hooks/use-extraction-tracking";
 import {
+  deleteJobs,
   extractApply,
   extractPreview,
   importJobFromUrl,
@@ -89,13 +91,30 @@ export function JobsToolbar() {
   const [addJobImporting, setAddJobImporting] = useState(false);
   const [addJobError, setAddJobError] = useState<string | null>(null);
 
-  // Reprocess dropdown — selected operations + running state
+  // Reprocess dropdown — selected operations + running state. The
+  // dropdown is now the unified bulk-actions menu: reprocess ops at the
+  // top, then a destructive Delete action under a divider. We kept the
+  // state names intact to minimize diff churn against existing tests.
   const [reprocessOpen, setReprocessOpen] = useState(false);
   const [reprocessOps, setReprocessOps] = useState<Set<ReprocessOp>>(
     new Set(["score"]),
   );
   const [reprocessRunning, setReprocessRunning] = useState(false);
   const [reprocessError, setReprocessError] = useState<string | null>(null);
+
+  // Delete-confirm state — two-click pattern (first click arms the
+  // delete; second confirms within 5s). Avoids accidental destructive
+  // actions without a separate modal.
+  const [deleteArmed, setDeleteArmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Disarm the destructive button after a short timeout so it doesn't
+  // sit hot indefinitely.
+  useEffect(() => {
+    if (!deleteArmed) return;
+    const t = setTimeout(() => setDeleteArmed(false), 5000);
+    return () => clearTimeout(t);
+  }, [deleteArmed]);
 
   // Tags popover open state
   const [tagsOpen, setTagsOpen] = useState(false);
@@ -167,6 +186,34 @@ export function JobsToolbar() {
     extractionTracking,
     queryClient,
   ]);
+
+  const handleDelete = useCallback(async () => {
+    if (selectionCount === 0) return;
+    if (!deleteArmed) {
+      setDeleteArmed(true);
+      return;
+    }
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const ids = Array.from(selectedIds);
+      const { succeeded, failed } = await deleteJobs(ids);
+      if (failed.length > 0) {
+        setDeleteError(
+          `Deleted ${succeeded.length}/${ids.length}. ${failed.length} failed: ${failed[0].error.slice(0, 80)}`,
+        );
+      } else {
+        setReprocessOpen(false);
+      }
+      clearSelection();
+      await queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeleting(false);
+      setDeleteArmed(false);
+    }
+  }, [selectedIds, selectionCount, deleteArmed, clearSelection, queryClient]);
 
   const handleCreateTag = useCallback(async () => {
     const name = newTagName.trim();
@@ -757,14 +804,25 @@ export function JobsToolbar() {
             </Button>
           )}
 
-          {/* Reprocess dropdown — only when there's a selection */}
+          {/* Bulk actions dropdown — only when there's a selection.
+              Houses reprocess ops + a Delete action under a divider so
+              we don't add a second toolbar button. */}
           {selectionCount > 0 && (
-            <Popover open={reprocessOpen} onOpenChange={setReprocessOpen}>
+            <Popover
+              open={reprocessOpen}
+              onOpenChange={(open) => {
+                setReprocessOpen(open);
+                if (!open) {
+                  setDeleteArmed(false);
+                  setDeleteError(null);
+                }
+              }}
+            >
               <PopoverTrigger
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-muted/50 cursor-pointer bg-amber-50 border-amber-200 text-amber-800"
                 title={`${selectionCount} job${selectionCount === 1 ? "" : "s"} selected`}
               >
-                <span className="font-medium">Reprocess</span>
+                <span className="font-medium">Actions</span>
                 <Badge
                   variant="secondary"
                   className="text-[10px] px-1.5 py-0 h-4 bg-amber-200 text-amber-900"
@@ -773,10 +831,10 @@ export function JobsToolbar() {
                 </Badge>
                 <ChevronDown className="w-3.5 h-3.5" />
               </PopoverTrigger>
-              <PopoverContent className="w-64 p-2" align="end">
+              <PopoverContent className="w-72 p-2" align="end">
                 <div className="space-y-2">
                   <p className="text-xs font-medium text-muted-foreground px-1">
-                    Operations
+                    Reprocess
                   </p>
                   {(
                     [
@@ -818,7 +876,63 @@ export function JobsToolbar() {
                   {reprocessError && (
                     <p className="text-xs text-red-600 px-1">{reprocessError}</p>
                   )}
-                  <div className="border-t pt-2 flex items-center justify-between gap-2">
+                  <Button
+                    size="sm"
+                    onClick={handleReprocess}
+                    disabled={reprocessRunning || reprocessOps.size === 0}
+                    className="w-full"
+                  >
+                    {reprocessRunning ? (
+                      <>
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                        Reprocessing...
+                      </>
+                    ) : (
+                      `Reprocess ${selectionCount} Job${selectionCount === 1 ? "" : "s"}`
+                    )}
+                  </Button>
+
+                  {/* Destructive zone — separated by divider, two-click
+                      pattern. First click arms (red text), second within
+                      5s confirms. Auto-disarms via useEffect. */}
+                  <div className="border-t pt-2 space-y-2">
+                    <p className="text-xs font-medium text-muted-foreground px-1">
+                      Danger zone
+                    </p>
+                    <Button
+                      size="sm"
+                      variant={deleteArmed ? "default" : "outline"}
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className={`w-full ${
+                        deleteArmed
+                          ? "bg-red-600 hover:bg-red-700 text-white border-red-600"
+                          : "text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                      }`}
+                    >
+                      {deleting ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                          Deleting...
+                        </>
+                      ) : deleteArmed ? (
+                        <>
+                          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                          Confirm delete {selectionCount} job{selectionCount === 1 ? "" : "s"}
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                          Delete {selectionCount} job{selectionCount === 1 ? "" : "s"}
+                        </>
+                      )}
+                    </Button>
+                    {deleteError && (
+                      <p className="text-xs text-red-600 px-1">{deleteError}</p>
+                    )}
+                  </div>
+
+                  <div className="border-t pt-2 flex items-center justify-end">
                     <button
                       onClick={() => {
                         clearSelection();
@@ -828,20 +942,6 @@ export function JobsToolbar() {
                     >
                       Clear selection
                     </button>
-                    <Button
-                      size="sm"
-                      onClick={handleReprocess}
-                      disabled={reprocessRunning || reprocessOps.size === 0}
-                    >
-                      {reprocessRunning ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                          Reprocessing...
-                        </>
-                      ) : (
-                        `Reprocess ${selectionCount} Job${selectionCount === 1 ? "" : "s"}`
-                      )}
-                    </Button>
                   </div>
                 </div>
               </PopoverContent>
