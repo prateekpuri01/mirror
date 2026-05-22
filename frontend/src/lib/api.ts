@@ -16,6 +16,7 @@ import {
   ProfileAccomplishment,
   ProfilePublication,
   RefreshResponse,
+  ResumeDesign,
   ResumeJson,
   TagRead,
 } from "./types";
@@ -210,10 +211,20 @@ export async function generateResearchEntry(
   accomplishmentId: string,
   index: number,
 ): Promise<DocumentFull> {
-  return apiFetch<DocumentFull>(`/api/documents/${docId}/generate-research-entry`, {
-    method: "POST",
-    body: JSON.stringify({ accomplishment_id: accomplishmentId, index }),
-  });
+  // The backend wraps the updated document under a `document` key alongside
+  // the freshly-generated `entry`. The API client unwraps so callers can
+  // treat the return value as the document (mirroring how a plain PATCH
+  // returns DocumentFull). Without this unwrap the UI was setting state
+  // to the wrapper object, leaving content_json undefined and the swap
+  // appearing not to apply.
+  const res = await apiFetch<{ entry: unknown; document: DocumentFull }>(
+    `/api/documents/${docId}/generate-research-entry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accomplishment_id: accomplishmentId, index }),
+    },
+  );
+  return res.document;
 }
 
 export async function generateBullet(
@@ -222,7 +233,12 @@ export async function generateBullet(
   accomplishmentId: string,
   insertAt?: number,
 ): Promise<DocumentFull> {
-  return apiFetch<DocumentFull>(`/api/documents/${docId}/generate-bullet`, {
+  // Same wrapping pattern as generate-research-entry — see comment above.
+  const res = await apiFetch<{
+    bullet: unknown;
+    insert_at: number;
+    document: DocumentFull;
+  }>(`/api/documents/${docId}/generate-bullet`, {
     method: "POST",
     body: JSON.stringify({
       employer_key: employerKey,
@@ -230,6 +246,7 @@ export async function generateBullet(
       insert_at: insertAt ?? null,
     }),
   });
+  return res.document;
 }
 
 // ---------------------------------------------------------------------------
@@ -595,6 +612,7 @@ export async function assembleProfile(data: {
   resume_text: string;
   resume_extracted: ProfileData;
   url_texts: Record<string, string>;
+  resume_extracted_complete?: ProfileCompleteData;
 }): Promise<{ profile: ProfileData; complete_profile: ProfileCompleteData }> {
   return apiFetch("/api/onboarding/assemble-profile", {
     method: "POST",
@@ -638,6 +656,45 @@ export async function updateCompleteProfile(
     method: "PATCH",
     body: JSON.stringify(patch),
   });
+}
+
+// Resume + minimal profile data the design tab's side preview renders.
+// Backend selects the user's most recent resume content if one exists,
+// otherwise returns the bundled sample fixture (is_sample=true).
+export interface ResumeDesignPreviewContent {
+  is_sample: boolean;
+  resume: ResumeJson;
+  profile: {
+    personal: Record<string, unknown>;
+    education: { degree: string; field: string; institution: string; year: string; honors?: string }[];
+    work_history: { employer: string; title: string; start: string; end?: string; location?: string }[];
+  };
+}
+
+export async function fetchResumeDesignPreviewContent(): Promise<ResumeDesignPreviewContent> {
+  return apiFetch<ResumeDesignPreviewContent>("/api/profile/resume-design/preview-content");
+}
+
+// Download a sample .docx rendered with the given design overrides. The
+// caller's overrides take precedence over what's saved on the profile —
+// this is how the design tab previews unsaved selections.
+export async function downloadResumeDesignSample(
+  overrides?: Partial<ResumeDesign>,
+): Promise<Blob> {
+  const res = await fetch(`${API_URL}/api/profile/resume-design/sample`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(overrides ?? {}),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail ? ` — ${body.detail}` : "";
+    } catch {}
+    throw new Error(`Sample download failed: ${res.status}${detail}`);
+  }
+  return res.blob();
 }
 
 export async function generateKeywords(
