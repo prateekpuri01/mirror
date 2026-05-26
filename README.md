@@ -1,6 +1,21 @@
-# Mirror
+<h1 align="center">Mirror</h1>
 
-> An AI resume agent that learns your voice from your edits.
+<p align="center">
+  <em>An AI resume agent that learns your voice from your edits.</em>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <a href="https://github.com/prateekpuri01/mirror/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/prateekpuri01/mirror?style=social"></a>
+  <a href="https://github.com/prateekpuri01/mirror/issues"><img alt="Issues" src="https://img.shields.io/github/issues/prateekpuri01/mirror"></a>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.12-blue">
+  <img alt="Next.js" src="https://img.shields.io/badge/Next.js-16-black">
+  <img alt="Status" src="https://img.shields.io/badge/status-pre--1.0-orange">
+</p>
+
+<p align="center">
+  <img src="./assets/mirror-demo.gif" alt="Mirror demo — onboarding, hot job search, tailored resume generation, and chat-based revision" width="800">
+</p>
 
 Mirror is a self-hosted, local-first job search and resume-tailoring system.
 Most AI resume tools generate fresh from scratch every time. Mirror **remembers
