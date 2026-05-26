@@ -119,6 +119,17 @@ async def import_job_from_url(
     from app.routers.pipeline import _run_process
     background_tasks.add_task(_run_process)
 
+    # Pre-warm company research so the eventual /generate-resume call's
+    # Phase 0 hits the cache instead of waiting 2-5 min on LLM-native
+    # web search. Idempotent; safe to fire even if the user never
+    # generates a resume for this job.
+    from app.services.company_research_prewarm import (
+        prewarm_company_research_for_jobs,
+    )
+    background_tasks.add_task(
+        prewarm_company_research_for_jobs, [str(job.id)],
+    )
+
     return job
 
 

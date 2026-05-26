@@ -803,11 +803,61 @@ function ResumeTab({ job }: { job: Job }) {
         </div>
       )}
 
-      {/* Loading state */}
-      {isWorking && !doc && (
+      {/* Loading state — phase-aware messaging so the user can tell
+          "5-min company research" apart from "actual resume LLM pipeline".
+          The backend reports phase ∈ {researching, planning, generating,
+          critiquing, refining, summary_tagline}; step_detail carries the
+          fine-grained label when set. */}
+      {isWorking && (
         <div className="flex flex-col items-center justify-center py-16 text-sm text-muted-foreground gap-3">
           <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-          <p>Generating tailored resume...</p>
+          {(() => {
+            const phase = resumeGen.phase || "";
+            const detail = resumeGen.stepDetail || "";
+            if (phase === "researching") {
+              return (
+                <>
+                  <p className="font-medium text-foreground">
+                    Researching company & team
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-md text-center">
+                    {detail || "Fetching what the company does, recent news, valued skills. First-time research takes 1–3 min; subsequent generations for this job are instant (cached)."}
+                  </p>
+                </>
+              );
+            }
+            // The backend reports phase ∈ {planning, generating, saving} and
+            // a finer step_detail per substep — the whole "generating" phase
+            // covers 5 sequential LLM calls (research/skills → bullets →
+            // critic → refiner → summary+tagline). Use step_detail as the
+            // primary label so the UI doesn't look frozen, with the broad
+            // phase as a smaller subtitle for context.
+            const phaseLabel: Record<string, string> = {
+              planning: "Planning",
+              generating: "Generating",
+              saving: "Saving",
+            };
+            const phaseSubtitle = phaseLabel[phase] || "Working";
+            const primary = detail || `${phaseSubtitle} tailored resume...`;
+            return (
+              <>
+                <p className="font-medium text-foreground text-center max-w-md">
+                  {primary}
+                </p>
+                <p className="text-xs text-muted-foreground/80">
+                  {phaseSubtitle} · this typically takes 60–90 seconds total
+                </p>
+                {resumeGen.progress > 0 && (
+                  <div className="w-48 h-1 rounded-full bg-muted overflow-hidden mt-1">
+                    <div
+                      className="h-full bg-amber-500 transition-all duration-500"
+                      style={{ width: `${Math.round(resumeGen.progress * 100)}%` }}
+                    />
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       )}
 
@@ -838,14 +888,16 @@ function ResumeTab({ job }: { job: Job }) {
         </div>
       )}
 
-      {/* Company research panel (above the editor) */}
-      {(resumeJson || doc?.content_json) && (
+      {/* Company research panel (above the editor) — hidden during
+          regenerate so the progress UI gets full focus */}
+      {(resumeJson || doc?.content_json) && !isWorking && (
         <CompanyResearchPanel jobId={job.id} documentResearch={documentResearch} />
       )}
 
-      {/* Split layout: Resume Editor + Chat Panel */}
-      {(resumeJson || doc?.content_json) && (
-        <div className={`flex gap-3 ${isWorking ? "opacity-50 pointer-events-none" : ""}`}>
+      {/* Split layout: Resume Editor + Chat Panel — also hidden during
+          regenerate; the progress UI above takes over the space */}
+      {(resumeJson || doc?.content_json) && !isWorking && (
+        <div className="flex gap-3">
           {/* Left: Resume Editor (60%) */}
           <div className="flex-[3] min-w-0 border rounded-lg p-4 bg-white max-h-[600px] overflow-y-auto">
             <ResumeEditor
@@ -863,6 +915,7 @@ function ResumeTab({ job }: { job: Job }) {
               accomplishments={completeProfile?.accomplishments}
               education={profile?.education}
               profilePublications={completeProfile?.publications}
+              resumeDesign={profile?.resume_design}
             />
           </div>
 
@@ -1169,6 +1222,15 @@ function AppRequirementsTab({ job }: { job: Job }) {
           </Button>
         </div>
       </div>
+
+      {/* What this tab does */}
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        Sends an AI agent to the application page, identifies every form
+        field, and groups them by type — short-answer questions, personal
+        info, and fixed-choice dropdowns. Draft tailored responses to the
+        short answers here, then paste them into the real form when
+        you&apos;re ready to apply.
+      </p>
 
       {/* Source URL */}
       <p className="text-xs text-muted-foreground">

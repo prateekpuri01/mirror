@@ -101,20 +101,47 @@ async def _prefilter_aggregator_entries(
 
     try:
         client = get_openai_client()
+        # `reasoning_effort=minimal` for gpt-5-family models: this is a
+        # straightforward classification task, no chain-of-thought needed.
+        # Without it (the previous default "medium"), the model consumed
+        # all 3000 tokens of max_completion_tokens budget on reasoning
+        # and returned EMPTY content — silently corrupting the pre-filter
+        # and letting 100% of aggregator entries through to evaluation.
+        # max bumped to 8000 as headroom even with minimal reasoning,
+        # since 250 short entries can produce a long index list.
         response = await client.chat.completions.create(
             model=EXTRACTION_MODEL,
             messages=[
                 {"role": "system", "content": (
                     "You filter aggregator job listings by relevance to a user's "
-                    "search guidance. You return only JSON. Be generous — when "
-                    "uncertain, include the entry."
+                    "search guidance. Be SELECTIVE — when the user's guidance "
+                    "names a clear domain (e.g. 'AI in healthcare'), keep only "
+                    "entries plausibly in that domain and drop anything obviously "
+                    "unrelated (retail, hospitality, finance unless fintech, "
+                    "manufacturing, generic admin/sales/HR roles, foreign-language "
+                    "consultancies in unrelated fields). Better to lose a borderline "
+                    "match than flood the result list with off-topic noise. "
+                    "Return ONLY JSON."
                 )},
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
-            max_completion_tokens=3000,
+            max_completion_tokens=8000,
+            reasoning_effort="minimal",
         )
         text = (response.choices[0].message.content or "").strip()
+        if not text:
+            # If the model still returned nothing, log it loudly instead
+            # of silently falling back to no-filter (which was the prior
+            # bug). The caller's except path will then fall back, but at
+            # least we'll see this in the logs.
+            logger.warning(
+                "Aggregator pre-filter LLM returned empty content "
+                "(finish_reason=%s, usage=%s) — falling back to unfiltered set",
+                getattr(response.choices[0], "finish_reason", "?"),
+                getattr(response, "usage", "?"),
+            )
+            return entries
         parsed = json.loads(text)
         indices = parsed.get("relevant", [])
         if not isinstance(indices, list):
@@ -152,12 +179,14 @@ async def run_hot_company_search(
     locations: list[str] | None = None,
     min_salary: int | None = None,
     reference_job_ids: list[str] | None = None,
-    # 8 in flight at once. Per-candidate eval is mostly LLM and HTTP wait
-    # time; OpenAI handles parallel just fine and Ashby's 429 retries
-    # already cope with bursts. The downstream semaphores in rate_limits
-    # cap browser-pool and OpenAI concurrency separately, so this is just
-    # the per-search worker count.
-    candidate_concurrency: int = 8,
+    # 16 in flight at once (was 8). Per-candidate eval is mostly LLM and
+    # HTTP wait time; OpenAI handles parallel just fine and Ashby's 429
+    # retries already cope with bursts. The downstream semaphores in
+    # rate_limits cap browser-pool and OpenAI concurrency separately so
+    # this is just the per-search worker count. Doubling halved
+    # round-1-completion time in testing.
+    candidate_concurrency: int = 16,
+    profile_fit_threshold: int = 50,
 ) -> AsyncGenerator[SearchEvent, None]:
     """Main search loop. Yields SearchEvent objects for SSE streaming.
 
@@ -246,6 +275,13 @@ async def run_hot_company_search(
     query_direct_count = 0
     _AGGREGATOR_DIRECT_CAP = 50
     _QUERY_DIRECT_CAP = 50
+
+    # Tentative-tier hits (best job scored between loose and strict
+    # threshold). Capped separately so exploratory searches always return
+    # SOMETHING ("here are the closest matches I could find") without
+    # noise flooding the result list.
+    tentative_emitted = 0
+    _MAX_TENTATIVE_HITS = 5
 
     # Global wall-clock budget. Hard cap so a single search can't grind for
     # hours when Ashby is rate-limiting hard or candidate eval pipelines
@@ -395,6 +431,15 @@ async def run_hot_company_search(
                 reference_context=reference_context,
             )
             past_queries.extend(queries)
+            # Surface every generated query at INFO so a tail of api logs
+            # tells you exactly what the LLM searched on this iteration.
+            # Without this, "why didn't my search find X?" required code
+            # changes to investigate.
+            logger.info(
+                "Hot search round %d/%d generated %d queries: %s",
+                iteration + 1, max_iterations, len(queries),
+                [q[:120] for q in queries],
+            )
             iteration_hits = 0
 
             for query in queries:
@@ -603,6 +648,7 @@ async def run_hot_company_search(
                                     locations=locations,
                                     min_salary=min_salary,
                                     guidance=guidance,
+                                    profile_fit_threshold=profile_fit_threshold,
                                 )
 
                             # Grounded match-reason + optional rejection. Skip
@@ -740,8 +786,29 @@ async def run_hot_company_search(
                                 })
                                 continue
                         if hit:
+                            # Cap tentative hits separately. The user asked
+                            # for "always return something" without flooding
+                            # — so strong hits flow freely up to max_hits,
+                            # but tentative hits cap out independently so
+                            # noise can't dominate. When the tentative cap
+                            # is hit, downgrade to a skip with a reason.
+                            if hit.is_tentative and tentative_emitted >= _MAX_TENTATIVE_HITS:
+                                evaluated[norm_key] = "miss"
+                                funnel["tentative_cap_reached"] += 1
+                                yield SearchEvent("skip", {
+                                    "name": candidate.name,
+                                    "source": candidate.source,
+                                    "reason": (
+                                        f"Best job match was {hit.match_score}/100 "
+                                        f"(tentative tier) but we already showed "
+                                        f"{_MAX_TENTATIVE_HITS} tentative hits"
+                                    ),
+                                })
+                                continue
                             evaluated[norm_key] = "hit"
-                            funnel["full_hit"] += 1
+                            funnel["full_hit" if not hit.is_tentative else "tentative_hit"] += 1
+                            if hit.is_tentative:
+                                tentative_emitted += 1
                             if hit.ats and hit.slug:
                                 evaluated[f"{hit.ats}:{hit.slug}"] = "hit"
                             hits.append(hit)
@@ -760,6 +827,8 @@ async def run_hot_company_search(
                                 "kind": hit.kind,
                                 "careers_url": hit.careers_url,
                                 "company_id": hit.company_id,
+                                "is_tentative": hit.is_tentative,
+                                "match_score": hit.match_score,
                             })
                         else:
                             evaluated[norm_key] = "miss"

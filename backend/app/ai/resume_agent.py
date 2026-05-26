@@ -286,6 +286,24 @@ Y", that tells you WHAT to emphasize — not HOW to phrase the answer.
 Never use the user's sentence shape as your output's skeleton. Write
 the result the way a person would talk about the work, not the way
 the instruction was typed.
+
+## No meta-pitch / interview-pitch language
+
+Especially when editing the summary or tagline, do NOT write FROM THE
+PERSPECTIVE OF A RECRUITER about the candidate. The output describes
+the work; it does not instruct the reader how to evaluate the candidate.
+Banned phrase shapes:
+
+- "Strong interview case for teams that need..."
+- "Brings exactly what teams need when..."
+- "An ideal candidate for..."
+- "Hiring managers will appreciate..."
+- "Best suited for teams that..."
+
+These are the LLM shortcutting to a sales-pitch register that real
+candidates never use. Write as a tight, first-person-implied description
+of the actual work — what was built, what shipped, what the impact was.
+The reader draws their own conclusion about fit.
 """
 
 

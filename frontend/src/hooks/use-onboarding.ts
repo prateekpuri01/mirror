@@ -51,6 +51,7 @@ export function useAssembleProfile() {
       resume_text: string;
       resume_extracted: ProfileData;
       url_texts: Record<string, string>;
+      resume_extracted_complete?: ProfileCompleteData;
     }) => assembleProfile(data),
   });
 }

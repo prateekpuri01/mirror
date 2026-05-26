@@ -528,18 +528,64 @@ async def revise_document(
 
 @router.get("/documents/{doc_id}/download")
 async def download_document(doc_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
-    """Download a document's .docx file."""
+    """Download a document's .docx, re-rendered with the user's current design.
+
+    Style (layout/color/font) is applied at request time from
+    ``user_profile.data["resume_design"]`` so previously-generated resumes
+    immediately pick up design changes from the profile tab. Content
+    (sections, bullets) comes from the stored ``content_json`` — that's
+    immutable per-document.
+
+    Falls back to the cached file on disk only when there's no content_json
+    to rebuild from (legacy docs predating the JSON storage).
+    """
+    from sqlalchemy import select
+    from app.ai.docx_builder import build_docx
+    from app.models import Job, UserProfile
+
     doc = await document_service.get_document(session, doc_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Document not found")
-    if not doc.content_docx_path:
-        raise HTTPException(status_code=404, detail="No .docx file available for this document")
-    if not os.path.exists(doc.content_docx_path):
-        raise HTTPException(status_code=404, detail="File not found on disk")
 
-    filename = os.path.basename(doc.content_docx_path)
+    # Legacy fallback: serve the cached file if we don't have JSON to rebuild from.
+    if doc.content_json is None:
+        if not doc.content_docx_path or not os.path.exists(doc.content_docx_path):
+            raise HTTPException(status_code=404, detail="No .docx file available for this document")
+        filename = os.path.basename(doc.content_docx_path)
+        return FileResponse(
+            path=doc.content_docx_path,
+            filename=filename,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+
+    profile_result = await session.execute(select(UserProfile).limit(1))
+    profile = profile_result.scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=500, detail="User profile not found")
+
+    company = None
+    title = None
+    if doc.job_id:
+        job_result = await session.execute(select(Job).where(Job.id == doc.job_id))
+        job = job_result.scalar_one_or_none()
+        if job is not None:
+            company = job.company
+            title = job.title
+
+    docx_path = build_docx(
+        resume_data=doc.content_json,
+        profile_data=profile.data,
+        job_id=str(doc.job_id) if doc.job_id else str(doc_id),
+        company=company,
+        title=title,
+    )
+    # Persist the freshly-built path so the editor's cached pointer stays valid.
+    doc.content_docx_path = docx_path
+    await session.commit()
+
+    filename = os.path.basename(docx_path)
     return FileResponse(
-        path=doc.content_docx_path,
+        path=docx_path,
         filename=filename,
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )

@@ -19,6 +19,12 @@ import { SearchPreferencesSection } from "@/components/profile/search-preference
 import { AccomplishmentsSection } from "@/components/profile/accomplishments-section";
 import { PublicationsSection } from "@/components/profile/publications-section";
 import { WritingStyleSection } from "@/components/profile/writing-style-section";
+import { ResumeDesignSection } from "@/components/profile/resume-design-section";
+import { ResumePreview } from "@/components/profile/resume-preview";
+import { DEFAULT_RESUME_DESIGN } from "@/lib/types";
+import { fetchResumeDesignPreviewContent } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+import { usePublicationsImport } from "@/hooks/use-publications-import";
 import type {
   ProfileData,
   ProfilePersonal,
@@ -29,6 +35,7 @@ import type {
   ProfileSearchPreferences,
   ProfileAccomplishment,
   ProfilePublication,
+  ResumeDesign,
 } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -65,7 +72,14 @@ function useDebouncedSave<T>(
 // Profile page content
 // ---------------------------------------------------------------------------
 
-type ProfileTab = "preferences" | "about" | "experience" | "skills" | "publications" | "writing_style";
+type ProfileTab =
+  | "preferences"
+  | "about"
+  | "experience"
+  | "skills"
+  | "publications"
+  | "writing_style"
+  | "resume_design";
 
 const TABS: { id: ProfileTab; label: string }[] = [
   { id: "preferences", label: "Search Preferences" },
@@ -74,6 +88,7 @@ const TABS: { id: ProfileTab; label: string }[] = [
   { id: "skills", label: "Skills & Goals" },
   { id: "publications", label: "Publications" },
   { id: "writing_style", label: "Writing Style" },
+  { id: "resume_design", label: "Resume Design" },
 ];
 
 function ProfileContent() {
@@ -155,6 +170,44 @@ function ProfileContent() {
   const [savePublications, pubStatus] = useDebouncedSave<ProfilePublication[]>(
     (data) => saveComplete({ publications: data }),
   );
+  const [saveResumeDesign, resumeDesignStatus] = useDebouncedSave<ResumeDesign>(
+    (data) => saveSection({ resume_design: data }),
+  );
+
+  // Streaming Scholar import: when the onboarding flow kicked one off and
+  // the user landed here mid-stream, fold each newly-arrived publication
+  // into localPublications + trigger the debounced save. Dedup by title so
+  // pubs the resume already extracted aren't doubled. Once the stream is
+  // done, reset() so subsequent visits to /profile don't replay stale
+  // state from context.
+  const pubImport = usePublicationsImport();
+  useEffect(() => {
+    if (pubImport.publications.length === 0) return;
+    if (localPublications === null) return; // still loading from DB
+    setLocalPublications((prev) => {
+      const prevList = prev || [];
+      const prevTitles = new Set(
+        prevList.map((p) => (p.title || "").toLowerCase().trim()),
+      );
+      const fresh = pubImport.publications.filter(
+        (p) => !prevTitles.has((p.title || "").toLowerCase().trim()),
+      );
+      if (fresh.length === 0) return prevList;
+      const merged = [...prevList, ...fresh];
+      savePublications(merged);
+      return merged;
+    });
+  }, [pubImport.publications, localPublications, savePublications]);
+
+  useEffect(() => {
+    if (pubImport.phase === "done" || pubImport.phase === "error") {
+      // Give the debounced save a beat to flush, then drop the context
+      // state. Without this, navigating back to /profile after a previous
+      // import would re-merge old streamed entries.
+      const t = setTimeout(() => pubImport.reset(), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [pubImport.phase, pubImport]);
 
   if (isLoading || completeLoading) {
     return (
@@ -185,11 +238,11 @@ function ProfileContent() {
   return (
     <div>
       {/* Tab bar */}
-      <div className="flex border-b mb-4">
+      <div className="flex border-b mb-4 overflow-x-auto">
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               activeTab === tab.id
                 ? "border-foreground text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
@@ -312,6 +365,30 @@ function ProfileContent() {
 
         {activeTab === "publications" && (
           <ProfileSection title="Publications" saveStatus={pubStatus}>
+            {/* Streaming Scholar import indicator: shows when the
+                onboarding flow kicked off an import and the user landed
+                here while it's still in flight. Publications drop into
+                the list below as they arrive. */}
+            {(pubImport.phase === "fetching" || pubImport.phase === "enriching") && (
+              <div className="flex items-start gap-2 text-xs bg-blue-50 border border-blue-200 rounded-md px-3 py-2 mb-2">
+                <div className="h-3 w-3 mt-0.5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin shrink-0" />
+                <div className="text-blue-800 flex-1">
+                  <div>{pubImport.status}</div>
+                  {pubImport.total > 0 && (
+                    <div className="text-blue-700/80 mt-0.5">
+                      {pubImport.publications.length} / {pubImport.total}{" "}
+                      streamed in — feel free to edit other sections in the
+                      meantime.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {pubImport.phase === "error" && pubImport.errorMessage && (
+              <div className="text-xs bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-2 text-red-700">
+                Scholar import failed: {pubImport.errorMessage}
+              </div>
+            )}
             <PublicationsSection
               data={localPublications || []}
               accomplishments={localAccomplishments || []}
@@ -330,6 +407,68 @@ function ProfileContent() {
             <WritingStyleSection />
           </ProfileSection>
         )}
+
+        {activeTab === "resume_design" && (
+          <ResumeDesignTab
+            design={p.resume_design ?? DEFAULT_RESUME_DESIGN}
+            saveStatus={resumeDesignStatus}
+            onChange={(data) => {
+              setLocalProfile({ ...p, resume_design: data });
+              saveResumeDesign(data);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Resume Design tab — split layout (form on left, live preview on right).
+// ---------------------------------------------------------------------------
+
+function ResumeDesignTab({
+  design,
+  saveStatus,
+  onChange,
+}: {
+  design: import("@/lib/types").ResumeDesign;
+  saveStatus: "idle" | "saving" | "saved";
+  onChange: (data: import("@/lib/types").ResumeDesign) => void;
+}) {
+  const previewContent = useQuery({
+    queryKey: ["resume-design-preview-content"],
+    queryFn: fetchResumeDesignPreviewContent,
+    staleTime: 60_000,
+  });
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] gap-4">
+      <ProfileSection title="Resume Design" saveStatus={saveStatus}>
+        <ResumeDesignSection data={design} onChange={onChange} />
+      </ProfileSection>
+
+      <div className="xl:sticky xl:top-4 xl:self-start">
+        <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
+          Live Preview
+        </div>
+        {previewContent.isLoading ? (
+          <div className="border border-gray-200 rounded-lg bg-white p-6 text-xs text-muted-foreground">
+            Loading preview…
+          </div>
+        ) : previewContent.data ? (
+          <ResumePreview
+            design={design}
+            resume={previewContent.data.resume}
+            profile={previewContent.data.profile}
+            isSample={previewContent.data.is_sample}
+          />
+        ) : (
+          <div className="border border-red-200 bg-red-50 rounded-lg p-3 text-xs text-red-700">
+            Couldn&apos;t load preview content.{" "}
+            {previewContent.error instanceof Error ? previewContent.error.message : ""}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -341,7 +480,7 @@ function ProfileContent() {
 
 export default function ProfilePage() {
   return (
-    <div className="max-w-3xl mx-auto px-6 py-6">
+    <div className="max-w-6xl mx-auto px-6 py-6">
       <h1 className="text-lg font-bold mb-4">Profile</h1>
       <Suspense
         fallback={

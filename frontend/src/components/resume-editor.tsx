@@ -1,8 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  COLOR_PRESETS,
+  DEFAULT_RESUME_DESIGN,
+  FONT_PRESETS,
   ResumeJson,
+  ResumeDesign,
   ProfileWorkHistory,
   ProfileAccomplishment,
   ProfileEducation,
@@ -40,6 +44,11 @@ interface ResumeEditorProps {
   // is the curated subset selected for THIS resume). Used to populate the
   // "+ Add publication" dropdown.
   profilePublications?: ProfilePublication[];
+  // User's saved layout/color/font selection. The preview live-mirrors
+  // colors + font; layout (two_column) shows as an info banner because the
+  // editor keeps a single-column structure for usability — the actual
+  // two-column rendering is in the downloaded .docx.
+  resumeDesign?: ResumeDesign;
 }
 
 function employerToKey(employer: string): string {
@@ -178,14 +187,32 @@ function EditableText({
 }
 
 // ---------------------------------------------------------------------------
-// Section header styling (navy, uppercase)
+// Preview styling — driven by the user's resume_design selection (color
+// scheme + font). The render layer pulls accent + body from a preview-time
+// color map computed from the design, so changes in the design tab are
+// reflected here immediately.
 // ---------------------------------------------------------------------------
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
+interface PreviewColors {
+  navy: string; // section headers + name + employer name
+  orange: string; // tagline + accents + section-header underline
+}
+
+function SectionHeader({
+  children,
+  colors,
+  showUnderline = true,
+}: {
+  children: React.ReactNode;
+  colors: PreviewColors;
+  showUnderline?: boolean;
+}) {
   return (
     <h2
-      className="text-xs font-bold tracking-wider uppercase mt-4 mb-1.5 pb-0.5 border-b"
-      style={{ color: "#1F3864", borderColor: "#1F3864" }}
+      className={`text-xs font-bold tracking-wider uppercase mt-4 mb-1.5 pb-0.5 ${
+        showUnderline ? "border-b" : ""
+      }`}
+      style={{ color: colors.navy, borderColor: colors.orange }}
     >
       {children}
     </h2>
@@ -211,7 +238,29 @@ export function ResumeEditor({
   accomplishments,
   education,
   profilePublications,
+  resumeDesign,
 }: ResumeEditorProps) {
+  const design = resumeDesign ?? DEFAULT_RESUME_DESIGN;
+
+  // Resolve preview accent + body from the chosen color scheme, with a
+  // sensible fallback if the saved ID is unknown (e.g. user is on an old
+  // build that doesn't recognize a newer preset).
+  const previewColors = useMemo<PreviewColors>(() => {
+    const scheme = COLOR_PRESETS.find((c) => c.id === design.color_scheme) ?? COLOR_PRESETS[0];
+    return { navy: scheme.body, orange: scheme.accent };
+  }, [design.color_scheme]);
+
+  const previewFont = useMemo(() => {
+    const font = FONT_PRESETS.find((f) => f.id === design.font) ?? FONT_PRESETS[0];
+    return font.fontFamily;
+  }, [design.font]);
+
+  // Banner and Compact suppress section underlines — they use letter-spaced
+  // caps and accent-bar prefixes respectively. Timeline and two-column keep
+  // the thin rule under each section header.
+  const showSectionUnderline =
+    design.layout !== "banner" && design.layout !== "compact";
+
   const handleSave = useCallback(
     (path: string, value: unknown) => {
       onSectionEdit(path, value);
@@ -233,9 +282,17 @@ export function ResumeEditor({
 
   return (
     <div
-      className="text-sm leading-relaxed space-y-0 font-[Calibri,sans-serif]"
+      className="text-sm leading-relaxed space-y-0"
+      style={{ fontFamily: previewFont }}
       onClick={() => onSelectSection(null)}
     >
+      {design.layout === "two_column" && (
+        <div className="mb-3 text-[11px] bg-blue-50 border border-blue-200 rounded px-2.5 py-1.5 text-blue-900">
+          Two-column layout selected. Preview is shown single-column for editing —
+          download to see the actual two-column .docx.
+        </div>
+      )}
+
       {/* Tagline */}
       <div className="text-center mb-3">
         <EditableText
@@ -259,7 +316,7 @@ export function ResumeEditor({
       </div>
 
       {/* Summary */}
-      <SectionHeader>Summary</SectionHeader>
+      <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Summary</SectionHeader>
       <EditableText
         value={resumeJson.summary}
         path="summary"
@@ -282,7 +339,7 @@ export function ResumeEditor({
       {/* Selected Research */}
       {resumeJson.selected_research?.length > 0 && (
         <>
-          <SectionHeader>Selected Research</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Selected Research</SectionHeader>
           <div className="space-y-2">
             {resumeJson.selected_research.map((entry, i) => {
               // Build options: current accomplishments in resume + all from profile
@@ -303,7 +360,7 @@ export function ResumeEditor({
                       onSelect={onSelectSection}
                       onSave={handleSave}
                       className="text-xs font-bold uppercase tracking-wider"
-                      style={{ color: "#C45911" }}
+                      style={{ color: previewColors.orange }}
                     />
                     <span className="text-xs text-gray-400">—</span>
                     <EditableText
@@ -395,7 +452,7 @@ export function ResumeEditor({
         }
         return (
         <>
-          <SectionHeader>Professional Experience</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Professional Experience</SectionHeader>
           {entries.map(([employer, data]) => {
             const bulletsPath = `experience.${employer}.bullets`;
             return (
@@ -413,7 +470,7 @@ export function ResumeEditor({
                           ? ""
                           : "hover:bg-gray-50"
                     }`}
-                    style={{ color: "#1F3864" }}
+                    style={{ color: previewColors.navy }}
                     onClick={(e) => {
                       e.stopPropagation();
                       onSelectSection(bulletsPath);
@@ -614,7 +671,7 @@ export function ResumeEditor({
       {((resumeJson.publications?.length ?? 0) > 0 ||
         (profilePublications?.length ?? 0) > 0) && (
         <>
-          <SectionHeader>Selected Publications</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Selected Publications</SectionHeader>
           <ul className="list-disc list-outside ml-4 space-y-0.5">
             {(resumeJson.publications ?? []).map((pub, i) => {
               const pubs = resumeJson.publications ?? [];
@@ -745,7 +802,7 @@ export function ResumeEditor({
       {/* Technical Skills */}
       {resumeJson.technical_skills && (
         <>
-          <SectionHeader>Technical Skills</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Technical Skills</SectionHeader>
           <div className="space-y-1">
             {(
               [
@@ -759,7 +816,7 @@ export function ResumeEditor({
               const path = `technical_skills.${key}`;
               return (
                 <div key={key} className="flex gap-1 items-start">
-                  <span className="text-xs font-semibold shrink-0" style={{ color: "#1F3864" }}>
+                  <span className="text-xs font-semibold shrink-0" style={{ color: previewColors.navy }}>
                     {skillLabel}:
                   </span>
                   <div className="flex-1 min-w-0">
@@ -794,11 +851,11 @@ export function ResumeEditor({
           docx, which calls _add_education(profile_data) at this position. */}
       {education && education.length > 0 && (
         <>
-          <SectionHeader>Education</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Education</SectionHeader>
           <div className="space-y-0.5">
             {education.map((edu, i) => (
               <div key={i} className="text-xs">
-                <span className="font-semibold" style={{ color: "#1F3864" }}>
+                <span className="font-semibold" style={{ color: previewColors.navy }}>
                   {[edu.degree, edu.field].filter(Boolean).join(" ")}
                 </span>
                 {edu.institution && <span>, {edu.institution}</span>}
@@ -813,7 +870,7 @@ export function ResumeEditor({
       {/* Awards */}
       {resumeJson.awards && (
         <>
-          <SectionHeader>Awards & Honors</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Awards & Honors</SectionHeader>
           <EditableText
             value={resumeJson.awards}
             path="awards"

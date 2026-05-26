@@ -31,6 +31,10 @@ import {
   JobSelectionContext,
   useJobSelectionProvider,
 } from "@/hooks/use-job-selection";
+import {
+  PublicationsImportContext,
+  usePublicationsImportProvider,
+} from "@/hooks/use-publications-import";
 
 function ResumeGenerationProvider({ children }: { children: React.ReactNode }) {
   const state = useResumeGenerationProvider();
@@ -95,6 +99,15 @@ function JobSelectionProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+function PublicationsImportProvider({ children }: { children: React.ReactNode }) {
+  const state = usePublicationsImportProvider();
+  return (
+    <PublicationsImportContext.Provider value={state}>
+      {children}
+    </PublicationsImportContext.Provider>
+  );
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -117,7 +130,11 @@ export function Providers({ children }: { children: React.ReactNode }) {
               <HotSearchProvider>
                 <RefreshFlowProvider>
                   <ExtractionTrackingProvider>
-                    <JobSelectionProvider>{children}</JobSelectionProvider>
+                    <JobSelectionProvider>
+                      <PublicationsImportProvider>
+                        {children}
+                      </PublicationsImportProvider>
+                    </JobSelectionProvider>
                   </ExtractionTrackingProvider>
                 </RefreshFlowProvider>
               </HotSearchProvider>

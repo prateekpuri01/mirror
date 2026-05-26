@@ -47,6 +47,14 @@ class CompanyHit:
     kind: str = "ats"
     careers_url: str | None = None  # Set for "lead" kind
     company_id: str | None = None   # Set for "tracked" kind
+    # Two-tier matching: a hit is "tentative" when its best job's
+    # profile-fit score landed below the strict threshold but above the
+    # loose one. We emit a capped number of tentative hits so exploratory
+    # searches into out-of-profile domains always return SOMETHING — the
+    # user can decide whether to investigate. UI shows these visually
+    # distinct.
+    is_tentative: bool = False
+    match_score: int | None = None
 
 
 @dataclass

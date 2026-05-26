@@ -1,9 +1,11 @@
 """Onboarding API: resume upload, URL crawling, and profile assembly."""
 
+import json
 import logging
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -53,11 +55,24 @@ class AssembleProfileRequest(BaseModel):
     resume_text: str
     resume_extracted: dict
     url_texts: dict[str, str]
+    resume_extracted_complete: dict | None = None
 
 
 class SaveProfileRequest(BaseModel):
     profile: dict
     complete_profile: dict | None = None
+
+
+class ImportPublicationsStreamRequest(BaseModel):
+    """Body for the streaming Scholar import endpoint.
+
+    `profile` is the partially-assembled onboarding profile used as context
+    for per-paper enrichment (skills, target roles, work history shape the
+    LLM's descriptions). `scholar_url` is optional — if absent we fall back
+    to `profile.personal.google_scholar`.
+    """
+    profile: dict
+    scholar_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -187,12 +202,122 @@ async def assemble_profile(request: AssembleProfileRequest):
             resume_text=request.resume_text,
             resume_extracted=request.resume_extracted,
             url_texts=request.url_texts,
+            resume_extracted_complete=request.resume_extracted_complete,
         )
     except Exception as e:
         logger.exception("Profile assembly failed")
         raise HTTPException(status_code=422, detail=f"Profile assembly failed: {str(e)}")
 
     return {"profile": profile, "complete_profile": complete}
+
+
+@router.post("/import-publications-stream")
+async def import_publications_stream(
+    body: ImportPublicationsStreamRequest,
+) -> StreamingResponse:
+    """Stream per-paper Scholar import as SSE.
+
+    Replaces the previous synchronous "fetch + enrich all" inside the
+    /assemble-profile call, which blocked the UI for 30-90s on prolific
+    authors and showed nothing until the very end. The streaming variant:
+
+      1. Emits `status` immediately so the UI can show "Fetching from
+         Semantic Scholar..."
+      2. Emits `total` after the Scholar API returns so the UI knows the
+         denominator for a progress bar.
+      3. Emits `publication` once per paper as soon as its individual
+         LLM enrichment finishes — so the user watches them stream in.
+      4. Emits `done` at completion.
+
+    Combined with the frontend's PublicationsImportContext at app root,
+    the work survives tab navigation: the consumer can switch to /jobs
+    and come back to /onboarding and the streamed pubs are still in
+    context (and the stream is still running).
+    """
+    from app.ai.publication_enricher import enrich_publication
+    from app.services.publication_lookup import fetch_author_publications
+
+    async def event_stream():
+        try:
+            scholar_url = (
+                body.scholar_url
+                or (body.profile.get("personal") or {}).get("google_scholar")
+            )
+            author_name = (body.profile.get("personal") or {}).get("name")
+
+            if not scholar_url and not author_name:
+                err = json.dumps({
+                    "message": "No Google Scholar URL or author name available",
+                })
+                yield f"event: error\ndata: {err}\n\n"
+                done = json.dumps({"total": 0, "imported": 0})
+                yield f"event: done\ndata: {done}\n\n"
+                return
+
+            status_msg = json.dumps({
+                "message": "Fetching papers from Semantic Scholar...",
+            })
+            yield f"event: status\ndata: {status_msg}\n\n"
+
+            try:
+                papers = await fetch_author_publications(
+                    scholar_url=scholar_url, author_name=author_name,
+                )
+            except Exception as e:
+                logger.exception("Scholar fetch failed")
+                err = json.dumps({"message": f"Scholar fetch failed: {str(e)[:200]}"})
+                yield f"event: error\ndata: {err}\n\n"
+                done = json.dumps({"total": 0, "imported": 0})
+                yield f"event: done\ndata: {done}\n\n"
+                return
+
+            papers = papers or []
+            total_data = json.dumps({"total": len(papers)})
+            yield f"event: total\ndata: {total_data}\n\n"
+
+            imported = 0
+            for i, paper in enumerate(papers):
+                try:
+                    pub = await enrich_publication(paper, body.profile)
+                    pub["auto_populated"] = True
+                    payload = json.dumps({
+                        "publication": pub,
+                        "index": i,
+                        "total": len(papers),
+                    })
+                    yield f"event: publication\ndata: {payload}\n\n"
+                    imported += 1
+                except Exception:
+                    logger.warning(
+                        "Failed to enrich Scholar paper '%s' during streaming import",
+                        paper.get("title", ""),
+                    )
+                    skip = json.dumps({
+                        "title": paper.get("title", "unknown"),
+                        "index": i,
+                        "total": len(papers),
+                        "reason": "Enrichment failed",
+                    })
+                    yield f"event: skip\ndata: {skip}\n\n"
+
+            done = json.dumps({"total": len(papers), "imported": imported})
+            yield f"event: done\ndata: {done}\n\n"
+        except Exception:
+            logger.exception("Publication stream error")
+            err = json.dumps({"message": "Internal streaming error"})
+            yield f"event: error\ndata: {err}\n\n"
+            done = json.dumps({"total": 0, "imported": 0})
+            yield f"event: done\ndata: {done}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/save-profile")

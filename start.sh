@@ -102,14 +102,33 @@ echo "[OK] frontend ready."
 
 # --- Open browser -------------------------------------------------------------
 
-URL="http://localhost:3050"
+# Route to the page the user actually needs first so we skip an unnecessary
+# redirect. /setup is the gate everyone hits before anything else works;
+# /onboarding follows once API keys are saved.
+LANDING="/"
+if curl -sf http://localhost:8085/api/setup/status 2>/dev/null | grep -q '"needs_setup":true'; then
+  LANDING="/setup"
+elif curl -sf http://localhost:8085/api/onboarding/status 2>/dev/null | grep -q '"needs_onboarding":true'; then
+  LANDING="/onboarding"
+fi
+
+URL="http://localhost:3050${LANDING}"
 echo ""
-echo "[DONE] Mirror is ready at $URL"
+echo "[DONE] Mirror is ready — opening $URL"
 echo ""
-echo "On first launch you'll see:"
-echo "  1. /setup     — paste your OpenAI / Anthropic API key"
-echo "  2. /onboarding — upload your resume + optional LinkedIn / Scholar / GitHub URLs"
-echo "  3. /          — your jobs board"
+case "$LANDING" in
+  /setup)
+    echo "First-time setup: pick an LLM provider, paste your API key, hit Save."
+    echo "After saving you'll be routed to /onboarding to import your resume."
+    ;;
+  /onboarding)
+    echo "Onboarding: upload your resume (PDF or DOCX); optionally paste LinkedIn /"
+    echo "Google Scholar / GitHub / personal-site URLs to enrich the profile."
+    ;;
+  *)
+    echo "You're already set up — you'll land on the jobs board."
+    ;;
+esac
 echo ""
 
 if command -v open > /dev/null 2>&1; then

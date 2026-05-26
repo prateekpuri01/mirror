@@ -2703,6 +2703,15 @@ Rules:
 - Does NOT start with "Research scientist with N years..." — that's the most \
 boring opening possible.
 - Make an ARGUMENT, not a list.
+- **No meta-pitch / interview-pitch language.** Do NOT write FROM THE \
+PERSPECTIVE OF A RECRUITER. The summary describes the candidate's work; \
+it does NOT instruct the reader how to evaluate the candidate. Bans \
+on phrases like: "Strong interview case for...", "Brings exactly what \
+teams need when...", "An ideal candidate for...", "Hiring managers will \
+appreciate...", "Best suited for teams that...". These are the LLM \
+shortcutting to a sales-pitch register that real candidates never use. \
+Write the summary as a tight first-person-implied description of the \
+work itself.
 
 Good: "Builds AI tools that domain experts actually adopt — the last one \
 replaced manual research workflows across a 2,000-person organization and \
@@ -2710,6 +2719,10 @@ matched expert-level accuracy."
 
 Bad: "Technical leader who turns ambiguous AI research into execution plans, \
 evaluation workflows, and shipped systems." (Generic, capability list.)
+
+Bad: "Strong interview case for teams that need an engineer who can connect \
+sensor behavior, reliable data systems, and practical tools for technical \
+users." (Meta-pitch — instructs the reader, doesn't describe the work.)
 """
 
 _SUMMARY_TAGLINE_TAIL = """\

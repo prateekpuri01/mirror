@@ -344,6 +344,11 @@ export interface HotSearchHit {
   kind?: "ats" | "lead" | "tracked";
   careers_url?: string | null;
   company_id?: string | null;
+  // True when this hit's best job scored between the loose and strict
+  // profile-fit thresholds. The UI renders these visually distinct so the
+  // user can tell "closest match we could find" from "strong fit".
+  is_tentative?: boolean;
+  match_score?: number | null;
 }
 
 export interface CandidateLogEntry {
@@ -420,6 +425,113 @@ export interface ProfileSearchPreferences {
   org_anti_patterns?: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Resume design (layout / color / font selections, saved to profile.data)
+// ---------------------------------------------------------------------------
+
+export type ResumeLayoutId =
+  | "banner"
+  | "compact"
+  | "two_column"
+  | "timeline";
+
+export type ResumeColorSchemeId =
+  | "navy"
+  | "slate"
+  | "charcoal"
+  | "forest"
+  | "burgundy";
+
+export type ResumeFontId =
+  | "aptos"
+  | "calibri"
+  | "helvetica"
+  | "garamond"
+  | "georgia";
+
+export interface ResumeDesign {
+  layout: ResumeLayoutId;
+  color_scheme: ResumeColorSchemeId;
+  font: ResumeFontId;
+  version: number;
+}
+
+export const DEFAULT_RESUME_DESIGN: ResumeDesign = {
+  layout: "banner",
+  color_scheme: "navy",
+  font: "aptos",
+  version: 1,
+};
+
+// Display metadata for the picker UI. Backend is the source of truth for
+// the IDs themselves (see backend/app/ai/resume_presets.py); this drives
+// labels, swatches, font-family CSS for previews, and the "ATS warning"
+// chip that surfaces on two_column.
+export interface LayoutPresetMeta {
+  id: ResumeLayoutId;
+  label: string;
+  description: string;
+  atsWarning?: string;
+}
+
+export interface ColorPresetMeta {
+  id: ResumeColorSchemeId;
+  label: string;
+  accent: string; // hex for swatch + preview accent
+  body: string; // hex for body text
+  muted: string; // hex for muted/separator
+}
+
+export interface FontPresetMeta {
+  id: ResumeFontId;
+  label: string;
+  // CSS font-family stack the preview uses. Real .docx export uses the
+  // first-named family; the rest are sensible fallbacks for the in-browser
+  // preview when the user doesn't have Aptos/Garamond/etc. installed.
+  fontFamily: string;
+  category: "sans" | "serif";
+}
+
+export const LAYOUT_PRESETS: LayoutPresetMeta[] = [
+  {
+    id: "banner",
+    label: "Banner",
+    description: "Full-width colored band header with name in reverse type; letter-spaced section caps. Boldest visual identity.",
+  },
+  {
+    id: "compact",
+    label: "Compact",
+    description: "Left-aligned name, contact stacked on the right, accent-bar section headers. High information density.",
+  },
+  {
+    id: "two_column",
+    label: "Two Column",
+    description: "Filled-sidebar designer layout. Name, contact, skills, and education in a colored sidebar; narrative on the right.",
+    atsWarning: "Best for direct submissions, networking, and in-person interviews — most ATS parsers struggle with sidebar layouts. For high-volume corporate apps, use Banner or Compact.",
+  },
+  {
+    id: "timeline",
+    label: "Timeline",
+    description: "Date gutter on the left with a vertical accent rule; experience flows to the right. Editorial / contemporary.",
+  },
+];
+
+export const COLOR_PRESETS: ColorPresetMeta[] = [
+  { id: "navy", label: "Classic Navy", accent: "#1F3A5F", body: "#1A1A1A", muted: "#5C7A99" },
+  { id: "slate", label: "Modern Slate", accent: "#334155", body: "#0F172A", muted: "#64748B" },
+  { id: "charcoal", label: "Warm Charcoal", accent: "#3D3D3D", body: "#1A1A1A", muted: "#7A7A7A" },
+  { id: "forest", label: "Deep Forest", accent: "#2D5044", body: "#1A1A1A", muted: "#6B8779" },
+  { id: "burgundy", label: "Burgundy Ink", accent: "#6B1F2E", body: "#1A1A1A", muted: "#A05462" },
+];
+
+export const FONT_PRESETS: FontPresetMeta[] = [
+  { id: "aptos", label: "Aptos", fontFamily: "Aptos, 'Segoe UI', system-ui, sans-serif", category: "sans" },
+  { id: "calibri", label: "Calibri", fontFamily: "Calibri, 'Trebuchet MS', system-ui, sans-serif", category: "sans" },
+  { id: "helvetica", label: "Helvetica", fontFamily: "Helvetica, Arial, sans-serif", category: "sans" },
+  { id: "garamond", label: "Garamond", fontFamily: "Garamond, 'EB Garamond', Georgia, serif", category: "serif" },
+  { id: "georgia", label: "Georgia", fontFamily: "Georgia, 'Times New Roman', serif", category: "serif" },
+];
+
 export interface ProfileData {
   personal?: ProfilePersonal;
   target_roles?: ProfileTargetRole[];
@@ -430,6 +542,7 @@ export interface ProfileData {
   awards?: string[];
   search_preferences?: ProfileSearchPreferences;
   experience_years?: string;
+  resume_design?: ResumeDesign;
 }
 
 export interface ProfileAccomplishment {

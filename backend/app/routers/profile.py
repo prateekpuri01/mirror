@@ -1,17 +1,28 @@
 import asyncio
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.accomplishment_enricher import enrich_accomplishment
+from app.ai.docx_builder import build_docx
 from app.ai.keyword_generator import generate_preference_keywords
 from app.ai.linkedin_enricher import generate_accomplishments_from_linkedin
 from app.ai.profile_suggester import suggest_profile_section
 from app.ai.publication_enricher import enrich_publication
+from app.ai.resume_presets import (
+    COLOR_SCHEMES,
+    FONTS,
+    LAYOUTS,
+    SAMPLE_PROFILE_DATA,
+    SAMPLE_RESUME_CONTENT,
+)
 from app.database import get_session
+from app.models.documents import Document, DocType
 from app.models.profile import UserProfile
 from app.services.linkedin_scraper import scrape_linkedin_profile
 from app.services.profile_sync import update_complete_profile, update_profile_section
@@ -329,3 +340,124 @@ async def _background_linkedin_scrape(url: str):
             logger.warning("Background LinkedIn scrape failed: %s", result["error"])
     except Exception:
         logger.exception("Background LinkedIn scrape error")
+
+
+# ---------------------------------------------------------------------------
+# Resume design (layout / color / font) — saved selection lives at
+# ``user_profile.data["resume_design"]`` via the regular PATCH /api/profile.
+# This sample endpoint builds a one-off preview .docx so the user can see
+# their chosen design without regenerating a real tailored resume.
+# ---------------------------------------------------------------------------
+
+
+class ResumeDesignSampleRequest(BaseModel):
+    layout: str | None = None
+    color_scheme: str | None = None
+    font: str | None = None
+
+
+@router.get("/profile/resume-design/presets")
+async def list_resume_design_presets():
+    """Return the available design preset IDs (so the frontend can validate
+    that its hardcoded display metadata is in sync with the backend)."""
+    return {
+        "layouts": list(LAYOUTS.keys()),
+        "color_schemes": list(COLOR_SCHEMES.keys()),
+        "fonts": list(FONTS.keys()),
+    }
+
+
+async def _resolve_preview_content(
+    session: AsyncSession,
+) -> tuple[dict, dict, bool]:
+    """Return ``(resume_data, profile_data, is_sample)`` for design previews.
+
+    Prefers the user's most recent resume content_json so previews reflect
+    real content; falls back to the bundled sample fixture when no resume
+    has been generated yet.
+    """
+    profile_result = await session.execute(select(UserProfile).limit(1))
+    profile = profile_result.scalar_one_or_none()
+    profile_data: dict | None = profile.data if profile else None
+
+    if profile_data:
+        doc_result = await session.execute(
+            select(Document)
+            .where(Document.doc_type == DocType.resume)
+            .where(Document.content_json.isnot(None))
+            .order_by(Document.created_at.desc())
+            .limit(1)
+        )
+        latest_doc = doc_result.scalar_one_or_none()
+        if latest_doc is not None and latest_doc.content_json:
+            return latest_doc.content_json, profile_data, False
+
+    return dict(SAMPLE_RESUME_CONTENT), SAMPLE_PROFILE_DATA, True
+
+
+@router.get("/profile/resume-design/preview-content")
+async def get_resume_design_preview_content(
+    session: AsyncSession = Depends(get_session),
+):
+    """Resume + profile data the design tab's side preview renders against.
+
+    Same source-of-truth selection as the sample download (real resume if
+    one exists, sample fixture otherwise) — keeps the in-app preview and
+    the downloadable .docx showing the same content.
+    """
+    resume_data, profile_data, is_sample = await _resolve_preview_content(session)
+    return {
+        "is_sample": is_sample,
+        "resume": resume_data,
+        "profile": {
+            "personal": profile_data.get("personal") or {},
+            "education": profile_data.get("education") or [],
+            "work_history": profile_data.get("work_history") or [],
+        },
+    }
+
+
+@router.post("/profile/resume-design/sample")
+async def download_resume_design_sample(
+    body: ResumeDesignSampleRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    """Build a one-off sample .docx with the requested design.
+
+    Content source preference:
+      1. The user's most recent resume Document with content_json (so the
+         sample reflects their actual content styled with the new design).
+      2. ``SAMPLE_RESUME_CONTENT`` + ``SAMPLE_PROFILE_DATA`` as a fallback
+         when no real resume exists yet.
+
+    The user's saved design (in profile.data) is *not* used; the caller
+    passes whatever they're currently previewing, which may differ from
+    what's persisted.
+    """
+    selection = {
+        k: v
+        for k, v in {
+            "layout": body.layout,
+            "color_scheme": body.color_scheme,
+            "font": body.font,
+        }.items()
+        if v
+    }
+
+    resume_data, profile_data, _is_sample = await _resolve_preview_content(session)
+
+    filepath = build_docx(
+        resume_data=resume_data,
+        profile_data=profile_data or SAMPLE_PROFILE_DATA,
+        job_id="design-sample",
+        resume_design=selection or None,
+    )
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=500, detail="Failed to build sample resume")
+
+    filename = "resume_design_sample.docx"
+    return FileResponse(
+        path=filepath,
+        filename=filename,
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )

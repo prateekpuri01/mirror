@@ -1,34 +1,61 @@
 # Resume DOCX styling configuration
 #
-# Copy to resume_style.yaml and customize to match your personal resume style.
-# If this file doesn't exist, the app uses these neutral defaults.
+# Copy to resume_style.yaml and customize. If this file doesn't exist, the
+# app uses these defaults — the "Mustard" theme: clean editorial single-
+# column with a saturated mustard accent on rules and the tagline.
 
 colors:
-  navy: "#2B3E50"        # Section headers and name
-  orange: "#E67E22"      # Accent color (section lines)
-  contact: "#555555"     # Contact info text
-  separator: "#999999"   # Separator characters
-  dark: "#333333"        # Body text
-  name_first: "#666666"  # First name (lighter)
-  link: "#2980B9"        # Hyperlinks
-  border: "#AABBCC"      # Section border lines
+  navy: "#1A1A1A"        # Name (bold) + section headers (near-black)
+  orange: "#B8851E"      # Mustard accent — tagline + rules + emphasis
+  contact: "#555555"     # Contact line
+  separator: "#B8B8B8"   # Separator characters between contact items
+  dark: "#1F1F1F"        # Body text (near-black)
+  name_first: "#8B7355"  # First name (warm tan, echoes the accent)
+  link: "#8B6914"        # Hyperlinks (darker mustard, readable on white)
+  border: "#B8851E"      # Section-header underline — this is the visual pop
 
 fonts:
-  name_light: "Calibri Light"  # First name
-  name_bold: "Calibri"         # Last name (bold)
-  body: "Calibri Light"        # Body text + section headers
-  skill_label: "Calibri"       # Skill category labels
+  # Serif name + sans body for editorial contrast. Cambria ships with
+  # Office; Word substitutes Georgia or Times if absent. Aptos is the
+  # modern Microsoft default sans (Calibri / Helvetica are fallbacks).
+  name_light: "Cambria"
+  name_bold: "Cambria"
+  body: "Aptos"
+  skill_label: "Aptos"
 
 sizes:
-  name: 28         # Name font size (pt)
-  tagline: 11      # Tagline font size
-  contact: 9.5     # Contact line font size
+  name: 30           # Name font size (pt)
+  tagline: 10.5      # Tagline beneath the name
+  contact: 9         # Contact info line
   section_header: 12
   body: 10
   body_small: 9.5
 
 margins:
-  top: 0.5       # inches
-  bottom: 0.5
-  left: 0.6
-  right: 0.6
+  top: 0.6           # inches
+  bottom: 0.6
+  left: 0.7
+  right: 0.7
+
+# --- Alternative palettes to try ---------------------------------------------
+# Drop one of these into the colors: block above for a different mood.
+#
+# "Slate" (cool monochrome, muted teal accent):
+#   navy: "#1E293B"        orange: "#0E7C7B"      contact: "#475569"
+#   separator: "#94A3B8"   dark: "#0F172A"        name_first: "#64748B"
+#   link: "#0E7C7B"        border: "#0E7C7B"
+#
+# "Burgundy" (warm, editorial):
+#   navy: "#3B0A1F"        orange: "#A23E48"      contact: "#5C4A52"
+#   separator: "#A89B9F"   dark: "#1F1219"        name_first: "#7A5B65"
+#   link: "#A23E48"        border: "#A23E48"
+#
+# "Forest" (calm, grounded):
+#   navy: "#1F3D2E"        orange: "#4E7C5F"      contact: "#4D5C53"
+#   separator: "#9CAA9F"   dark: "#0F1F17"        name_first: "#5E7066"
+#   link: "#4E7C5F"        border: "#4E7C5F"
+#
+# "Carbon" (high-contrast minimal):
+#   navy: "#111111"        orange: "#D97706"      contact: "#4B5563"
+#   separator: "#9CA3AF"   dark: "#111111"        name_first: "#6B7280"
+#   link: "#D97706"        border: "#D97706"

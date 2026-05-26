@@ -333,32 +333,53 @@ async def _research_via_llm_native(
     """
     from app.services.web_search_llm import llm_web_search
 
-    company_query = _build_company_query(company_name, website, job_url)
-    company_text = f"Research unavailable for {company_name}."
-    citations: list[str] = []
-    try:
-        result = await llm_web_search(company_query, num_results=8)
-        if result:
-            company_text = result.answer or company_text
-            citations.extend(c.url for c in result.citations if c.url)
-    except Exception:
-        logger.exception("LLM-native company query failed for %s", company_name)
+    # Fire the company query and (optional) team query CONCURRENTLY. Each
+    # native-LLM web search is an agentic-search call (reasoning model +
+    # web_search tool + chain-of-thought search planning) that runs 30-60s
+    # on its own; sequentially they were the dominant contributor to Phase
+    # 0's wall-clock. They have no data dependency on each other.
+    import asyncio
 
-    team_text: str | None = None
-    if team_name:
-        team_query = _build_team_query(
+    company_query = _build_company_query(company_name, website, job_url)
+    team_query = (
+        _build_team_query(
             company_name, team_name, job_title, job_desc,
             website=website, job_url=job_url,
         )
+        if team_name
+        else None
+    )
+
+    async def _company_call():
         try:
-            team_result = await llm_web_search(team_query, num_results=5)
-            if team_result and team_result.answer:
-                team_text = team_result.answer
-                citations.extend(c.url for c in team_result.citations if c.url)
+            return await llm_web_search(company_query, num_results=8)
+        except Exception:
+            logger.exception("LLM-native company query failed for %s", company_name)
+            return None
+
+    async def _team_call():
+        if team_query is None:
+            return None
+        try:
+            return await llm_web_search(team_query, num_results=5)
         except Exception:
             logger.exception(
                 "LLM-native team query failed for %s / %s", company_name, team_name,
             )
+            return None
+
+    company_result, team_result = await asyncio.gather(_company_call(), _team_call())
+
+    company_text = f"Research unavailable for {company_name}."
+    citations: list[str] = []
+    if company_result:
+        company_text = company_result.answer or company_text
+        citations.extend(c.url for c in company_result.citations if c.url)
+
+    team_text: str | None = None
+    if team_result and team_result.answer:
+        team_text = team_result.answer
+        citations.extend(c.url for c in team_result.citations if c.url)
 
     return company_text, team_text, citations
 

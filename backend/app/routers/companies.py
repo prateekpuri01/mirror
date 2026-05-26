@@ -157,4 +157,16 @@ async def import_company_endpoint(
 
         background_tasks.add_task(_run_process)
 
+        # Pre-warm company research for the freshly imported jobs. By the
+        # time the user clicks Generate Resume, Phase 0 will hit cache
+        # instead of paying the 2-5 min LLM-native web search penalty.
+        job_ids = result.get("job_ids") or []
+        if job_ids:
+            from app.services.company_research_prewarm import (
+                prewarm_company_research_for_jobs,
+            )
+            background_tasks.add_task(
+                prewarm_company_research_for_jobs, job_ids,
+            )
+
     return ImportResponse(**result)

@@ -46,19 +46,56 @@ async def search_publication(title: str) -> dict | None:
     return _normalize_paper(best)
 
 
-async def fetch_author_publications(scholar_url: str | None = None, author_name: str | None = None) -> list[dict]:
-    """Fetch all publications for an author via Semantic Scholar.
+async def fetch_author_publications(
+    scholar_url: str | None = None,
+    author_name: str | None = None,
+) -> list[dict]:
+    """Fetch all publications for an author.
 
-    Can search by Google Scholar URL (extracting name) or directly by name.
-    Returns a list of normalized paper dicts.
+    Hybrid strategy: when a Google Scholar URL is provided, scrape the
+    profile page for the COMPLETE publication list (Scholar shows all of
+    an author's work, unlike Semantic Scholar's name-search which has
+    coverage gaps and homonym-disambiguation problems). Then enrich each
+    paper by fuzzy-matching Semantic Scholar's /paper/search to pull in
+    abstract + DOI + arxiv IDs that Scholar's profile page truncates.
+
+    Falls back to Semantic Scholar author-name lookup when:
+      - No scholar_url provided (only author_name)
+      - Scholar scrape fails (Playwright blocked, profile private, etc.)
+      - Scholar scrape returns zero rows
+
+    Returns a list of normalized paper dicts matching `_normalize_paper`'s
+    schema so downstream `enrich_publication` works identically regardless
+    of source.
     """
     if not author_name and not scholar_url:
         return []
 
+    # --- Primary path: Google Scholar scrape + Semantic Scholar enrichment ---
+
+    if scholar_url:
+        from app.services.google_scholar_scraper import scrape_scholar_publications
+        scholar_papers = await scrape_scholar_publications(scholar_url)
+
+        if scholar_papers:
+            logger.info(
+                "Scholar scrape yielded %d papers — enriching via Semantic Scholar",
+                len(scholar_papers),
+            )
+            return await _enrich_scholar_papers_via_semantic_scholar(scholar_papers)
+
+        logger.info(
+            "Scholar scrape returned no papers — falling back to "
+            "Semantic Scholar name search",
+        )
+
+    # --- Fallback path: Semantic Scholar author-name lookup ---
+
     search_name = author_name or ""
+    if not search_name:
+        return []
 
     async with httpx.AsyncClient(timeout=20.0) as client:
-        # Search for author by name
         resp = await client.get(
             f"{SEMANTIC_SCHOLAR_BASE}/author/search",
             params={"query": search_name, "limit": 3},
@@ -71,12 +108,10 @@ async def fetch_author_publications(scholar_url: str | None = None, author_name:
         if not authors:
             return []
 
-        # Use the first matching author
         author_id = authors[0].get("authorId")
         if not author_id:
             return []
 
-        # Fetch their papers
         resp = await client.get(
             f"{SEMANTIC_SCHOLAR_BASE}/author/{author_id}/papers",
             params={"limit": 100, "fields": AUTHOR_PAPER_FIELDS},
@@ -88,6 +123,71 @@ async def fetch_author_publications(scholar_url: str | None = None, author_name:
         papers = resp.json().get("data", [])
 
     return [_normalize_paper(p) for p in papers]
+
+
+async def _enrich_scholar_papers_via_semantic_scholar(
+    scholar_papers: list[dict],
+) -> list[dict]:
+    """For each paper from the Scholar scrape, look up Semantic Scholar by
+    title and merge the rich metadata (abstract + DOI + arxiv ID) in.
+
+    Sequential rather than parallel to stay under Semantic Scholar's
+    anonymous-rate-limit ceiling (~1 req/s). 30 papers => ~10s — fast
+    enough since the LLM enrichment dominates wall-clock anyway. Failures
+    fall back to whatever Scholar gave us so a partial DB outage on
+    Semantic Scholar still imports every paper, just with less metadata.
+    """
+    enriched: list[dict] = []
+    for paper in scholar_papers:
+        title = paper.get("title", "")
+        if not title:
+            continue
+
+        ss_match: dict | None = None
+        try:
+            ss_match = await search_publication(title)
+        except Exception:
+            logger.warning("Semantic Scholar lookup failed for %r", title)
+
+        if ss_match:
+            # Semantic Scholar wins for abstract / DOI / arxiv / pub_type.
+            # Scholar wins for citation count (Scholar's is usually larger
+            # and more current). Year: prefer Scholar's since it's the
+            # original publication year from the Scholar entry; only fall
+            # back to Semantic Scholar's if Scholar didn't have one.
+            year_str = (
+                str(paper["year"]) if paper.get("year") is not None
+                else ss_match.get("year", "")
+            )
+            merged = {
+                **ss_match,
+                "year": year_str,
+                "citation_count": max(
+                    paper.get("citation_count") or 0,
+                    ss_match.get("citation_count") or 0,
+                ),
+                "scholar_link": paper.get("scholar_link"),
+            }
+            enriched.append(merged)
+        else:
+            # No SS match — keep what Scholar gave us. Abstract stays empty
+            # (Scholar profile page only shows a snippet, not the full
+            # text). enrich_publication can still produce a description
+            # from title + venue + year alone.
+            enriched.append({
+                "title": title,
+                "authors": paper.get("authors", []),
+                "venue": paper.get("venue", ""),
+                "year": str(paper["year"]) if paper.get("year") is not None else "",
+                "abstract": "",
+                "doi": None,
+                "arxiv_id": None,
+                "url": paper.get("scholar_link"),
+                "type": "journal",
+                "citation_count": paper.get("citation_count") or 0,
+                "scholar_link": paper.get("scholar_link"),
+            })
+    return enriched
 
 
 def _normalize_paper(paper: dict) -> dict:

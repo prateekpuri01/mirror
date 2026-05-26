@@ -333,6 +333,7 @@ async def assemble_profile_from_sources(
     resume_text: str,
     resume_extracted: dict,
     url_texts: dict[str, str],
+    resume_extracted_complete: dict | None = None,
 ) -> tuple[dict, dict]:
     """Enrich an already-extracted profile with data from crawled URLs.
 
@@ -342,10 +343,25 @@ async def assemble_profile_from_sources(
     - If resume_extracted is empty (no resume, only URLs): treat the richest URL
       text as a resume and run the full extraction pipeline on it.
 
+    `resume_extracted_complete` is the (accomplishments, publications) dict
+    produced by `extract_complete_profile_from_resume` during the upload step.
+    Earlier versions returned an empty complete_profile here, which the
+    frontend then used to OVERWRITE the upload's extraction on the review
+    screen — explaining "no accomplishments visible during onboarding". When
+    provided, the upload's complete profile is preserved through assembly.
+
     Returns (profile_dict, complete_profile_dict).
     """
+    # Preserve the upload step's complete profile if the caller passed it,
+    # otherwise default to empty. Used as the baseline in every return path
+    # below where we don't actively regenerate.
+    base_complete = resume_extracted_complete or {
+        "accomplishments": [],
+        "publications": [],
+    }
+
     if not url_texts:
-        return resume_extracted, {"accomplishments": [], "publications": []}
+        return resume_extracted, base_complete
 
     # Check if we have a meaningful resume extraction already
     has_resume = bool(
@@ -405,10 +421,10 @@ output ONLY the patches needed. If nothing needs updating, output {{}}."""
         patches = json.loads(raw)
     except json.JSONDecodeError:
         logger.warning("Failed to parse profile patches, using resume extraction as-is")
-        return resume_extracted, {"accomplishments": [], "publications": []}
+        return resume_extracted, base_complete
 
     if not isinstance(patches, dict) or not patches:
-        return resume_extracted, {"accomplishments": [], "publications": []}
+        return resume_extracted, base_complete
 
     # Apply patches to the existing profile
     patched = dict(resume_extracted)
@@ -518,5 +534,9 @@ output ONLY the patches needed. If nothing needs updating, output {{}}."""
             # Field was empty/null, fill it
             patched[key] = value
 
-    # Accomplishments are preserved from resume extraction — not touched here
-    return patched, {"accomplishments": [], "publications": []}
+    # Accomplishments come from the upload step's complete profile (preserved
+    # in base_complete). Publications fetched from Scholar happen via the
+    # separate streaming endpoint /api/onboarding/import-publications-stream
+    # — see app/routers/onboarding.py — so the user sees per-paper progress
+    # and can switch tabs without losing the in-flight work.
+    return patched, base_complete

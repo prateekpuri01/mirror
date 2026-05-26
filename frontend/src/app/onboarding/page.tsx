@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { usePublicationsImport } from "@/hooks/use-publications-import";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -310,12 +311,14 @@ function StepUpload({
 function StepProcessing({
   resumeText,
   extractedProfile,
+  extractedComplete,
   urls,
   onComplete,
   onSkip,
 }: {
   resumeText: string;
   extractedProfile: ProfileData;
+  extractedComplete: ProfileCompleteData;
   urls: { type: string; url: string }[];
   onComplete: (profile: ProfileData, complete: ProfileCompleteData) => void;
   onSkip: () => void;
@@ -403,6 +406,7 @@ function StepProcessing({
       {
         resume_text: resumeText,
         resume_extracted: extractedProfile,
+        resume_extracted_complete: extractedComplete,
         url_texts: urlTexts,
       },
       {
@@ -550,6 +554,7 @@ function StepReview({
   onBack: () => void;
 }) {
   const [profile, setProfile] = useState<ProfileData>(initialProfile);
+  const pubImport = usePublicationsImport();
 
   const updateSection = <K extends keyof ProfileData>(
     key: K,
@@ -558,8 +563,42 @@ function StepReview({
     setProfile((prev) => ({ ...prev, [key]: value }));
   };
 
-  const accCount = initialComplete?.accomplishments?.length || 0;
-  const pubCount = initialComplete?.publications?.length || 0;
+  // Auto-start the Scholar import once on review entry if conditions are
+  // right (URL present, no existing pubs, importer idle, profile name set).
+  // Re-mount on tab-switch-back is harmless: state lives in the context
+  // provider at app root, so phase != idle on return and start() is a noop.
+  useEffect(() => {
+    const url = profile.personal?.google_scholar;
+    const hasExistingPubs = (initialComplete?.publications?.length || 0) > 0;
+    if (url && !hasExistingPubs && pubImport.phase === "idle") {
+      pubImport.start(profile, url);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Effective complete profile = whatever the upload step gave us, plus any
+  // Scholar pubs that streamed in (or finished streaming) via context.
+  // Streamed pubs are deduped against existing by title at save time on
+  // the backend, so we just concat here.
+  const effectiveComplete: ProfileCompleteData | null = useMemo(() => {
+    const base = initialComplete || { accomplishments: [], publications: [] };
+    if (pubImport.publications.length === 0) return base;
+    const existingTitles = new Set(
+      (base.publications || []).map((p) => (p.title || "").toLowerCase().trim()),
+    );
+    const incoming = pubImport.publications.filter(
+      (p) => !existingTitles.has((p.title || "").toLowerCase().trim()),
+    );
+    return {
+      ...base,
+      publications: [...(base.publications || []), ...incoming],
+    };
+  }, [initialComplete, pubImport.publications]);
+
+  const accCount = effectiveComplete?.accomplishments?.length || 0;
+  const pubCount = effectiveComplete?.publications?.length || 0;
+  const importRunning =
+    pubImport.phase === "fetching" || pubImport.phase === "enriching";
 
   return (
     <div className="space-y-4">
@@ -571,20 +610,51 @@ function StepReview({
         </p>
       </div>
 
-      {(accCount > 0 || pubCount > 0) && (
+      {(accCount > 0 || pubCount > 0 || importRunning) && (
         <div className="flex items-start gap-2 text-sm bg-green-50 border border-green-200 rounded-lg p-3">
-          <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-          <span className="text-green-800">
-            Also extracted{" "}
-            {accCount > 0 && (
-              <strong>{accCount} accomplishment{accCount !== 1 ? "s" : ""}</strong>
+          {importRunning ? (
+            <Loader2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0 animate-spin" />
+          ) : (
+            <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+          )}
+          <div className="text-green-800 flex-1">
+            {(accCount > 0 || pubCount > 0) && (
+              <div>
+                Extracted{" "}
+                {accCount > 0 && (
+                  <strong>{accCount} accomplishment{accCount !== 1 ? "s" : ""}</strong>
+                )}
+                {accCount > 0 && pubCount > 0 && " and "}
+                {pubCount > 0 && (
+                  <strong>{pubCount} publication{pubCount !== 1 ? "s" : ""}</strong>
+                )}
+                .
+              </div>
             )}
-            {accCount > 0 && pubCount > 0 && " and "}
-            {pubCount > 0 && (
-              <strong>{pubCount} publication{pubCount !== 1 ? "s" : ""}</strong>
+            {importRunning && (
+              <div className="text-xs text-green-700 mt-1">
+                {pubImport.status}
+                {pubImport.total > 0 && (
+                  <>
+                    {" "}
+                    ({pubImport.publications.length} / {pubImport.total} streamed)
+                  </>
+                )}
+                {" — "}
+                you can switch tabs; the import keeps running in the background.
+              </div>
             )}
-            {" "}from your resume. You can review and edit these on the full profile page after saving.
-          </span>
+            {pubImport.phase === "error" && pubImport.errorMessage && (
+              <div className="text-xs text-red-700 mt-1">
+                Scholar import error: {pubImport.errorMessage}
+              </div>
+            )}
+            {pubImport.skipped.length > 0 && pubImport.phase !== "error" && (
+              <div className="text-xs text-green-700/70 mt-1">
+                ({pubImport.skipped.length} paper(s) couldn&apos;t be enriched and were skipped.)
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -652,7 +722,7 @@ function StepReview({
           Back
         </button>
         <button
-          onClick={() => onSave(profile, initialComplete)}
+          onClick={() => onSave(profile, effectiveComplete)}
           className="flex items-center gap-2 px-4 py-2 bg-foreground text-background rounded-md text-sm font-medium hover:opacity-90 transition-opacity"
         >
           Save Profile
@@ -673,17 +743,59 @@ export default function OnboardingPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const saveMutation = useSaveOnboardingProfile();
+  const pubImport = usePublicationsImport();
 
   const [step, setStep] = useState<Step>("upload");
   const [resumeText, setResumeText] = useState("");
   const [extractedProfile, setExtractedProfile] = useState<ProfileData>({});
+  const [extractedComplete, setExtractedComplete] = useState<ProfileCompleteData>({
+    accomplishments: [],
+    publications: [],
+  });
   const [urls, setUrls] = useState<{ type: string; url: string }[]>([]);
   const [finalProfile, setFinalProfile] = useState<ProfileData>({});
   const [finalComplete, setFinalComplete] =
     useState<ProfileCompleteData | null>(null);
 
+  // Save the profile to DB and navigate to /profile. Used as the terminal
+  // step in every branch — replaces the old "land on a long review screen
+  // and click Save" intermediate. The review-step component is kept around
+  // as a fallback for the rare case where save errors out, so the user
+  // isn't stranded on a blank screen.
+  const saveAndContinue = async (
+    profile: ProfileData,
+    complete: ProfileCompleteData | null,
+  ): Promise<boolean> => {
+    try {
+      await saveMutation.mutateAsync({
+        profile,
+        complete_profile: complete || undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["profile-complete"] });
+      queryClient.invalidateQueries({ queryKey: ["onboarding-status"] });
+
+      // If the assembled profile has a Scholar URL and no publications
+      // yet, kick off the streaming Scholar import. Stream state lives in
+      // PublicationsImportContext at app root, so navigation away from
+      // /onboarding doesn't abort it — the /profile page picks it up.
+      const scholarUrl = profile.personal?.google_scholar;
+      const hasPubs = (complete?.publications?.length || 0) > 0;
+      if (scholarUrl && !hasPubs && pubImport.phase === "idle") {
+        pubImport.start(profile, scholarUrl);
+      }
+
+      router.push("/profile");
+      return true;
+    } catch {
+      // Save failed — leave the user on the wizard (or fall back to the
+      // review screen) so they can retry without losing data.
+      return false;
+    }
+  };
+
   // Step 1 complete
-  const handleUploadComplete = (data: {
+  const handleUploadComplete = async (data: {
     resumeText: string;
     extractedProfile: ProfileData;
     extractedComplete: ProfileCompleteData;
@@ -691,6 +803,7 @@ export default function OnboardingPage() {
   }) => {
     setResumeText(data.resumeText);
     setExtractedProfile(data.extractedProfile);
+    setExtractedComplete(data.extractedComplete);
     setFinalProfile(data.extractedProfile);
     setFinalComplete(data.extractedComplete);
     setUrls(data.urls);
@@ -698,43 +811,36 @@ export default function OnboardingPage() {
     if (data.urls.length > 0) {
       setStep("processing");
     } else {
-      setStep("review");
+      // No URLs to crawl — save immediately and go to /profile.
+      const ok = await saveAndContinue(data.extractedProfile, data.extractedComplete);
+      if (!ok) setStep("review");
     }
   };
 
   // Step 2 complete (with assembled data)
-  const handleProcessingComplete = (
+  const handleProcessingComplete = async (
     profile: ProfileData,
     complete: ProfileCompleteData,
   ) => {
     setFinalProfile(profile);
     setFinalComplete(complete);
-    setStep("review");
+    const ok = await saveAndContinue(profile, complete);
+    if (!ok) setStep("review");
   };
 
-  // Step 2 skipped (use resume-only data)
-  const handleProcessingSkip = () => {
-    setStep("review");
+  // Step 2 skipped (use resume-only data) — same auto-save path
+  const handleProcessingSkip = async () => {
+    const ok = await saveAndContinue(extractedProfile, extractedComplete);
+    if (!ok) setStep("review");
   };
 
-  // Step 3: save
+  // Manual save from the review fallback screen (only reached if auto-save
+  // failed). Same as saveAndContinue but no navigation gating.
   const handleSave = async (
     profile: ProfileData,
     complete: ProfileCompleteData | null,
   ) => {
-    try {
-      await saveMutation.mutateAsync({
-        profile,
-        complete_profile: complete || undefined,
-      });
-      // Invalidate profile queries so the rest of the app picks up the new data
-      queryClient.invalidateQueries({ queryKey: ["profile"] });
-      queryClient.invalidateQueries({ queryKey: ["profile-complete"] });
-      queryClient.invalidateQueries({ queryKey: ["onboarding-status"] });
-      router.push("/profile");
-    } catch {
-      // Error shown via mutation state
-    }
+    await saveAndContinue(profile, complete);
   };
 
   return (
@@ -794,6 +900,7 @@ export default function OnboardingPage() {
         <StepProcessing
           resumeText={resumeText}
           extractedProfile={extractedProfile}
+          extractedComplete={extractedComplete}
           urls={urls}
           onComplete={handleProcessingComplete}
           onSkip={handleProcessingSkip}

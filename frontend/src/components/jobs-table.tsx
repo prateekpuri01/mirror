@@ -366,6 +366,11 @@ export function JobsTable({
     getCoreRowModel: getCoreRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
     getRowCanExpand: () => true,
+    // Key rows by their stable UUID so expansion survives reorders.
+    // Without this, tanstack uses array index — and pinning/refetch
+    // events (scoring, resume-gen completion) re-shuffle the array,
+    // causing the expanded panel to "switch" to a different job.
+    getRowId: (row) => row.id,
     manualSorting: true,
     manualPagination: true,
   });

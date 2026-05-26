@@ -1470,7 +1470,11 @@ def _direct_slug_for(name: str) -> str:
 # picker (~5s) + verifier (~5s) + a Playwright drill that hits 50s on
 # its own can comfortably exceed 90s. The semaphore (rate_limits) keeps
 # concurrency bounded; this is just per-candidate wall-time headroom.
-_CANDIDATE_TIMEOUT = 180
+_CANDIDATE_TIMEOUT = 90  # was 180; most evals complete in 20-50s and the
+                         # tail (Ashby-throttled / Playwright-stalled) was
+                         # eating 30%+ of wall-clock at the longer cap.
+                         # The orchestration's global 8-min budget still
+                         # bounds the whole search regardless.
 
 
 async def _evaluate_candidate(
@@ -1480,8 +1484,18 @@ async def _evaluate_candidate(
     locations: list[str] | None = None,
     min_salary: int | None = None,
     guidance: str = "",
+    profile_fit_threshold: int = 50,
 ) -> tuple[CompanyHit | None, str]:
     """Evaluate a candidate: resolve ATS, scrape jobs, score. Timeout-protected.
+
+    `profile_fit_threshold` is the minimum 0-100 score a job must hit to
+    be considered relevant for THIS user's profile. Calibrated against
+    fully-populated profiles (target_roles + domains + skills + search
+    prefs), the scorer punishes adjacent matches — a "Senior Data
+    Scientist" at an AI-healthcare company scored 54 for a user whose
+    profile is research/eval-focused. Default 50 (was hard-coded 75)
+    means exploratory cross-domain searches still surface obvious
+    candidates without manual threshold tuning.
 
     Returns (hit, skip_reason). If hit is not None, skip_reason is empty.
     """
@@ -1491,6 +1505,7 @@ async def _evaluate_candidate(
                 _evaluate_candidate_inner(
                     candidate, profile_keywords, http_client,
                     locations, min_salary, guidance=guidance,
+                    profile_fit_threshold=profile_fit_threshold,
                 ),
                 timeout=_CANDIDATE_TIMEOUT,
             )
@@ -1528,6 +1543,7 @@ async def _evaluate_candidate_inner(
     locations: list[str] | None = None,
     min_salary: int | None = None,
     guidance: str = "",
+    profile_fit_threshold: int = 50,
 ) -> tuple[CompanyHit | None, str]:
     ats = candidate.ats
     slug = candidate.slug
@@ -1858,16 +1874,41 @@ async def _evaluate_candidate_inner(
 
     job_previews.sort(key=lambda j: j["relevance"], reverse=True)
 
-    # Hit if any job scores >= 75 on profile relevance
-    relevant_jobs = [j for j in job_previews if j["relevance"] >= 75]
+    # Two-tier threshold gate. Strong matches (>= strict) are emitted
+    # without question. Near-misses (>= loose but < strict) are flagged
+    # as tentative — the orchestration caps how many tentative hits
+    # surface per search so exploratory cross-domain searches always
+    # return SOMETHING ("not finding great fit, but here's what's
+    # closest") without flooding the result list with noise. Anything
+    # below the loose floor is a hard skip.
+    loose_threshold = max(0, profile_fit_threshold - 20)
+    strong_jobs = [
+        j for j in job_previews if j["relevance"] >= profile_fit_threshold
+    ]
+    near_miss_jobs = [
+        j for j in job_previews
+        if loose_threshold <= j["relevance"] < profile_fit_threshold
+    ]
+    is_tentative_match = False
+    if strong_jobs:
+        relevant_jobs = strong_jobs
+    elif near_miss_jobs:
+        # Take just the top near-miss; we don't want to emit five mediocre
+        # roles from the same company. The whole company becomes a single
+        # tentative hit anchored on its best-scoring role.
+        relevant_jobs = [near_miss_jobs[0]]
+        is_tentative_match = True
+    else:
+        relevant_jobs = []
     if not relevant_jobs:
         top_score = job_previews[0]["relevance"] if job_previews else 0
         top_title = job_previews[0].get("title", "?") if job_previews else "?"
         if job_previews:
-            # Rich skip reason so the activity log shows what was considered
             return None, (
                 f"Considered {len(job_previews)} role(s); best profile match "
-                f"was '{top_title[:50]}' (score {top_score}/100, threshold 75)"
+                f"was '{top_title[:50]}' "
+                f"(score {top_score}/100; needed >= {loose_threshold} "
+                f"to be tentative, >= {profile_fit_threshold} for strong)"
             )
         return None, f"No relevant jobs (best score: {top_score})"
 
@@ -1916,6 +1957,17 @@ async def _evaluate_candidate_inner(
         # Already slug-derived, keep it
         pass
 
+    # A company is tentative if EITHER the profile-fit gate or the
+    # topic-fit gate fell into the loose tier. The two gates work
+    # independently: profile-fit measures "match for this user", topic-fit
+    # measures "match for this search". A "strong-profile, tentative-topic"
+    # company (PI's ML Infra against embodied-robotics search) gets the
+    # same dashed-border UI as a "tentative-profile, strong-topic" one.
+    topic_tentative = any(
+        j.get("_topic_tentative") for j in relevant_jobs
+    )
+    final_is_tentative = is_tentative_match or topic_tentative
+
     # description + match_reason are filled in centrally by _run_eval before
     # emission so every path (ATS + drills) gets the same grounded treatment.
     return CompanyHit(
@@ -1929,6 +1981,8 @@ async def _evaluate_candidate_inner(
         source=candidate.source,
         description="",
         match_reason="",
+        is_tentative=final_is_tentative,
+        match_score=relevant_jobs[0]["relevance"] if relevant_jobs else None,
     ), ""
 
 
@@ -2515,26 +2569,44 @@ async def _pick_best_job_for_guidance(
 
         picked_title = jobs[idx].get("title", "?")
 
-        if relevance < relevance_floor:
+        # Two-tier topic-fit gate, mirroring the profile-fit one. The
+        # strict floor stays at `relevance_floor` (default 3). Anything
+        # one notch below (relevance_floor - 1, normally 2) passes as
+        # tentative — the company is surfaced but flagged. This is what
+        # caught Physical Intelligence in testing: the LLM rated its
+        # "ML Infra Engineer (Supercomputing)" 2/5 against "embodied
+        # robotics", not connecting infra-for-robots to the user's
+        # search intent. Tentative surfacing lets the user decide.
+        loose_topic_floor = max(1, relevance_floor - 1)
+        if relevance < loose_topic_floor:
             logger.info(
-                "LLM picker below floor (relevance=%d, floor=%d) — rejecting "
-                "'%s' (picked for search '%s' but match is weak)",
-                relevance, relevance_floor, picked_title[:60], guidance[:40],
+                "LLM picker below loose floor (relevance=%d, loose_floor=%d) — "
+                "rejecting '%s' for search '%s'",
+                relevance, loose_topic_floor, picked_title[:60], guidance[:40],
             )
             return None, {
                 "best_title": picked_title,
                 "best_score": relevance,
                 "reason": (
                     f"Best match '{picked_title[:60]}' scored {relevance}/5 "
-                    f"— below threshold ({relevance_floor}/5) for the search topic"
+                    f"— below tentative floor ({loose_topic_floor}/5) "
+                    f"for the search topic"
                 ),
             }
+        is_tentative_topic = relevance < relevance_floor
 
         logger.info(
-            "LLM picked job #%d '%s' (relevance=%d) for search '%s'",
-            idx + 1, picked_title[:50], relevance, guidance[:40],
+            "LLM picked job #%d '%s' (relevance=%d%s) for search '%s'",
+            idx + 1, picked_title[:50], relevance,
+            " — TENTATIVE" if is_tentative_topic else "",
+            guidance[:40],
         )
-        return jobs[idx], None
+        # Annotate the job dict so the caller can propagate tentative status
+        # into the final CompanyHit.
+        out = dict(jobs[idx])
+        out["_topic_tentative"] = is_tentative_topic
+        out["_topic_score"] = relevance
+        return out, None
 
     except Exception:
         logger.debug("LLM job picker failed, returning first job as fallback")
