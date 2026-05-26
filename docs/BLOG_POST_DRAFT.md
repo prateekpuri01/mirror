@@ -339,11 +339,11 @@ A few things I'd revisit if I were starting over:
 
 If you want to read the implementation:
 
-- Memory schema: [`backend/app/models/content_memory.py`](https://github.com/your-username/mirror/blob/main/backend/app/models/content_memory.py)
-- Capture path: [`_learn_from_inline_edit`](https://github.com/your-username/mirror/blob/main/backend/app/routers/documents.py)
-- Generation pipeline: [`backend/app/ai/resume_pipeline.py`](https://github.com/your-username/mirror/blob/main/backend/app/ai/resume_pipeline.py)
-- Eval suite: [`backend/scripts/eval/eval_focused_edit.py`](https://github.com/your-username/mirror/blob/main/backend/scripts/eval/eval_focused_edit.py)
-- Full design doc: [`docs/MEMORY_DESIGN.md`](https://github.com/your-username/mirror/blob/main/docs/MEMORY_DESIGN.md)
+- Memory schema: [`backend/app/models/content_memory.py`](https://github.com/prateekpuri01/mirror/blob/main/backend/app/models/content_memory.py)
+- Capture path: [`_learn_from_inline_edit`](https://github.com/prateekpuri01/mirror/blob/main/backend/app/routers/documents.py)
+- Generation pipeline: [`backend/app/ai/resume_pipeline.py`](https://github.com/prateekpuri01/mirror/blob/main/backend/app/ai/resume_pipeline.py)
+- Eval suite: [`backend/scripts/eval/eval_focused_edit.py`](https://github.com/prateekpuri01/mirror/blob/main/backend/scripts/eval/eval_focused_edit.py)
+- Full design doc: [`docs/MEMORY_DESIGN.md`](https://github.com/prateekpuri01/mirror/blob/main/docs/MEMORY_DESIGN.md)
 
 Mirror is MIT-licensed. It's designed for local single-user deployment
 — no auth, no hosted service. If you have a different application
@@ -353,28 +353,3 @@ critic that flags rather than rewrites, and an eval suite that catches
 regressions that unit tests can't see.
 
 — *Prateek*
-
----
-
-## Notes for publishing
-
-- **Update the GitHub URLs** above once you push the repo. They
-  currently point at `your-username/mirror` placeholders.
-- **The Cohere/Anthropic/RAND examples are real to your history.**
-  If you'd rather keep employers anonymous in the public post,
-  swap them for "Lab A / Lab B / Org C" — but the concrete details
-  make the post more credible. Recommend leaving as-is.
-- **Hero image**: render the staged-pipeline Mermaid diagram from
-  `docs/MEMORY_DESIGN.md` to PNG and embed at the top. Tools:
-  https://mermaid.live (paste the diagram source, screenshot the SVG).
-- **HN title suggestion**: "Why I rebuilt my resume generator's
-  memory layer from scratch" — same as the post title. HN front-page
-  posts about *specific design decisions* outperform generic
-  "I built X" posts.
-- **Tweet-length pitch**: *"After two weeks of using my own AI resume
-  tool, I realized I was rewriting the same paragraphs every time.
-  Here's why style-rule extraction wasn't enough, and the two-tier
-  memory architecture I ended up with."*
-- **What to leave for the README, not the post**: the operational
-  setup, the stack list, the pluggable-LLM details. Those live on
-  GitHub. The blog post is the *why*; the repo is the *how*.
