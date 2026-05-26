@@ -29,7 +29,7 @@ about your work, not an LLM imagining how you might.
 
 ## Why this is different
 
-Three design choices that aren't in the typical "AI resume builder":
+Two design choices that aren't in the typical "AI resume builder":
 
 ### 1. Two-tier memory
 
@@ -79,21 +79,6 @@ clean entities don't get clobbered.
 Every leaf call dumps its full system + user + response to
 `output/traces/{trace_id}/{stage}.txt` so you can audit what the agent
 actually saw at each step.
-
-### 3. Semantic eval in CI
-
-`backend/scripts/eval/eval_focused_edit.py` runs three multi-turn rewrite
-scenarios against a real LLM and grades each turn with an LLM-as-judge on:
-
-- **respects_instruction** — did the new value actually do what the user asked?
-- **no_fabrication** — are all facts present in the accomplishment data?
-- **differs_from_prior** — is the rewrite materially different (proves
-  the agent attended to feedback, not just hallucinated agreement)?
-- **voice_matches_grounding** — does the new value mirror past versions
-  when grounding is shown?
-
-The eval lives in CI (coming) with a pass-rate gate, so prompt regressions
-get caught before they ship.
 
 ## Quick start
 
