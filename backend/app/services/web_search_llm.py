@@ -39,7 +39,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
 from app.config import settings
 
@@ -86,6 +85,7 @@ _ANTHROPIC_WEB_SEARCH_TOOL_TYPE = "web_search_20250305"
 class Citation:
     """A normalized search citation. ``snippet`` may be empty when the
     provider doesn't expose per-citation snippets."""
+
     title: str
     url: str
     snippet: str = ""
@@ -94,6 +94,7 @@ class Citation:
 @dataclass
 class WebSearchResult:
     """Uniform shape returned by every native-LLM-search adapter."""
+
     answer: str
     citations: list[Citation] = field(default_factory=list)
     # Token-usage diagnostics. Populated when the provider returns
@@ -145,8 +146,8 @@ async def llm_web_search(
     query: str,
     num_results: int = 5,
     *,
-    effort: Optional[str] = None,
-) -> Optional[WebSearchResult]:
+    effort: str | None = None,
+) -> WebSearchResult | None:
     """Run a native LLM web search for the configured provider.
 
     Returns ``None`` when:
@@ -174,7 +175,7 @@ async def llm_web_search(
 # ---------------------------------------------------------------------------
 
 
-def _openai_reasoning_effort(override: Optional[str] = None) -> str:
+def _openai_reasoning_effort(override: str | None = None) -> str:
     """Resolve the reasoning effort for the OpenAI Responses API call.
 
     Resolution order:
@@ -201,12 +202,13 @@ async def _openai_web_search(
     query: str,
     num_results: int,
     *,
-    effort: Optional[str] = None,
-) -> Optional[WebSearchResult]:
+    effort: str | None = None,
+) -> WebSearchResult | None:
     if not settings.openai_api_key:
         return None
     try:
         from openai import AsyncOpenAI
+
         client = AsyncOpenAI(api_key=settings.openai_api_key)
         # ``web_search`` (production tool) + ``gpt-5.5`` + reasoning effort
         # is the agentic search configuration. Default effort is now "low"
@@ -300,11 +302,13 @@ def _extract_openai_citations(response, num_results: int) -> list[Citation]:
                 if not url or url in seen_urls:
                     continue
                 seen_urls.add(url)
-                out.append(Citation(
-                    title=getattr(annotation, "title", "") or "",
-                    url=url,
-                    snippet="",  # OpenAI URL citations don't carry snippets
-                ))
+                out.append(
+                    Citation(
+                        title=getattr(annotation, "title", "") or "",
+                        url=url,
+                        snippet="",  # OpenAI URL citations don't carry snippets
+                    )
+                )
                 if len(out) >= num_results:
                     return out
     return out
@@ -315,7 +319,7 @@ def _extract_openai_citations(response, num_results: int) -> list[Citation]:
 # ---------------------------------------------------------------------------
 
 
-async def _anthropic_web_search(query: str, num_results: int) -> Optional[WebSearchResult]:
+async def _anthropic_web_search(query: str, num_results: int) -> WebSearchResult | None:
     if not settings.anthropic_api_key:
         return None
     try:
@@ -323,8 +327,7 @@ async def _anthropic_web_search(query: str, num_results: int) -> Optional[WebSea
         from anthropic import AsyncAnthropic
     except ImportError:
         logger.warning(
-            "anthropic SDK not installed — set LLM_PROVIDER=openai or run "
-            "`pip install anthropic`."
+            "anthropic SDK not installed — set LLM_PROVIDER=openai or run `pip install anthropic`."
         )
         return None
 
@@ -333,11 +336,13 @@ async def _anthropic_web_search(query: str, num_results: int) -> Optional[WebSea
         response = await client.messages.create(
             model=_web_search_model("anthropic"),
             max_tokens=1024,
-            tools=[{
-                "type": _ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
-                "name": "web_search",
-                "max_uses": max(1, min(num_results, 5)),
-            }],
+            tools=[
+                {
+                    "type": _ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
+                    "name": "web_search",
+                    "max_uses": max(1, min(num_results, 5)),
+                }
+            ],
             messages=[{"role": "user", "content": query}],
         )
     except Exception as e:
@@ -386,11 +391,13 @@ def _extract_anthropic_citations(response, num_results: int) -> list[Citation]:
                 if not url or url in seen_urls:
                     continue
                 seen_urls.add(url)
-                in_text.append(Citation(
-                    title=getattr(cit, "title", "") or "",
-                    url=url,
-                    snippet=getattr(cit, "cited_text", "") or "",
-                ))
+                in_text.append(
+                    Citation(
+                        title=getattr(cit, "title", "") or "",
+                        url=url,
+                        snippet=getattr(cit, "cited_text", "") or "",
+                    )
+                )
 
         # Raw search results (fallback)
         elif block_type == "web_search_tool_result":
@@ -398,11 +405,13 @@ def _extract_anthropic_citations(response, num_results: int) -> list[Citation]:
                 url = getattr(item, "url", "") or ""
                 if not url:
                     continue
-                raw_results.append(Citation(
-                    title=getattr(item, "title", "") or "",
-                    url=url,
-                    snippet=getattr(item, "page_age", "") or "",
-                ))
+                raw_results.append(
+                    Citation(
+                        title=getattr(item, "title", "") or "",
+                        url=url,
+                        snippet=getattr(item, "page_age", "") or "",
+                    )
+                )
 
     preferred = in_text if in_text else raw_results
     return preferred[:num_results]

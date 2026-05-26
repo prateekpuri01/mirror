@@ -44,8 +44,10 @@ def _bypass_yaml_overrides(monkeypatch):
     monkeypatch.setattr(
         docx_builder,
         "_load_yaml_style",
-        lambda: {k: (dict(v) if isinstance(v, dict) else v)
-                 for k, v in docx_builder._DEFAULT_STYLE.items()},
+        lambda: {
+            k: (dict(v) if isinstance(v, dict) else v)
+            for k, v in docx_builder._DEFAULT_STYLE.items()
+        },
     )
 
 
@@ -179,8 +181,9 @@ def test_two_column_uses_shaded_sidebar_table():
 
 
 def test_resolver_unknown_ids_fall_back_to_defaults(caplog):
-    base = {k: (dict(v) if isinstance(v, dict) else v)
-            for k, v in docx_builder._DEFAULT_STYLE.items()}
+    base = {
+        k: (dict(v) if isinstance(v, dict) else v) for k, v in docx_builder._DEFAULT_STYLE.items()
+    }
     out = resolve_style(
         {"layout": "spaceship", "color_scheme": "tangerine", "font": "wingdings"},
         base,
@@ -193,8 +196,9 @@ def test_resolver_unknown_ids_fall_back_to_defaults(caplog):
 
 def test_resolver_explicit_color_overrides_yaml():
     """An explicit color_scheme selection must beat a YAML override."""
-    base = {k: (dict(v) if isinstance(v, dict) else v)
-            for k, v in docx_builder._DEFAULT_STYLE.items()}
+    base = {
+        k: (dict(v) if isinstance(v, dict) else v) for k, v in docx_builder._DEFAULT_STYLE.items()
+    }
     # Simulate a custom YAML "Mustard" navy color living in base
     base["colors"]["navy"] = "#B8851E"
 
@@ -210,8 +214,9 @@ def test_load_style_for_request_no_selection_returns_base(monkeypatch):
     ``resume_design`` keep their current YAML styling.
     """
     sentinel_color = "#ABCDEF"
-    base = {k: (dict(v) if isinstance(v, dict) else v)
-            for k, v in docx_builder._DEFAULT_STYLE.items()}
+    base = {
+        k: (dict(v) if isinstance(v, dict) else v) for k, v in docx_builder._DEFAULT_STYLE.items()
+    }
     base["colors"]["navy"] = sentinel_color
     monkeypatch.setattr(docx_builder, "_load_yaml_style", lambda: base)
 
@@ -221,20 +226,23 @@ def test_load_style_for_request_no_selection_returns_base(monkeypatch):
 
 def test_load_style_for_request_explicit_beats_profile(monkeypatch):
     """Param to build_docx beats profile.data.resume_design."""
-    base = {k: (dict(v) if isinstance(v, dict) else v)
-            for k, v in docx_builder._DEFAULT_STYLE.items()}
+    base = {
+        k: (dict(v) if isinstance(v, dict) else v) for k, v in docx_builder._DEFAULT_STYLE.items()
+    }
     monkeypatch.setattr(docx_builder, "_load_yaml_style", lambda: base)
 
     profile_data = {"resume_design": {"color_scheme": "navy"}}
     out = docx_builder._load_style_for_request(
-        {"color_scheme": "burgundy"}, profile_data,
+        {"color_scheme": "burgundy"},
+        profile_data,
     )
     assert out["colors"]["navy"] == COLOR_SCHEMES["burgundy"]["colors"]["navy"]
 
 
 def test_load_style_for_request_profile_used_when_no_explicit(monkeypatch):
-    base = {k: (dict(v) if isinstance(v, dict) else v)
-            for k, v in docx_builder._DEFAULT_STYLE.items()}
+    base = {
+        k: (dict(v) if isinstance(v, dict) else v) for k, v in docx_builder._DEFAULT_STYLE.items()
+    }
     monkeypatch.setattr(docx_builder, "_load_yaml_style", lambda: base)
 
     profile_data = {"resume_design": {"color_scheme": "forest"}}

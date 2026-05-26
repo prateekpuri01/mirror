@@ -4,36 +4,24 @@ import asyncio
 import json
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_openai_client, RESUME_MODEL
+from app.ai.client import RESUME_MODEL, get_openai_client
+from app.ai.docx_builder import build_docx
 from app.ai.prompts import format_job_for_scoring
 from app.ai.resume_prompts import (
-    RESUME_PROMPT_VERSION,
-    RESUME_REVISION_SYSTEM,
-    RESUME_CRITIC_SYSTEM,
     RESEARCH_ENTRY_SYSTEM,
-    build_resume_system,
-    build_refiner_system,
-    build_full_profile_for_resume,
-    build_resume_prompt,
-    build_revision_prompt,
-    build_critic_prompt,
-    build_refiner_prompt,
-    build_research_entry_prompt,
+    RESUME_REVISION_SYSTEM,
     # V3 single-shot pipeline prompts
-    STRATEGIC_PLAN_SYSTEM,
-    build_compact_profile_for_plan,
-    build_strategic_plan_prompt,
-    build_single_shot_system,
-    build_single_shot_prompt,
+    build_full_profile_for_resume,
+    build_research_entry_prompt,
+    build_revision_prompt,
 )
 from app.ai.utils import employer_key
-from app.ai.docx_builder import build_docx
-from app.models import Company, Document, DocType, Job, UserProfile
+from app.models import Company, DocType, Document, Job, UserProfile
 from app.services.document_service import create_document
 
 logger = logging.getLogger(__name__)
@@ -122,10 +110,16 @@ async def _call_llm(
     finish_reason = response.choices[0].finish_reason
     logger.info(
         "LLM response: finish_reason=%s, content_len=%d, first_100=%r",
-        finish_reason, len(raw_content or ""), (raw_content or "")[:100],
+        finish_reason,
+        len(raw_content or ""),
+        (raw_content or "")[:100],
     )
     if not raw_content:
-        logger.error("LLM returned None/empty content. finish_reason=%s, full response: %s", finish_reason, response)
+        logger.error(
+            "LLM returned None/empty content. finish_reason=%s, full response: %s",
+            finish_reason,
+            response,
+        )
         raise ValueError(f"LLM returned empty content (finish_reason={finish_reason})")
     text = raw_content.strip()
     # Strip markdown fences if present (handles ```json, ```, etc.)
@@ -316,7 +310,7 @@ async def generate_resume(session: AsyncSession, job_id) -> Document:
     _resume_status = {
         "running": True,
         "job_id": str(job_id),
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
         "error": None,
         "phase": "generating",
         "step": None,
@@ -350,9 +344,7 @@ async def _generate_resume_v3(session: AsyncSession, job_id) -> Document:
 
     company = None
     if job.company_id:
-        company_result = await session.execute(
-            select(Company).where(Company.id == job.company_id)
-        )
+        company_result = await session.execute(select(Company).where(Company.id == job.company_id))
         company = company_result.scalar_one_or_none()
 
     # Phase 0: Company research (Perplexity)
@@ -360,12 +352,14 @@ async def _generate_resume_v3(session: AsyncSession, job_id) -> Document:
     try:
         from app.ai.company_research import research_company_for_job
         from app.database import async_session as session_factory
+
         _update_status("researching", "company_research", "Researching company & team...", 0)
         logger.info("Phase 0: Researching company/team for job %s", job.id)
         company_research = await research_company_for_job(session, job, company)
         if company_research:
             async with session_factory() as persist_session:
                 from sqlalchemy import update
+
                 meta = dict(job.extra_metadata or {})
                 meta["company_research"] = company_research
                 await persist_session.execute(
@@ -374,10 +368,13 @@ async def _generate_resume_v3(session: AsyncSession, job_id) -> Document:
                 await persist_session.commit()
             job.extra_metadata = meta
     except Exception:
-        logger.warning("Company research failed for job %s, continuing without", job.id, exc_info=True)
+        logger.warning(
+            "Company research failed for job %s, continuing without", job.id, exc_info=True
+        )
 
     # Load profile
     from app.database import async_session as session_factory2
+
     async with session_factory2() as fresh_session:
         result = await fresh_session.execute(select(UserProfile).limit(1))
         profile = result.scalar_one_or_none()
@@ -386,6 +383,7 @@ async def _generate_resume_v3(session: AsyncSession, job_id) -> Document:
 
     # --- Staged pipeline (plan → selection → parallel sections → summary) ----
     from app.ai.resume_pipeline import run_pipeline
+
     resume_data = await run_pipeline(
         session=session,
         job=job,
@@ -400,12 +398,15 @@ async def _generate_resume_v3(session: AsyncSession, job_id) -> Document:
     # --- Save ------------------------------------------------------------------
     _update_status("saving", "save", "Saving resume...", 7)
     content_markdown = _build_markdown(resume_data, profile_data=profile.data)
-    docx_path = build_docx(resume_data, profile.data, str(job.id), company=job.company, title=job.title)
+    docx_path = build_docx(
+        resume_data, profile.data, str(job.id), company=job.company, title=job.title
+    )
     json_path = docx_path.replace(".docx", ".json")
     with open(json_path, "w") as f:
         json.dump(resume_data, f, indent=2)
 
     from app.database import async_session as _session_factory
+
     doc_name = f"Resume - {job.company} - {job.title}"
     async with _session_factory() as save_session:
         doc = await create_document(
@@ -420,7 +421,9 @@ async def _generate_resume_v3(session: AsyncSession, job_id) -> Document:
 
     logger.info(
         "Resume generated for job %s: doc_id=%s, docx=%s",
-        job.id, doc.id, docx_path,
+        job.id,
+        doc.id,
+        docx_path,
     )
 
     _resume_status["running"] = False
@@ -447,7 +450,7 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
     _resume_status = {
         "running": True,
         "job_id": str(doc.job_id),
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
         "error": None,
     }
 
@@ -497,6 +500,7 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
 
         # Load writing memory preferences
         from app.ai.writing_memory import format_writing_memory
+
         memory_text = await format_writing_memory(session, "resume")
 
         # Call LLM with revision prompt
@@ -517,7 +521,9 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
         content_markdown = _build_markdown(resume_data, profile_data=profile.data)
 
         # Regenerate docx
-        docx_path = build_docx(resume_data, profile.data, str(job.id), company=job.company, title=job.title)
+        docx_path = build_docx(
+            resume_data, profile.data, str(job.id), company=job.company, title=job.title
+        )
         json_path = docx_path.replace(".docx", ".json")
         with open(json_path, "w") as f:
             json.dump(resume_data, f, indent=2)
@@ -541,9 +547,7 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
         raise
 
 
-async def generate_research_entry(
-    session: AsyncSession, accomplishment_id: str, job_id
-) -> dict:
+async def generate_research_entry(session: AsyncSession, accomplishment_id: str, job_id) -> dict:
     """Generate a single selected_research entry for a given accomplishment.
 
     Looks up the accomplishment from the profile, calls LLM to generate a
@@ -576,9 +580,7 @@ async def generate_research_entry(
     # Build job text
     company_notes = None
     if job.company_id:
-        company_result = await session.execute(
-            select(Company).where(Company.id == job.company_id)
-        )
+        company_result = await session.execute(select(Company).where(Company.id == job.company_id))
         company = company_result.scalar_one_or_none()
         if company and company.notes:
             company_notes = company.notes
@@ -587,7 +589,8 @@ async def generate_research_entry(
     # Call LLM
     logger.info(
         "Generating research entry for accomplishment '%s' targeting job %s",
-        accomplishment_id, job.id,
+        accomplishment_id,
+        job.id,
     )
     messages = build_research_entry_prompt(accomplishment, job_text)
     entry = await _call_llm(RESEARCH_ENTRY_SYSTEM, messages)
@@ -644,7 +647,8 @@ async def generate_single_bullet(
     # Find the accomplishment + verify it's a real entity in the profile.
     accomplishments = (profile.data.get("complete_profile") or {}).get("accomplishments") or []
     accomplishment = next(
-        (a for a in accomplishments if a.get("id") == accomplishment_id), None,
+        (a for a in accomplishments if a.get("id") == accomplishment_id),
+        None,
     )
     if accomplishment is None:
         raise ValueError(f"Accomplishment {accomplishment_id!r} not found in profile")
@@ -653,7 +657,7 @@ async def generate_single_bullet(
     # the prompt reads naturally. Profile work_history is the source of
     # canonical names.
     employer_name = employer_key
-    for wh in (profile.data.get("work_history") or []):
+    for wh in profile.data.get("work_history") or []:
         if employer_key_fn(wh.get("employer", "")) == employer_key:
             employer_name = wh.get("employer", employer_key)
             break
@@ -671,10 +675,13 @@ async def generate_single_bullet(
 
     # Grounding: past hand-tuned versions of this employer's bullet sets
     grouped = await content_memory_service.fetch_grounding(
-        session, entity_type=EXPERIENCE_BULLETS_SET, entity_keys=[employer_key],
+        session,
+        entity_type=EXPERIENCE_BULLETS_SET,
+        entity_keys=[employer_key],
     )
     grounding_text = format_grounding_block(
-        grouped.get(employer_key, []), profile_data=profile.data,
+        grouped.get(employer_key, []),
+        profile_data=profile.data,
     )
     # Plus the abstract writing-memory style rules
     writing_memory_text = await format_writing_memory(session, "resume")
@@ -704,7 +711,9 @@ async def generate_single_bullet(
     )
     logger.info(
         "Generating bullet for accomplishment %r under employer %r (doc %s)",
-        accomplishment_id, employer_key, doc_id,
+        accomplishment_id,
+        employer_key,
+        doc_id,
     )
     result = await _call_llm(system, messages, temperature=0.45, max_tokens=800)
 

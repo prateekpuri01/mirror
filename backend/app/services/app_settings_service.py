@@ -20,17 +20,19 @@ logger = logging.getLogger(__name__)
 
 # Keys the /setup wizard can write. Must mirror field names on
 # ``app.config.Settings`` so ``load_into_settings`` can ``setattr``.
-ALLOWED_KEYS: frozenset[str] = frozenset({
-    "llm_provider",
-    "openai_api_key",
-    "anthropic_api_key",
-    "ollama_base_url",
-    "llm_resume_model",
-    "llm_scoring_model",
-    "llm_extraction_model",
-    "llm_web_search_model",
-    "llm_web_search_effort",
-})
+ALLOWED_KEYS: frozenset[str] = frozenset(
+    {
+        "llm_provider",
+        "openai_api_key",
+        "anthropic_api_key",
+        "ollama_base_url",
+        "llm_resume_model",
+        "llm_scoring_model",
+        "llm_extraction_model",
+        "llm_web_search_model",
+        "llm_web_search_effort",
+    }
+)
 
 
 async def get_all(session: AsyncSession) -> dict[str, str]:

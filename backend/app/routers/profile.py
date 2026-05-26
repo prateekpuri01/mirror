@@ -22,7 +22,7 @@ from app.ai.resume_presets import (
     SAMPLE_RESUME_CONTENT,
 )
 from app.database import get_session
-from app.models.documents import Document, DocType
+from app.models.documents import DocType, Document
 from app.models.profile import UserProfile
 from app.services.linkedin_scraper import scrape_linkedin_profile
 from app.services.profile_sync import update_complete_profile, update_profile_section
@@ -83,9 +83,7 @@ async def get_complete_profile(session: AsyncSession = Depends(get_session)):
     profile = await _get_profile(session)
     complete = profile.data.get("complete_profile")
     if complete is None:
-        raise HTTPException(
-            status_code=404, detail="Complete profile not synced yet"
-        )
+        raise HTTPException(status_code=404, detail="Complete profile not synced yet")
     return complete
 
 
@@ -206,12 +204,14 @@ async def import_scholar_publications(
     author_name = profile_data.get("personal", {}).get("name")
 
     if not scholar_url and not author_name:
-        return {"success": False, "publications": [], "error": "No Google Scholar URL or author name available"}
+        return {
+            "success": False,
+            "publications": [],
+            "error": "No Google Scholar URL or author name available",
+        }
 
     try:
-        papers = await fetch_author_publications(
-            scholar_url=scholar_url, author_name=author_name
-        )
+        papers = await fetch_author_publications(scholar_url=scholar_url, author_name=author_name)
     except Exception as e:
         logger.exception("Scholar import failed")
         return {"success": False, "publications": [], "error": str(e)}
@@ -256,6 +256,7 @@ async def fetch_publications_full_text(
         updated["complete_profile"]["publications"] = publications
         profile.data = updated
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(profile, "data")
         await session.commit()
 

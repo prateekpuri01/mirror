@@ -28,8 +28,8 @@ class FlaggedJob(BaseModel):
 @router.post("/cleaning/run", response_model=CleaningResult)
 async def run_cleaning(session: AsyncSession = Depends(get_session)):
     """Run the full cleaning pipeline (Layer 2 deterministic + Layer 3 LLM)."""
-    from app.services.cleaning import clean_jobs_batch
     from app.ai.cleaning import llm_clean_batch
+    from app.services.cleaning import clean_jobs_batch
 
     layer2_stats = await clean_jobs_batch(session)
     layer3_stats = await llm_clean_batch(session)

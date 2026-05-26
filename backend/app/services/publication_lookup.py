@@ -28,7 +28,9 @@ async def search_publication(title: str) -> dict | None:
             params={"query": title, "limit": 3, "fields": PAPER_FIELDS},
         )
         if resp.status_code != 200:
-            logger.warning("Semantic Scholar search failed: %s %s", resp.status_code, resp.text[:200])
+            logger.warning(
+                "Semantic Scholar search failed: %s %s", resp.status_code, resp.text[:200]
+            )
             return None
 
         data = resp.json()
@@ -75,6 +77,7 @@ async def fetch_author_publications(
 
     if scholar_url:
         from app.services.google_scholar_scraper import scrape_scholar_publications
+
         scholar_papers = await scrape_scholar_publications(scholar_url)
 
         if scholar_papers:
@@ -85,8 +88,7 @@ async def fetch_author_publications(
             return await _enrich_scholar_papers_via_semantic_scholar(scholar_papers)
 
         logger.info(
-            "Scholar scrape returned no papers — falling back to "
-            "Semantic Scholar name search",
+            "Scholar scrape returned no papers — falling back to Semantic Scholar name search",
         )
 
     # --- Fallback path: Semantic Scholar author-name lookup ---
@@ -156,8 +158,7 @@ async def _enrich_scholar_papers_via_semantic_scholar(
             # original publication year from the Scholar entry; only fall
             # back to Semantic Scholar's if Scholar didn't have one.
             year_str = (
-                str(paper["year"]) if paper.get("year") is not None
-                else ss_match.get("year", "")
+                str(paper["year"]) if paper.get("year") is not None else ss_match.get("year", "")
             )
             merged = {
                 **ss_match,
@@ -174,19 +175,21 @@ async def _enrich_scholar_papers_via_semantic_scholar(
             # (Scholar profile page only shows a snippet, not the full
             # text). enrich_publication can still produce a description
             # from title + venue + year alone.
-            enriched.append({
-                "title": title,
-                "authors": paper.get("authors", []),
-                "venue": paper.get("venue", ""),
-                "year": str(paper["year"]) if paper.get("year") is not None else "",
-                "abstract": "",
-                "doi": None,
-                "arxiv_id": None,
-                "url": paper.get("scholar_link"),
-                "type": "journal",
-                "citation_count": paper.get("citation_count") or 0,
-                "scholar_link": paper.get("scholar_link"),
-            })
+            enriched.append(
+                {
+                    "title": title,
+                    "authors": paper.get("authors", []),
+                    "venue": paper.get("venue", ""),
+                    "year": str(paper["year"]) if paper.get("year") is not None else "",
+                    "abstract": "",
+                    "doi": None,
+                    "arxiv_id": None,
+                    "url": paper.get("scholar_link"),
+                    "type": "journal",
+                    "citation_count": paper.get("citation_count") or 0,
+                    "scholar_link": paper.get("scholar_link"),
+                }
+            )
     return enriched
 
 
@@ -245,6 +248,7 @@ async def fetch_arxiv_full_text(arxiv_id: str) -> str | None:
                 return None
 
         import fitz  # pymupdf
+
         doc = fitz.open(stream=resp.content, filetype="pdf")
         text_parts = []
         for page in doc:

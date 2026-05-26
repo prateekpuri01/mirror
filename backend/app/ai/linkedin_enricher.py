@@ -65,11 +65,11 @@ async def generate_accomplishments_from_linkedin(
     )
 
     pub_summary = "\n".join(
-        f"- id={p.get('id', '')}: {p.get('title', '')} ({p.get('year', '')})"
-        for p in existing_pubs
+        f"- id={p.get('id', '')}: {p.get('title', '')} ({p.get('year', '')})" for p in existing_pubs
     )
 
     from app.ai.skill_utils import flatten_skills
+
     all_skills = flatten_skills(profile_data.get("skills", {}))
     target_roles = [r.get("title", "") for r in profile_data.get("target_roles", [])]
     work_history = profile_data.get("work_history", [])
@@ -86,8 +86,8 @@ async def generate_accomplishments_from_linkedin(
 User's work history (use these keys for work_history_key):
 {wh_context}
 
-User's skills: {', '.join(all_skills[:30])}
-Target roles: {', '.join(target_roles)}
+User's skills: {", ".join(all_skills[:30])}
+Target roles: {", ".join(target_roles)}
 
 Existing accomplishments (DO NOT duplicate these):
 {existing_summary}

@@ -1,17 +1,16 @@
-import uuid
 import logging
+import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.database import get_session, async_session
-from app.ai.scoring import score_job, score_jobs_batch, get_batch_status
 from app.ai.enrichment import (
     enrich_single,
     get_enrichment_status,
     run_enrichment_pipeline,
 )
+from app.ai.scoring import get_batch_status, score_job, score_jobs_batch
+from app.database import async_session, get_session
 
 logger = logging.getLogger(__name__)
 
@@ -127,9 +126,7 @@ async def enrich_all(
     """
     status = get_enrichment_status()
     if status["running"]:
-        raise HTTPException(
-            status_code=409, detail="Enrichment pipeline already in progress"
-        )
+        raise HTTPException(status_code=409, detail="Enrichment pipeline already in progress")
     background_tasks.add_task(_run_enrichment, force, limit)
     return {"message": "Enrichment pipeline started", "status": "running"}
 

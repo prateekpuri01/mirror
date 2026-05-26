@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Job, JobStatus, JobSource, JobTag, Tag
+from app.models import Job, JobSource, JobStatus, JobTag, Tag
 from app.models.locations import JobLocation, Location
 
 
@@ -111,10 +111,13 @@ async def list_jobs(
             query = query.where(Job.work_model.in_(models))
             count_query = count_query.where(Job.work_model.in_(models))
     if min_salary is not None:
-        sal_filter = func.coalesce(
-            func.nullif(Job.salary_max, -1),
-            func.nullif(Job.salary_min, -1),
-        ) >= min_salary
+        sal_filter = (
+            func.coalesce(
+                func.nullif(Job.salary_max, -1),
+                func.nullif(Job.salary_min, -1),
+            )
+            >= min_salary
+        )
         query = query.where(sal_filter)
         count_query = count_query.where(sal_filter)
     if q is not None:
@@ -131,7 +134,11 @@ async def list_jobs(
     if sort_by == "salary_avg":
         # Mean of salary_min and salary_max (treat -1 sentinel as NULL for sorting)
         sort_column = func.nullif(
-            (func.nullif(Job.salary_min, -1) + func.coalesce(func.nullif(Job.salary_max, -1), func.nullif(Job.salary_min, -1))) / 2,
+            (
+                func.nullif(Job.salary_min, -1)
+                + func.coalesce(func.nullif(Job.salary_max, -1), func.nullif(Job.salary_min, -1))
+            )
+            / 2,
             None,
         )
     else:
@@ -162,13 +169,9 @@ async def list_jobs(
             count_query = count_query.where(~Job.id.in_(deduped_ids))
             pin_query = select(Job).where(Job.id.in_(deduped_ids))
             pin_result = await session.execute(pin_query)
-            pinned_by_id = {
-                str(j.id): j for j in pin_result.scalars().unique().all()
-            }
+            pinned_by_id = {str(j.id): j for j in pin_result.scalars().unique().all()}
             # Preserve the caller's pin order
-            pinned_jobs = [
-                pinned_by_id[pid] for pid in deduped_ids if pid in pinned_by_id
-            ]
+            pinned_jobs = [pinned_by_id[pid] for pid in deduped_ids if pid in pinned_by_id]
 
     # Pagination — only applies to the un-pinned remainder. On page 1 the
     # pinned rows occupy the leading slots; subsequent pages skip them.
@@ -246,9 +249,7 @@ async def add_tags_to_job(
     return job
 
 
-async def remove_tag_from_job(
-    session: AsyncSession, job_id: uuid.UUID, tag_id: uuid.UUID
-) -> bool:
+async def remove_tag_from_job(session: AsyncSession, job_id: uuid.UUID, tag_id: uuid.UUID) -> bool:
     job = await get_job(session, job_id)
     if job is None:
         return False

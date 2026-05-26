@@ -7,13 +7,12 @@ Results are cached on Job.extra_metadata["company_research"].
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_openai_client, RESUME_MODEL
+from app.ai.client import RESUME_MODEL, get_openai_client
 from app.config import settings
 from app.models import Company, Job
 from app.services.web_search import web_search
@@ -32,6 +31,7 @@ def _domain_from_url(url: str | None) -> str | None:
         return None
     try:
         from urllib.parse import urlparse
+
         # ``removeprefix`` is critical here — ``lstrip("www.")`` would strip
         # any leading char in {'w', '.'}, mangling hosts like "wellfound.com"
         # into "ellfound.com" (silently leaking the ATS filter below).
@@ -41,11 +41,24 @@ def _domain_from_url(url: str | None) -> str | None:
     if not host:
         return None
     ATS_HOSTS = (
-        "greenhouse.io", "lever.co", "workday.com", "myworkdayjobs.com",
-        "ashbyhq.com", "rippling.com", "smartrecruiters.com", "bamboohr.com",
-        "jobvite.com", "icims.com", "breezy.hr", "workable.com",
-        "linkedin.com", "indeed.com", "glassdoor.com", "ycombinator.com",
-        "wellfound.com", "angel.co",
+        "greenhouse.io",
+        "lever.co",
+        "workday.com",
+        "myworkdayjobs.com",
+        "ashbyhq.com",
+        "rippling.com",
+        "smartrecruiters.com",
+        "bamboohr.com",
+        "jobvite.com",
+        "icims.com",
+        "breezy.hr",
+        "workable.com",
+        "linkedin.com",
+        "indeed.com",
+        "glassdoor.com",
+        "ycombinator.com",
+        "wellfound.com",
+        "angel.co",
     )
     for ats in ATS_HOSTS:
         if host == ats or host.endswith("." + ats):
@@ -63,34 +76,34 @@ def _disambiguator_line(company_name: str, website: str | None, job_url: str | N
     if not domain:
         return None
     bits = [
-        f"IMPORTANT: \"{company_name}\" here refers specifically to the company at the domain {domain}",
+        f'IMPORTANT: "{company_name}" here refers specifically to the company at the domain {domain}',
     ]
     if job_url:
         bits.append(f" (job posting URL: {job_url})")
     bits.append(
-        f". DO NOT confuse with other companies that share the name \"{company_name}\". "
+        f'. DO NOT confuse with other companies that share the name "{company_name}". '
         f"All research below must describe the {domain} company specifically."
     )
     return "".join(bits)
 
 
-def _build_company_query(
-    company_name: str, website: str | None, job_url: str | None = None
-) -> str:
+def _build_company_query(company_name: str, website: str | None, job_url: str | None = None) -> str:
     parts: list[str] = []
     disambig = _disambiguator_line(company_name, website, job_url)
     if disambig:
         parts.append(disambig)
         parts.append("")
-    parts.extend([
-        f"Research {company_name} for a job application. I need:",
-        "1. What does the company build or do? What is their mission?",
-        "2. Company stage (startup/growth/public, approximate size, recent funding)",
-        "3. Technology stack and technical approach",
-        "4. Culture: do they publish research? open-source projects? what domains?",
-        "5. Recent news: funding rounds, product launches, notable hires (2024-2026)",
-        "6. What skills and backgrounds do they value in technical/research hires?",
-    ])
+    parts.extend(
+        [
+            f"Research {company_name} for a job application. I need:",
+            "1. What does the company build or do? What is their mission?",
+            "2. Company stage (startup/growth/public, approximate size, recent funding)",
+            "3. Technology stack and technical approach",
+            "4. Culture: do they publish research? open-source projects? what domains?",
+            "5. Recent news: funding rounds, product launches, notable hires (2024-2026)",
+            "6. What skills and backgrounds do they value in technical/research hires?",
+        ]
+    )
     if website:
         parts.append(f"\nCompany website: {website}")
     return "\n".join(parts)
@@ -119,6 +132,7 @@ Research the {team_name} team at {company_name}. I need:
 
 The role being applied for: {job_title}
 Job description excerpt: {description_excerpt[:500]}"""
+
 
 logger = logging.getLogger(__name__)
 
@@ -194,6 +208,7 @@ Synthesize the above into this exact JSON structure:
 # Team name extraction
 # ---------------------------------------------------------------------------
 
+
 def _extract_team_name(job: Job) -> str | None:
     """Try to extract a team/department name from the job metadata or title."""
     meta = job.extra_metadata or {}
@@ -218,6 +233,7 @@ def _extract_team_name(job: Job) -> str | None:
 # Core research function
 # ---------------------------------------------------------------------------
 
+
 async def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
     """Fetch a web page and extract its visible text."""
     try:
@@ -226,6 +242,7 @@ async def _fetch_page_text(url: str, max_chars: int = 5000) -> str:
             resp.raise_for_status()
             # Strip HTML tags for a rough text extraction
             import re
+
             text = re.sub(r"<[^>]+>", " ", resp.text)
             text = re.sub(r"\s+", " ", text).strip()
             return text[:max_chars]
@@ -257,9 +274,7 @@ async def _gather_search_context(
 
     # Company search — prefer site-restricted query when a domain is known
     if domain:
-        site_results = await web_search(
-            f'site:{domain} mission product team', num_results=5
-        )
+        site_results = await web_search(f"site:{domain} mission product team", num_results=5)
     else:
         site_results = []
     company_results = await web_search(
@@ -268,7 +283,7 @@ async def _gather_search_context(
     company_parts = []
     if domain:
         company_parts.append(
-            f"NOTE: \"{company_name}\" refers specifically to the company at {domain}. "
+            f'NOTE: "{company_name}" refers specifically to the company at {domain}. '
             f"Disregard other companies that share the name."
         )
 
@@ -279,7 +294,7 @@ async def _gather_search_context(
             company_parts.append(f"Website ({website}):\n{page_text[:3000]}")
             citations.append(website)
 
-    for result in (site_results + company_results):
+    for result in site_results + company_results:
         company_parts.append(f"{result['title']}: {result['snippet']}")
         if result.get("url"):
             citations.append(result["url"])
@@ -287,7 +302,8 @@ async def _gather_search_context(
     # Recent news search — bias toward the canonical domain when available
     news_query = (
         f'"{company_name}" "{domain}" 2025 2026 news funding'
-        if domain else f'"{company_name}" 2025 2026 news funding'
+        if domain
+        else f'"{company_name}" 2025 2026 news funding'
     )
     news_results = await web_search(news_query, num_results=3, time_range="year")
     for result in news_results:
@@ -295,14 +311,17 @@ async def _gather_search_context(
         if result.get("url"):
             citations.append(result["url"])
 
-    company_context = "\n\n".join(company_parts) if company_parts else f"No web results found for {company_name}."
+    company_context = (
+        "\n\n".join(company_parts) if company_parts else f"No web results found for {company_name}."
+    )
 
     # Team search (if team identifiable)
     team_context = None
     if team_name:
         team_query = (
             f'site:{domain} "{team_name}" team blog research'
-            if domain else f'"{company_name}" "{team_name}" team blog research'
+            if domain
+            else f'"{company_name}" "{team_name}" team blog research'
         )
         team_results = await web_search(team_query, num_results=5)
         team_parts = []
@@ -331,8 +350,6 @@ async def _research_via_llm_native(
     team text), with citations exposed as a list so the caller can persist
     them into the research dict alongside any from other backends.
     """
-    from app.services.web_search_llm import llm_web_search
-
     # Fire the company query and (optional) team query CONCURRENTLY. Each
     # native-LLM web search is an agentic-search call (reasoning model +
     # web_search tool + chain-of-thought search planning) that runs 30-60s
@@ -340,11 +357,17 @@ async def _research_via_llm_native(
     # 0's wall-clock. They have no data dependency on each other.
     import asyncio
 
+    from app.services.web_search_llm import llm_web_search
+
     company_query = _build_company_query(company_name, website, job_url)
     team_query = (
         _build_team_query(
-            company_name, team_name, job_title, job_desc,
-            website=website, job_url=job_url,
+            company_name,
+            team_name,
+            job_title,
+            job_desc,
+            website=website,
+            job_url=job_url,
         )
         if team_name
         else None
@@ -364,7 +387,9 @@ async def _research_via_llm_native(
             return await llm_web_search(team_query, num_results=5)
         except Exception:
             logger.exception(
-                "LLM-native team query failed for %s / %s", company_name, team_name,
+                "LLM-native team query failed for %s / %s",
+                company_name,
+                team_name,
             )
             return None
 
@@ -416,10 +441,9 @@ async def research_company_for_job(
     #      axis; Perplexity was retired in favor of zero paid-search APIs.
     #   2. SearXNG + page-fetch fallback (free, self-hosted, always available)
     from app.services.web_search_llm import native_web_search_supported
+
     use_native_llm = native_web_search_supported()
-    backend_label = (
-        f"LLM-native ({settings.llm_provider})" if use_native_llm else "SearXNG"
-    )
+    backend_label = f"LLM-native ({settings.llm_provider})" if use_native_llm else "SearXNG"
 
     logger.info(
         "Researching %s%s for job %s (%s) via %s",
@@ -437,7 +461,11 @@ async def research_company_for_job(
         # Tier 1: native LLM web search — grounded answer + citations,
         # served by the user's configured LLM provider.
         company_context, team_context, native_citations = await _research_via_llm_native(
-            company_name, website, team_name, job.title or "", job.description or "",
+            company_name,
+            website,
+            team_name,
+            job.title or "",
+            job.description or "",
             job_url=job_url,
         )
         citations.extend(native_citations)
@@ -445,13 +473,21 @@ async def research_company_for_job(
     else:
         # Tier 2: SearXNG web search + page fetching
         company_context, team_context, citations = await _gather_search_context(
-            company_name, website, team_name, job.title or "", job_url=job_url,
+            company_name,
+            website,
+            team_name,
+            job.title or "",
+            job_url=job_url,
         )
         research_model = RESUME_MODEL
 
     # Synthesis: merge into structured output via OpenAI
     synthesis_prompt = _build_synthesis_prompt(
-        company_name, team_name, company_context, team_context, job.title or "",
+        company_name,
+        team_name,
+        company_context,
+        team_context,
+        job.title or "",
     )
     openai = get_openai_client()
     try:
@@ -473,7 +509,9 @@ async def research_company_for_job(
     except Exception:
         logger.exception("Research synthesis failed for %s", company_name)
         research = {
-            "company_summary": company_context[:300] if company_context else "Research unavailable.",
+            "company_summary": company_context[:300]
+            if company_context
+            else "Research unavailable.",
             "company_stage": "unknown",
             "tech_signals": [],
             "culture_signals": [],
@@ -494,7 +532,7 @@ async def research_company_for_job(
             research.setdefault("citations", []).append(url)
 
     # Add metadata
-    research["researched_at"] = datetime.now(timezone.utc).isoformat()
+    research["researched_at"] = datetime.now(UTC).isoformat()
     research["model_used"] = research_model
     research["query_company"] = company_name
     research["query_team"] = team_name
@@ -513,11 +551,14 @@ async def research_company_for_job(
 # Helper: format research for prompt injection
 # ---------------------------------------------------------------------------
 
+
 def format_research_for_generator(research: dict, company_name: str) -> str:
     """Format research as a prompt section for the resume generator."""
-    lines = [f"## Company & Team Research\n"]
-    lines.append(f"**{company_name}** — {research.get('company_summary', 'N/A')}. "
-                 f"{research.get('company_stage', '')}")
+    lines = ["## Company & Team Research\n"]
+    lines.append(
+        f"**{company_name}** — {research.get('company_summary', 'N/A')}. "
+        f"{research.get('company_stage', '')}"
+    )
 
     tf = research.get("team_function")
     if tf and tf != "unknown":
@@ -537,7 +578,9 @@ def format_research_for_generator(research: dict, company_name: str) -> str:
 
     fa = research.get("framing_angles", [])
     if fa:
-        lines.append("\n**Resume framing guidance** (use these angles when selecting and writing bullets):")
+        lines.append(
+            "\n**Resume framing guidance** (use these angles when selecting and writing bullets):"
+        )
         for i, angle in enumerate(fa, 1):
             lines.append(f"{i}. {angle}")
 

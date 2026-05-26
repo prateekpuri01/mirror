@@ -39,9 +39,7 @@ async def extract_text(filename: str, file_bytes: bytes) -> str:
     elif lower.endswith(".docx"):
         text = await extract_text_from_docx(file_bytes)
     else:
-        raise ValueError(
-            f"Unsupported file format: {filename}. Please upload a PDF or DOCX file."
-        )
+        raise ValueError(f"Unsupported file format: {filename}. Please upload a PDF or DOCX file.")
 
     if not text or len(text.strip()) < 50:
         raise ValueError(

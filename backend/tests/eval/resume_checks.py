@@ -54,8 +54,15 @@ class ResumeCheckReport:
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 # Content fields to check (excludes internal metadata)
-_CONTENT_FIELDS = {"tagline", "summary", "selected_research", "experience",
-                   "publications", "technical_skills", "awards"}
+_CONTENT_FIELDS = {
+    "tagline",
+    "summary",
+    "selected_research",
+    "experience",
+    "publications",
+    "technical_skills",
+    "awards",
+}
 
 
 def _iter_content_texts(resume: dict) -> list[tuple[str, str]]:
@@ -109,6 +116,7 @@ def _iter_description_texts(resume: dict) -> list[tuple[str, str]]:
 # Check 1: Word counts
 # ---------------------------------------------------------------------------
 
+
 def check_word_counts(resume: dict) -> list[CheckResult]:
     """Flag sentences exceeding word limits: 25 for bullets, 30 for descriptions, 60 for summary."""
     results: list[CheckResult] = []
@@ -121,51 +129,59 @@ def check_word_counts(resume: dict) -> list[CheckResult]:
                 continue
             wc = len(sentence.split())
             if wc > 35:
-                results.append(CheckResult(
-                    check_name="word_count",
-                    severity="warning",
-                    location=loc,
-                    message=f"Bullet sentence has {wc} words (max 35)",
-                    offending_text=sentence,
-                ))
+                results.append(
+                    CheckResult(
+                        check_name="word_count",
+                        severity="warning",
+                        location=loc,
+                        message=f"Bullet sentence has {wc} words (max 35)",
+                        offending_text=sentence,
+                    )
+                )
 
     # Descriptions: min 75 words total, max 30 words per sentence
     for loc, text in _iter_description_texts(resume):
         total_wc = len(text.split())
         if total_wc < 75:
-            results.append(CheckResult(
-                check_name="word_count",
-                severity="error",
-                location=loc,
-                message=f"Research description has {total_wc} words (min 75)",
-                offending_text=text[:80] + "...",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="word_count",
+                    severity="error",
+                    location=loc,
+                    message=f"Research description has {total_wc} words (min 75)",
+                    offending_text=text[:80] + "...",
+                )
+            )
         for sentence in _SENTENCE_SPLIT.split(text):
             sentence = sentence.strip()
             if not sentence:
                 continue
             wc = len(sentence.split())
             if wc > 30:
-                results.append(CheckResult(
-                    check_name="word_count",
-                    severity="error",
-                    location=loc,
-                    message=f"Description sentence has {wc} words (max 30)",
-                    offending_text=sentence,
-                ))
+                results.append(
+                    CheckResult(
+                        check_name="word_count",
+                        severity="error",
+                        location=loc,
+                        message=f"Description sentence has {wc} words (max 30)",
+                        offending_text=sentence,
+                    )
+                )
 
     # Summary: max 60 words total
     summary = resume.get("summary", "")
     if summary:
         wc = len(summary.split())
         if wc > 60:
-            results.append(CheckResult(
-                check_name="word_count",
-                severity="warning",
-                location="summary",
-                message=f"Summary has {wc} words (max 60)",
-                offending_text=summary[:100] + "...",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="word_count",
+                    severity="warning",
+                    location="summary",
+                    message=f"Summary has {wc} words (max 60)",
+                    offending_text=summary[:100] + "...",
+                )
+            )
 
     return results
 
@@ -174,9 +190,7 @@ def check_word_counts(resume: dict) -> list[CheckResult]:
 # Check 2: Pronoun violations
 # ---------------------------------------------------------------------------
 
-_PRONOUN_PATTERN = re.compile(
-    r"\b(I|my|me|he|she|his|her|they|their|we|our)\b", re.IGNORECASE
-)
+_PRONOUN_PATTERN = re.compile(r"\b(I|my|me|he|she|his|her|they|their|we|our)\b", re.IGNORECASE)
 # "I" needs case-sensitive check to avoid matching "AI", "I/O", etc.
 _FIRST_PERSON_I = re.compile(r"\bI\b(?!')")
 
@@ -188,28 +202,32 @@ def check_pronoun_violations(resume: dict) -> list[CheckResult]:
     for loc, text in _iter_content_texts(resume):
         # Case-insensitive check for most pronouns
         for m in re.finditer(r"\b(my|me|he|she|his|her|they|their|we|our)\b", text, re.IGNORECASE):
-            results.append(CheckResult(
-                check_name="pronoun_violation",
-                severity="error",
-                location=loc,
-                message=f"Pronoun '{m.group()}' found — resume should use implied first person",
-                offending_text=text[max(0, m.start()-20):m.end()+20],
-            ))
+            results.append(
+                CheckResult(
+                    check_name="pronoun_violation",
+                    severity="error",
+                    location=loc,
+                    message=f"Pronoun '{m.group()}' found — resume should use implied first person",
+                    offending_text=text[max(0, m.start() - 20) : m.end() + 20],
+                )
+            )
         # Case-sensitive check for "I" (avoid flagging "AI", "I/O")
         for m in _FIRST_PERSON_I.finditer(text):
             # Skip if preceded by a letter (part of a word like "AI")
-            if m.start() > 0 and text[m.start()-1].isalpha():
+            if m.start() > 0 and text[m.start() - 1].isalpha():
                 continue
             # Skip if followed by a letter (part of a word)
             if m.end() < len(text) and text[m.end()].isalpha():
                 continue
-            results.append(CheckResult(
-                check_name="pronoun_violation",
-                severity="error",
-                location=loc,
-                message="First-person 'I' found — resume should use implied first person",
-                offending_text=text[max(0, m.start()-20):m.end()+20],
-            ))
+            results.append(
+                CheckResult(
+                    check_name="pronoun_violation",
+                    severity="error",
+                    location=loc,
+                    message="First-person 'I' found — resume should use implied first person",
+                    offending_text=text[max(0, m.start() - 20) : m.end() + 20],
+                )
+            )
 
     return results
 
@@ -243,13 +261,15 @@ def check_banned_phrases(resume: dict) -> list[CheckResult]:
     for loc, text in _iter_content_texts(resume):
         for pattern in _BANNED_PATTERNS:
             for m in pattern.finditer(text):
-                results.append(CheckResult(
-                    check_name="banned_phrase",
-                    severity="warning",
-                    location=loc,
-                    message=f"Banned phrase '{m.group()}' found",
-                    offending_text=text[max(0, m.start()-15):m.end()+15],
-                ))
+                results.append(
+                    CheckResult(
+                        check_name="banned_phrase",
+                        severity="warning",
+                        location=loc,
+                        message=f"Banned phrase '{m.group()}' found",
+                        offending_text=text[max(0, m.start() - 15) : m.end() + 15],
+                    )
+                )
 
     return results
 
@@ -257,6 +277,7 @@ def check_banned_phrases(resume: dict) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 # Check 4: Verb repetition
 # ---------------------------------------------------------------------------
+
 
 def check_verb_repetition(resume: dict) -> list[CheckResult]:
     """Flag when 3+ bullets start with the same verb."""
@@ -269,16 +290,19 @@ def check_verb_repetition(resume: dict) -> list[CheckResult]:
             first_words.append(words[0].lower().rstrip(",.:;"))
 
     from collections import Counter
+
     counts = Counter(first_words)
     for verb, count in counts.items():
         if count >= 3:
-            results.append(CheckResult(
-                check_name="verb_repetition",
-                severity="warning",
-                location="experience",
-                message=f"Verb '{verb}' starts {count} bullets (max 2)",
-                offending_text=f"{verb} x{count}",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="verb_repetition",
+                    severity="warning",
+                    location="experience",
+                    message=f"Verb '{verb}' starts {count} bullets (max 2)",
+                    offending_text=f"{verb} x{count}",
+                )
+            )
 
     return results
 
@@ -286,6 +310,7 @@ def check_verb_repetition(resume: dict) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 # Check 5: Fabricated IDs
 # ---------------------------------------------------------------------------
+
 
 def check_fabricated_ids(resume: dict, profile_data: dict) -> list[CheckResult]:
     """Verify all accomplishment_ids and publication_ids exist in profile."""
@@ -299,37 +324,43 @@ def check_fabricated_ids(resume: dict, profile_data: dict) -> list[CheckResult]:
     for i, entry in enumerate(resume.get("selected_research", [])):
         aid = entry.get("accomplishment_id")
         if aid and aid not in valid_acc_ids:
-            results.append(CheckResult(
-                check_name="fabricated_id",
-                severity="error",
-                location=f"selected_research.{i}.accomplishment_id",
-                message=f"Accomplishment ID '{aid}' not found in profile",
-                offending_text=aid,
-            ))
+            results.append(
+                CheckResult(
+                    check_name="fabricated_id",
+                    severity="error",
+                    location=f"selected_research.{i}.accomplishment_id",
+                    message=f"Accomplishment ID '{aid}' not found in profile",
+                    offending_text=aid,
+                )
+            )
 
     # Check experience accomplishment_ids
     for emp_key, emp_data in resume.get("experience", {}).items():
         for i, aid in enumerate(emp_data.get("accomplishment_ids", [])):
             if aid and aid not in valid_acc_ids:
-                results.append(CheckResult(
-                    check_name="fabricated_id",
-                    severity="error",
-                    location=f"experience.{emp_key}.accomplishment_ids.{i}",
-                    message=f"Accomplishment ID '{aid}' not found in profile",
-                    offending_text=aid,
-                ))
+                results.append(
+                    CheckResult(
+                        check_name="fabricated_id",
+                        severity="error",
+                        location=f"experience.{emp_key}.accomplishment_ids.{i}",
+                        message=f"Accomplishment ID '{aid}' not found in profile",
+                        offending_text=aid,
+                    )
+                )
 
     # Check publication_ids
     for i, pub in enumerate(resume.get("publications", [])):
         pid = pub.get("publication_id")
         if pid and pid not in valid_pub_ids:
-            results.append(CheckResult(
-                check_name="fabricated_id",
-                severity="error",
-                location=f"publications.{i}.publication_id",
-                message=f"Publication ID '{pid}' not found in profile",
-                offending_text=pid,
-            ))
+            results.append(
+                CheckResult(
+                    check_name="fabricated_id",
+                    severity="error",
+                    location=f"publications.{i}.publication_id",
+                    message=f"Publication ID '{pid}' not found in profile",
+                    offending_text=pid,
+                )
+            )
 
     return results
 
@@ -338,59 +369,77 @@ def check_fabricated_ids(resume: dict, profile_data: dict) -> list[CheckResult]:
 # Check 6: Schema completeness
 # ---------------------------------------------------------------------------
 
+
 def check_schema_completeness(resume: dict) -> list[CheckResult]:
     """Validate required fields, section sizes, and structure."""
     results: list[CheckResult] = []
 
-    required_keys = ["tagline", "summary", "selected_research", "experience",
-                     "publications", "technical_skills", "awards"]
+    required_keys = [
+        "tagline",
+        "summary",
+        "selected_research",
+        "experience",
+        "publications",
+        "technical_skills",
+        "awards",
+    ]
     for key in required_keys:
         if key not in resume or resume[key] is None:
-            results.append(CheckResult(
-                check_name="schema",
-                severity="error",
-                location=key,
-                message=f"Required field '{key}' is missing",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="schema",
+                    severity="error",
+                    location=key,
+                    message=f"Required field '{key}' is missing",
+                )
+            )
 
     # selected_research should have exactly 3 entries
     sr = resume.get("selected_research", [])
     if isinstance(sr, list) and len(sr) != 3:
-        results.append(CheckResult(
-            check_name="schema",
-            severity="error" if len(sr) == 0 else "warning",
-            location="selected_research",
-            message=f"selected_research has {len(sr)} entries (expected 3)",
-        ))
+        results.append(
+            CheckResult(
+                check_name="schema",
+                severity="error" if len(sr) == 0 else "warning",
+                location="selected_research",
+                message=f"selected_research has {len(sr)} entries (expected 3)",
+            )
+        )
 
     # publications should have 4-6 entries
     pubs = resume.get("publications", [])
     if isinstance(pubs, list) and (len(pubs) < 4 or len(pubs) > 6):
-        results.append(CheckResult(
-            check_name="schema",
-            severity="warning",
-            location="publications",
-            message=f"publications has {len(pubs)} entries (expected 4-6)",
-        ))
+        results.append(
+            CheckResult(
+                check_name="schema",
+                severity="warning",
+                location="publications",
+                message=f"publications has {len(pubs)} entries (expected 4-6)",
+            )
+        )
 
     # Each experience block should have bullets
     for emp_key, emp_data in resume.get("experience", {}).items():
         if not isinstance(emp_data, dict):
-            results.append(CheckResult(
-                check_name="schema",
-                severity="error",
-                location=f"experience.{emp_key}",
-                message="Experience block is not a dict",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="schema",
+                    severity="error",
+                    location=f"experience.{emp_key}",
+                    message="Experience block is not a dict",
+                )
+            )
             continue
         bullets = emp_data.get("bullets", [])
         if not bullets:
-            results.append(CheckResult(
-                check_name="schema",
-                severity="error",
-                location=f"experience.{emp_key}.bullets",
-                message="No bullets found for employer",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="schema",
+                    severity="error",
+                    location=f"experience.{emp_key}.bullets",
+                    message="No bullets found for employer",
+                )
+            )
 
     # technical_skills should have 3 categories
     ts = resume.get("technical_skills", {})
@@ -398,12 +447,14 @@ def check_schema_completeness(resume: dict) -> list[CheckResult]:
         expected_cats = {"ai_systems", "data_science", "engineering"}
         missing = expected_cats - set(ts.keys())
         for cat in missing:
-            results.append(CheckResult(
-                check_name="schema",
-                severity="warning",
-                location=f"technical_skills.{cat}",
-                message=f"Technical skills category '{cat}' is missing",
-            ))
+            results.append(
+                CheckResult(
+                    check_name="schema",
+                    severity="warning",
+                    location=f"technical_skills.{cat}",
+                    message=f"Technical skills category '{cat}' is missing",
+                )
+            )
 
     return results
 
@@ -443,13 +494,15 @@ def check_participial_tails_fast(resume: dict) -> list[CheckResult]:
             # Get surrounding context
             start = max(0, m.start() - 30)
             end = min(len(text), m.end() + 30)
-            results.append(CheckResult(
-                check_name="participial_tail",
-                severity="error",
-                location=loc,
-                message=f"Participial tail '{m.group().strip()}' — split into separate sentence",
-                offending_text=text[start:end],
-            ))
+            results.append(
+                CheckResult(
+                    check_name="participial_tail",
+                    severity="error",
+                    location=loc,
+                    message=f"Participial tail '{m.group().strip()}' — split into separate sentence",
+                    offending_text=text[start:end],
+                )
+            )
 
     return results
 
@@ -459,18 +512,24 @@ def check_participial_tails_fast(resume: dict) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 _JARGON_METRICS = [
-    (re.compile(r"\bCohen'?s?\s+kappa\s*[=:≈]\s*[\d.]+\b", re.IGNORECASE),
-     "Cohen's kappa — use 'matched human-expert agreement' or similar"),
-    (re.compile(r"\bF1\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
-     "Raw F1 score — contextualize or drop"),
-    (re.compile(r"\bAUC\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
-     "Raw AUC — contextualize or drop"),
-    (re.compile(r"\bBLEU\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
-     "Raw BLEU score — contextualize or drop"),
-    (re.compile(r"\bROUGE\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
-     "Raw ROUGE score — contextualize or drop"),
-    (re.compile(r"\bperplexity\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
-     "Raw perplexity — contextualize or drop"),
+    (
+        re.compile(r"\bCohen'?s?\s+kappa\s*[=:≈]\s*[\d.]+\b", re.IGNORECASE),
+        "Cohen's kappa — use 'matched human-expert agreement' or similar",
+    ),
+    (re.compile(r"\bF1\s*[=:]\s*[\d.]+\b", re.IGNORECASE), "Raw F1 score — contextualize or drop"),
+    (re.compile(r"\bAUC\s*[=:]\s*[\d.]+\b", re.IGNORECASE), "Raw AUC — contextualize or drop"),
+    (
+        re.compile(r"\bBLEU\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
+        "Raw BLEU score — contextualize or drop",
+    ),
+    (
+        re.compile(r"\bROUGE\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
+        "Raw ROUGE score — contextualize or drop",
+    ),
+    (
+        re.compile(r"\bperplexity\s*[=:]\s*[\d.]+\b", re.IGNORECASE),
+        "Raw perplexity — contextualize or drop",
+    ),
 ]
 
 
@@ -481,13 +540,15 @@ def check_raw_jargon_metrics(resume: dict) -> list[CheckResult]:
     for loc, text in _iter_content_texts(resume):
         for pattern, advice in _JARGON_METRICS:
             for m in pattern.finditer(text):
-                results.append(CheckResult(
-                    check_name="raw_jargon_metric",
-                    severity="warning",
-                    location=loc,
-                    message=f"Raw jargon metric: {advice}",
-                    offending_text=text[max(0, m.start()-15):m.end()+15],
-                ))
+                results.append(
+                    CheckResult(
+                        check_name="raw_jargon_metric",
+                        severity="warning",
+                        location=loc,
+                        message=f"Raw jargon metric: {advice}",
+                        offending_text=text[max(0, m.start() - 15) : m.end() + 15],
+                    )
+                )
 
     return results
 
@@ -531,13 +592,15 @@ def check_critic_leakage(resume: dict) -> list[CheckResult]:
         for pattern in _LEAKAGE_PATTERNS:
             m = pattern.search(text)
             if m:
-                results.append(CheckResult(
-                    check_name="critic_leakage",
-                    severity="error",
-                    location=loc,
-                    message=f"Possible critic leakage: '{m.group()}'",
-                    offending_text=text[max(0, m.start()-20):m.end()+20],
-                ))
+                results.append(
+                    CheckResult(
+                        check_name="critic_leakage",
+                        severity="error",
+                        location=loc,
+                        message=f"Possible critic leakage: '{m.group()}'",
+                        offending_text=text[max(0, m.start() - 20) : m.end() + 20],
+                    )
+                )
 
     return results
 
@@ -547,14 +610,76 @@ def check_critic_leakage(resume: dict) -> list[CheckResult]:
 # ---------------------------------------------------------------------------
 
 _STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
-    "of", "with", "by", "from", "as", "is", "was", "are", "were", "been",
-    "be", "have", "has", "had", "do", "does", "did", "will", "would",
-    "could", "should", "may", "might", "shall", "can", "this", "that",
-    "these", "those", "it", "its", "not", "no", "nor", "so", "if", "then",
-    "than", "too", "very", "just", "about", "above", "after", "before",
-    "between", "into", "through", "during", "until", "while", "also",
-    "built", "designed", "system", "research", "data", "using", "across",
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "in",
+    "on",
+    "at",
+    "to",
+    "for",
+    "of",
+    "with",
+    "by",
+    "from",
+    "as",
+    "is",
+    "was",
+    "are",
+    "were",
+    "been",
+    "be",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "will",
+    "would",
+    "could",
+    "should",
+    "may",
+    "might",
+    "shall",
+    "can",
+    "this",
+    "that",
+    "these",
+    "those",
+    "it",
+    "its",
+    "not",
+    "no",
+    "nor",
+    "so",
+    "if",
+    "then",
+    "than",
+    "too",
+    "very",
+    "just",
+    "about",
+    "above",
+    "after",
+    "before",
+    "between",
+    "into",
+    "through",
+    "during",
+    "until",
+    "while",
+    "also",
+    "built",
+    "designed",
+    "system",
+    "research",
+    "data",
+    "using",
+    "across",
 }
 
 
@@ -607,14 +732,16 @@ def check_redundancy(resume: dict) -> list[CheckResult]:
                     jaccard = len(intersection) / len(union) if union else 0
 
                     if jaccard > 0.4:
-                        results.append(CheckResult(
-                            check_name="redundancy",
-                            severity="warning",
-                            location=f"experience.{emp_key}.bullets.{bi} vs {r_loc}",
-                            message=f"Jaccard similarity {jaccard:.2f} (>{0.4}) — "
-                                    f"bullet and research description for '{aid}' overlap",
-                            offending_text=f"Shared words: {', '.join(sorted(intersection)[:8])}",
-                        ))
+                        results.append(
+                            CheckResult(
+                                check_name="redundancy",
+                                severity="warning",
+                                location=f"experience.{emp_key}.bullets.{bi} vs {r_loc}",
+                                message=f"Jaccard similarity {jaccard:.2f} (>{0.4}) — "
+                                f"bullet and research description for '{aid}' overlap",
+                                offending_text=f"Shared words: {', '.join(sorted(intersection)[:8])}",
+                            )
+                        )
 
     return results
 

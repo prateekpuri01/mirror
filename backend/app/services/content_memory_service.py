@@ -13,7 +13,7 @@ import hashlib
 import json
 import logging
 import uuid
-from typing import Any, Iterable
+from collections.abc import Iterable
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -56,7 +56,10 @@ async def upsert_from_edit(
     descriptor = path_to_entity(path, content_json)
     if descriptor is None:
         return None
-    if descriptor.get("user_text") in (None, "") and descriptor.get("user_payload_json") in (None, []):
+    if descriptor.get("user_text") in (None, "") and descriptor.get("user_payload_json") in (
+        None,
+        [],
+    ):
         # Nothing to memorize.
         return None
 
@@ -106,7 +109,9 @@ async def upsert_from_edit(
     row = await session.get(ContentMemory, new_id)
     logger.info(
         "content_memory upsert: type=%s key=%s doc=%s",
-        descriptor["entity_type"], descriptor["entity_key"], doc_id,
+        descriptor["entity_type"],
+        descriptor["entity_key"],
+        doc_id,
     )
     return row
 
@@ -307,4 +312,5 @@ async def _build_job_context(session: AsyncSession, job_id: uuid.UUID | None) ->
 def _now_func():
     """Return the SQL ``now()`` function expression for use in update sets."""
     from sqlalchemy import func
+
     return func.now()

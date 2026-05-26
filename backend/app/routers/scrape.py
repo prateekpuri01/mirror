@@ -33,6 +33,7 @@ async def scrape_run_now(
     """Scrape all active companies with all available scrapers."""
     runs = await run_scrape(session)
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
     return _summarize(runs)
 
@@ -45,6 +46,7 @@ async def scrape_greenhouse(
     """Scrape only Greenhouse companies."""
     runs = await run_scrape(session, source_filter="greenhouse")
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
     return _summarize(runs)
 
@@ -57,6 +59,7 @@ async def scrape_lever(
     """Scrape only Lever companies."""
     runs = await run_scrape(session, source_filter="lever")
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
     return _summarize(runs)
 
@@ -69,6 +72,7 @@ async def scrape_ashby(
     """Scrape only Ashby companies."""
     runs = await run_scrape(session, source_filter="ashby")
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
     return _summarize(runs)
 
@@ -81,6 +85,7 @@ async def scrape_hn(
     """Scrape the latest HN 'Who is hiring?' thread for AI/research jobs."""
     run = await run_hn_scrape(session)
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
     return _summarize([run])
 
@@ -99,6 +104,7 @@ async def scrape_company(
             detail="Company not found, not active, or has no matching scraper",
         )
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
     return _summarize(runs)
 
@@ -119,8 +125,7 @@ async def scrape_status(session: AsyncSession = Depends(get_session)):
         select(ScrapeRun)
         .join(
             subq,
-            (ScrapeRun.company_id == subq.c.company_id)
-            & (ScrapeRun.started_at == subq.c.latest),
+            (ScrapeRun.company_id == subq.c.company_id) & (ScrapeRun.started_at == subq.c.latest),
         )
         .order_by(ScrapeRun.started_at.desc())
     )
@@ -140,10 +145,7 @@ async def scrape_history(
 
     offset = (page - 1) * per_page
     result = await session.execute(
-        select(ScrapeRun)
-        .order_by(ScrapeRun.started_at.desc())
-        .offset(offset)
-        .limit(per_page)
+        select(ScrapeRun).order_by(ScrapeRun.started_at.desc()).offset(offset).limit(per_page)
     )
     runs = list(result.scalars().all())
 

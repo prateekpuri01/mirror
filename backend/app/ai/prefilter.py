@@ -9,7 +9,7 @@ No LLM calls. Runs on title + company + first 500 chars of description.
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -69,6 +69,7 @@ def build_keyword_lists(profile_data: dict) -> tuple[list[str], list[str]]:
         include.append(domain.lower())
     # Add first 10 skills (from any category) as positive signals
     from app.ai.skill_utils import flatten_skills
+
     for skill in flatten_skills(profile_data.get("skills", {}))[:10]:
         include.append(skill.lower())
 
@@ -166,7 +167,9 @@ async def run_prefilter_batch(session: AsyncSession) -> dict:
     await session.commit()
     logger.info(
         "Pre-filter: %d passed, %d skipped out of %d jobs",
-        stats["passed"], stats["skipped"], stats["total"],
+        stats["passed"],
+        stats["skipped"],
+        stats["total"],
     )
     return stats
 
@@ -193,7 +196,7 @@ async def override_prefilter(session: AsyncSession, job_id) -> Job | None:
     job.pipeline_stage = "cleaned"
     meta = dict(job.extra_metadata or {})
     meta["prefilter_override"] = True
-    meta["prefilter_override_at"] = datetime.now(timezone.utc).isoformat()
+    meta["prefilter_override_at"] = datetime.now(UTC).isoformat()
     job.extra_metadata = meta
 
     await session.commit()

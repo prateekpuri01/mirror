@@ -122,10 +122,12 @@ async def extract_rules_from_diff(
     ]
     if user_instruction:
         user_parts.append(f"User's instruction: {user_instruction}")
-    user_parts.extend([
-        f"\nBEFORE:\n{old_text}",
-        f"\nAFTER:\n{new_text}",
-    ])
+    user_parts.extend(
+        [
+            f"\nBEFORE:\n{old_text}",
+            f"\nAFTER:\n{new_text}",
+        ]
+    )
     user_content = "\n".join(p for p in user_parts if p)
 
     try:
@@ -204,8 +206,12 @@ async def persist_extracted_rules(
                 merged_examples = list(matched.examples_json) + examples
                 matched.examples_json = merged_examples[:5]  # cap at 5
                 await session.flush()
-            logger.info("Reinforced existing rule %s (importance=%s): %s",
-                        matched.id, importance, matched.rule_text[:60])
+            logger.info(
+                "Reinforced existing rule %s (importance=%s): %s",
+                matched.id,
+                importance,
+                matched.rule_text[:60],
+            )
         else:
             new_rule = await svc.add_rule(
                 session,
@@ -220,8 +226,12 @@ async def persist_extracted_rules(
             )
             existing.append(new_rule)
             created += 1
-            logger.info("Created new writing memory rule (importance=%s, conf=%.2f): %s",
-                        importance, initial_confidence, rule_text[:80])
+            logger.info(
+                "Created new writing memory rule (importance=%s, conf=%.2f): %s",
+                importance,
+                initial_confidence,
+                rule_text[:80],
+            )
 
     return created
 
@@ -252,7 +262,7 @@ async def _find_duplicate_llm(rule_text: str, existing: list) -> Any:
 
     # Only check the most recent/relevant rules to keep costs down
     candidates = existing[:15]
-    numbered = "\n".join(f"{i+1}. {r.rule_text}" for i, r in enumerate(candidates))
+    numbered = "\n".join(f"{i + 1}. {r.rule_text}" for i, r in enumerate(candidates))
 
     prompt = f"""I have a list of existing writing rules and a new candidate rule. Tell me: does the new rule mean the same thing as any existing rule?
 
@@ -297,7 +307,8 @@ Your answer:"""
         except (json.JSONDecodeError, TypeError, AttributeError):
             # Fallback: look for a plain number in the response
             import re
-            match = re.search(r'\d+', text)
+
+            match = re.search(r"\d+", text)
             if match:
                 idx = int(match.group())
                 if 1 <= idx <= len(candidates):
@@ -322,8 +333,12 @@ async def extract_and_learn(
 ) -> int:
     """End-to-end: extract rules from a diff and persist them. Returns count of new rules."""
     rules = await extract_rules_from_diff(
-        old_value, new_value, section_path,
-        job_title=job_title, company=company, domain=domain,
+        old_value,
+        new_value,
+        section_path,
+        job_title=job_title,
+        company=company,
+        domain=domain,
         user_instruction=user_instruction,
     )
     if not rules:
@@ -393,12 +408,21 @@ async def consolidate_rules(session: AsyncSession, domain: str) -> dict:
     user exactly what was merged.
     """
     rules = await svc.get_all_rules(
-        session, domain=domain, scope="universal", is_active=True,
+        session,
+        domain=domain,
+        scope="universal",
+        is_active=True,
     )
     if len(rules) <= 3:
-        return {"merged_count": 0, "groups_merged": 0, "before": len(rules), "after": len(rules), "merges": []}
+        return {
+            "merged_count": 0,
+            "groups_merged": 0,
+            "before": len(rules),
+            "after": len(rules),
+            "merges": [],
+        }
 
-    numbered = "\n".join(f"{i+1}. {r.rule_text}" for i, r in enumerate(rules))
+    numbered = "\n".join(f"{i + 1}. {r.rule_text}" for i, r in enumerate(rules))
     user_content = (
         f"You have {len(rules)} active universal rules in domain '{domain}'. "
         f"The system caps active rules at 30 per domain, so a tighter set is genuinely better.\n\n"
@@ -429,7 +453,13 @@ async def consolidate_rules(session: AsyncSession, domain: str) -> dict:
                 "Consolidation returned empty content (finish_reason=%s)",
                 response.choices[0].finish_reason,
             )
-            return {"merged_count": 0, "groups_merged": 0, "before": len(rules), "after": len(rules), "merges": []}
+            return {
+                "merged_count": 0,
+                "groups_merged": 0,
+                "before": len(rules),
+                "after": len(rules),
+                "merges": [],
+            }
         parsed = json.loads(text)
         # Accept either the new {"groups": [...]} or the old [{...}, ...] shape
         if isinstance(parsed, dict):
@@ -440,7 +470,13 @@ async def consolidate_rules(session: AsyncSession, domain: str) -> dict:
             groups = []
     except Exception:
         logger.exception("Consolidation LLM call failed")
-        return {"merged_count": 0, "groups_merged": 0, "before": len(rules), "after": len(rules), "merges": []}
+        return {
+            "merged_count": 0,
+            "groups_merged": 0,
+            "before": len(rules),
+            "after": len(rules),
+            "merges": [],
+        }
 
     merged_count = 0
     groups_merged = 0
@@ -488,17 +524,21 @@ async def consolidate_rules(session: AsyncSession, domain: str) -> dict:
             merged_count += 1
         groups_merged += 1
 
-        merges_report.append({
-            "merged_rule_text": merged_text,
-            "merged_from": [orig.rule_text for orig in originals],
-            "reasoning": group.get("reasoning", ""),
-        })
+        merges_report.append(
+            {
+                "merged_rule_text": merged_text,
+                "merged_from": [orig.rule_text for orig in originals],
+                "reasoning": group.get("reasoning", ""),
+            }
+        )
 
     if merged_count:
         await session.flush()
         logger.info(
             "Consolidated %d rules into %d merged rules for domain=%s",
-            merged_count, groups_merged, domain,
+            merged_count,
+            groups_merged,
+            domain,
         )
 
     return {

@@ -1,12 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 from app.models.documents import DocType
-
-
-from typing import Any
 
 
 class DocumentRead(BaseModel):
@@ -49,6 +47,7 @@ class BulletGenerationRequest(BaseModel):
     ``insert_at`` is optional — when omitted the new bullet is appended to
     the end of the employer's bullet array.
     """
+
     employer_key: str
     accomplishment_id: str
     insert_at: int | None = None

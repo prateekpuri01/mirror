@@ -25,17 +25,17 @@ import json
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Make backend modules importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests.eval.external.huggingface_loader import (
-    HFExample,
-    fetch_examples,
-    example_to_job_dict,
     LABEL_TO_ORDINAL,
+    HFExample,
+    example_to_job_dict,
+    fetch_examples,
 )
 from tests.eval.external.metrics_external import (
     classification_accuracy,
@@ -103,7 +103,7 @@ def _aggregate(rows: list[dict]) -> dict:
     # Per-class accuracy
     per_class: dict[str, dict] = {}
     for label in LABEL_TO_ORDINAL:
-        in_class = [(p, a) for p, a in zip(predicted, actual) if a == label]
+        in_class = [(p, a) for p, a in zip(predicted, actual, strict=False) if a == label]
         if in_class:
             per_class[label] = {
                 "n": len(in_class),
@@ -118,9 +118,7 @@ def _aggregate(rows: list[dict]) -> dict:
     scores_by_class: dict[str, list[float]] = {}
     for label in LABEL_TO_ORDINAL:
         scores_by_class[label] = [r["composite"] for r in valid if r["label"] == label]
-    pairwise = pairwise_accuracy_by_class(
-        scores_by_class, list(LABEL_TO_ORDINAL.keys())
-    )
+    pairwise = pairwise_accuracy_by_class(scores_by_class, list(LABEL_TO_ORDINAL.keys()))
 
     return {
         "n": len(valid),
@@ -137,8 +135,7 @@ def _aggregate(rows: list[dict]) -> dict:
         },
         "mean_score_by_class": means,
         "pairwise_accuracy": {
-            hi: {lo: round(acc, 3) for lo, acc in lows.items()}
-            for hi, lows in pairwise.items()
+            hi: {lo: round(acc, 3) for lo, acc in lows.items()} for hi, lows in pairwise.items()
         },
     }
 
@@ -153,15 +150,19 @@ def _print_report(report: dict) -> None:
     print(f"\n3-class accuracy        : {agg['accuracy']:.3f}    (chance ≈ 0.33)")
     print(f"Spearman ρ vs label ord : {agg['spearman_vs_label_ordinal']:+.3f}    (target > 0.3)")
     print(f"Pearson r vs label ord  : {agg['pearson_vs_label_ordinal']:+.3f}")
-    print(f"\nScore distribution: min={agg['score_distribution']['min']}  "
-          f"mean={agg['score_distribution']['mean']}  max={agg['score_distribution']['max']}")
+    print(
+        f"\nScore distribution: min={agg['score_distribution']['min']}  "
+        f"mean={agg['score_distribution']['mean']}  max={agg['score_distribution']['max']}"
+    )
 
     print("\nMean composite score per class (relative ordering):")
     for label in LABEL_TO_ORDINAL:
         m = agg["mean_score_by_class"].get(label, {})
         if m:
-            print(f"  {label:18} n={m['n']:3}  mean={m['mean']:5.1f}  "
-                  f"min={m['min']:5.1f}  max={m['max']:5.1f}")
+            print(
+                f"  {label:18} n={m['n']:3}  mean={m['mean']:5.1f}  "
+                f"min={m['min']:5.1f}  max={m['max']:5.1f}"
+            )
 
     print("\nPairwise ordering accuracy (the relative-ranking metric):")
     print("  P(score(higher class) > score(lower class)) — random = 0.500")
@@ -225,7 +226,7 @@ async def main() -> None:
     aggregate = _aggregate(rows)
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_path = RESULTS_DIR / f"huggingface_{timestamp}.json"
 
     report = {

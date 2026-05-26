@@ -14,7 +14,7 @@ import json
 import logging
 from dataclasses import dataclass, field
 
-from app.ai.client import get_openai_client, RESUME_MODEL
+from app.ai.client import RESUME_MODEL, get_openai_client
 from tests.eval.resume_checks import CheckResult
 
 logger = logging.getLogger(__name__)
@@ -65,7 +65,9 @@ def _format_resume_text(resume: dict) -> str:
     if resume.get("summary"):
         lines.append(f"SUMMARY: {resume['summary']}")
     for i, entry in enumerate(resume.get("selected_research", [])):
-        lines.append(f"\nRESEARCH {i+1} [{entry.get('category_label', '')}] — {entry.get('title', '')}")
+        lines.append(
+            f"\nRESEARCH {i + 1} [{entry.get('category_label', '')}] — {entry.get('title', '')}"
+        )
         lines.append(f"  {entry.get('description', '')}")
     for emp_key, emp_data in resume.get("experience", {}).items():
         lines.append(f"\nEXPERIENCE — {emp_key}")
@@ -97,7 +99,9 @@ Output ONLY valid JSON (no markdown fences): an array of objects, each with:
 
 If no issues found, return an empty array: []"""
 
-    user_content = f"Check each sentence in this resume for compound clause violations:\n\n{resume_text}"
+    user_content = (
+        f"Check each sentence in this resume for compound clause violations:\n\n{resume_text}"
+    )
 
     try:
         findings = await _call_judge(system, user_content, max_tokens=1500)
@@ -107,13 +111,15 @@ If no issues found, return an empty array: []"""
 
     results = []
     for f in findings:
-        results.append(CheckResult(
-            check_name="compound_clause_llm",
-            severity="error",
-            location=f.get("location", "unknown"),
-            message=f.get("issue", "Two ideas fused in one sentence"),
-            offending_text=f.get("sentence", ""),
-        ))
+        results.append(
+            CheckResult(
+                check_name="compound_clause_llm",
+                severity="error",
+                location=f.get("location", "unknown"),
+                message=f.get("issue", "Two ideas fused in one sentence"),
+                offending_text=f.get("sentence", ""),
+            )
+        )
     return results
 
 
@@ -147,13 +153,15 @@ Empty array if no bad passive found."""
 
     results = []
     for f in findings:
-        results.append(CheckResult(
-            check_name="passive_voice_llm",
-            severity="warning",
-            location=f.get("location", "unknown"),
-            message=f"Bad passive: {f.get('suggestion', 'rewrite in active voice')}",
-            offending_text=f.get("sentence", ""),
-        ))
+        results.append(
+            CheckResult(
+                check_name="passive_voice_llm",
+                severity="warning",
+                location=f.get("location", "unknown"),
+                message=f"Bad passive: {f.get('suggestion', 'rewrite in active voice')}",
+                offending_text=f.get("sentence", ""),
+            )
+        )
     return results
 
 
@@ -197,14 +205,16 @@ Empty array if no leakage found."""
 
     results = []
     for f in findings:
-        results.append(CheckResult(
-            check_name="critic_leakage_llm",
-            severity="error",
-            location=f.get("location", "unknown"),
-            message=f"Critic leakage ({f.get('type', 'unknown')}): "
-                    f"critique said '{f.get('critique_source', '?')[:60]}'",
-            offending_text=f.get("leaked_text", ""),
-        ))
+        results.append(
+            CheckResult(
+                check_name="critic_leakage_llm",
+                severity="error",
+                location=f.get("location", "unknown"),
+                message=f"Critic leakage ({f.get('type', 'unknown')}): "
+                f"critique said '{f.get('critique_source', '?')[:60]}'",
+                offending_text=f.get("leaked_text", ""),
+            )
+        )
     return results
 
 
@@ -212,7 +222,7 @@ async def llm_check_redundancy(resume: dict) -> list[CheckResult]:
     """LLM evaluates whether research descriptions and bullets for the same project are complementary or redundant."""
     # Find accomplishments appearing in both sections
     research_by_id = {}
-    for i, entry in enumerate(resume.get("selected_research", [])):
+    for _i, entry in enumerate(resume.get("selected_research", [])):
         aid = entry.get("accomplishment_id")
         if aid:
             research_by_id[aid] = entry.get("description", "")
@@ -224,12 +234,14 @@ async def llm_check_redundancy(resume: dict) -> list[CheckResult]:
             if bi < len(acc_ids):
                 aid = acc_ids[bi]
                 if aid in research_by_id:
-                    pairs.append({
-                        "accomplishment_id": aid,
-                        "research_description": research_by_id[aid],
-                        "bullet": bullet,
-                        "bullet_location": f"experience.{emp_key}.bullets.{bi}",
-                    })
+                    pairs.append(
+                        {
+                            "accomplishment_id": aid,
+                            "research_description": research_by_id[aid],
+                            "bullet": bullet,
+                            "bullet_location": f"experience.{emp_key}.bullets.{bi}",
+                        }
+                    )
 
     if not pairs:
         return []
@@ -247,7 +259,9 @@ reading both.
 For each pair, output: {"accomplishment_id", "verdict": "complementary"|"redundant", "explanation"}.
 Output ONLY valid JSON array."""
 
-    user_content = f"Evaluate these research description / bullet pairs:\n\n{json.dumps(pairs, indent=2)}"
+    user_content = (
+        f"Evaluate these research description / bullet pairs:\n\n{json.dumps(pairs, indent=2)}"
+    )
 
     try:
         findings = await _call_judge(system, user_content, max_tokens=1500)
@@ -259,16 +273,24 @@ Output ONLY valid JSON array."""
     for f in findings:
         if f.get("verdict") == "redundant":
             # Find the bullet location
-            loc = next((p["bullet_location"] for p in pairs
-                       if p["accomplishment_id"] == f.get("accomplishment_id")), "unknown")
-            results.append(CheckResult(
-                check_name="redundancy_llm",
-                severity="warning",
-                location=loc,
-                message=f"Semantic redundancy for '{f.get('accomplishment_id', '?')}': "
-                        f"{f.get('explanation', '')}",
-                offending_text="",
-            ))
+            loc = next(
+                (
+                    p["bullet_location"]
+                    for p in pairs
+                    if p["accomplishment_id"] == f.get("accomplishment_id")
+                ),
+                "unknown",
+            )
+            results.append(
+                CheckResult(
+                    check_name="redundancy_llm",
+                    severity="warning",
+                    location=loc,
+                    message=f"Semantic redundancy for '{f.get('accomplishment_id', '?')}': "
+                    f"{f.get('explanation', '')}",
+                    offending_text="",
+                )
+            )
     return results
 
 
@@ -311,13 +333,15 @@ Empty array if all skills are valid."""
 
     results = []
     for f in findings:
-        results.append(CheckResult(
-            check_name="skills_accuracy_llm",
-            severity="error" if f.get("issue") == "not_on_whitelist" else "warning",
-            location=f"technical_skills.{f.get('category', 'unknown')}",
-            message=f"Skill '{f.get('skill', '?')}': {f.get('issue', '?')} — {f.get('suggestion', '')}",
-            offending_text=f.get("skill", ""),
-        ))
+        results.append(
+            CheckResult(
+                check_name="skills_accuracy_llm",
+                severity="error" if f.get("issue") == "not_on_whitelist" else "warning",
+                location=f"technical_skills.{f.get('category', 'unknown')}",
+                message=f"Skill '{f.get('skill', '?')}': {f.get('issue', '?')} — {f.get('suggestion', '')}",
+                offending_text=f.get("skill", ""),
+            )
+        )
     return results
 
 
@@ -325,12 +349,14 @@ Empty array if all skills are valid."""
 # Aggregate LLM checks
 # ---------------------------------------------------------------------------
 
+
 async def run_llm_checks(
     resume_json: dict,
     profile_data: dict | None = None,
 ) -> list[CheckResult]:
     """Run all LLM-verified checks. Returns list of CheckResults."""
     import asyncio
+
     tasks = [
         llm_check_compound_clauses(resume_json),
         llm_check_passive_voice(resume_json),
@@ -510,12 +536,14 @@ Output ONLY valid JSON:
 # Aggregate judge runner
 # ---------------------------------------------------------------------------
 
+
 async def run_all_judges(
     resume: dict,
     job_text: str = "",
 ) -> dict[str, JudgeResult]:
     """Run all LLM-as-judge evaluations. Returns metric_name -> JudgeResult."""
     import asyncio
+
     results = await asyncio.gather(
         judge_naturalness(resume, job_text),
         judge_summary_coherence(resume, job_text),

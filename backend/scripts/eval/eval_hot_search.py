@@ -35,7 +35,7 @@ import re
 import sys
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Make the backend modules importable when run as a script
@@ -198,18 +198,18 @@ async def _judge_relevance(
 
     user_msg = (
         f'Query: "{guidance}"\n'
-        f'Job: {title} at {company_name}'
-        + (f' in {location}' if location else '')
-        + '\n'
-        + (f'Description: {description}\n' if description else '')
-        + '\n'
-        + 'Score 1-5:\n'
+        f"Job: {title} at {company_name}"
+        + (f" in {location}" if location else "")
+        + "\n"
+        + (f"Description: {description}\n" if description else "")
+        + "\n"
+        + "Score 1-5:\n"
         + '  1 = unrelated (e.g. "Office Manager" for "ML engineer")\n'
-        + '  2 = tangentially related\n'
-        + '  3 = adjacent domain but wrong focus\n'
-        + '  4 = good match (same role family)\n'
-        + '  5 = excellent match (exactly what was asked)\n'
-        + 'Output only the number.'
+        + "  2 = tangentially related\n"
+        + "  3 = adjacent domain but wrong focus\n"
+        + "  4 = good match (same role family)\n"
+        + "  5 = excellent match (exactly what was asked)\n"
+        + "Output only the number."
     )
 
     try:
@@ -232,7 +232,7 @@ async def _judge_relevance(
             max_completion_tokens=500,
         )
         answer = (resp.choices[0].message.content or "").strip()
-        match = re.search(r'[1-5]', answer)
+        match = re.search(r"[1-5]", answer)
         if match:
             return int(match.group())
         logger.debug("Judge returned un-parseable response: %r", answer[:60])
@@ -337,10 +337,12 @@ async def run_scenario(
                     result.hits_tracked += 1
                 elif kind == "no_match":
                     result.hits_no_match += 1
-                    result.no_match_companies.append({
-                        "name": hit_data.get("name", "?"),
-                        "reason": hit_data.get("match_reason", ""),
-                    })
+                    result.no_match_companies.append(
+                        {
+                            "name": hit_data.get("name", "?"),
+                            "reason": hit_data.get("match_reason", ""),
+                        }
+                    )
                     # No top_jobs to judge for a no_match; skip the import loop
                     continue
 
@@ -382,16 +384,18 @@ async def run_scenario(
             ],
             return_exceptions=False,
         )
-        for j, score in zip(jobs_to_judge, scores):
-            result.judged_jobs.append({
-                "title": j.get("title"),
-                "url": j.get("url"),
-                "company": j.get("_company"),
-                "location": j.get("location"),
-                "kind": j.get("_kind"),
-                "novel": j.get("url") not in existing_urls,
-                "relevance": score,
-            })
+        for j, score in zip(jobs_to_judge, scores, strict=False):
+            result.judged_jobs.append(
+                {
+                    "title": j.get("title"),
+                    "url": j.get("url"),
+                    "company": j.get("_company"),
+                    "location": j.get("location"),
+                    "kind": j.get("_kind"),
+                    "novel": j.get("url") not in existing_urls,
+                    "relevance": score,
+                }
+            )
 
     return result
 
@@ -448,7 +452,7 @@ def _best_and_worst(results: list[ScenarioResult], n: int = 5) -> dict:
 
 
 def _fmt_pct(v: float | None) -> str:
-    return "—" if v is None else f"{v*100:.0f}%"
+    return "—" if v is None else f"{v * 100:.0f}%"
 
 
 def _fmt_float(v: float | None, decimals: int = 1) -> str:
@@ -468,8 +472,7 @@ def _print_stdout_summary(results: list[ScenarioResult], aggregate: dict, exampl
     for r in results:
         cov = "✓" if r.coverage else "✗"
         top_src = (
-            max(r.source_breakdown.items(), key=lambda kv: kv[1])[0]
-            if r.source_breakdown else "—"
+            max(r.source_breakdown.items(), key=lambda kv: kv[1])[0] if r.source_breakdown else "—"
         )
         top_src_count = r.source_breakdown.get(top_src, 0) if top_src != "—" else 0
         top_src_display = f"{top_src} ({top_src_count})" if top_src != "—" else "—"
@@ -496,9 +499,7 @@ def _print_stdout_summary(results: list[ScenarioResult], aggregate: dict, exampl
     print()
 
     print("Source breakdown across all scenarios:")
-    for src, cnt in sorted(
-        aggregate.get("source_breakdown", {}).items(), key=lambda kv: -kv[1]
-    ):
+    for src, cnt in sorted(aggregate.get("source_breakdown", {}).items(), key=lambda kv: -kv[1]):
         print(f"  {src:<25} {cnt}")
 
     print("\n" + "=" * 95)
@@ -536,7 +537,7 @@ async def main() -> None:
         type=str,
         default=None,
         help="Comma-separated persona names to run (default: all). "
-             "Names: " + ", ".join(s.persona for s in SCENARIOS),
+        "Names: " + ", ".join(s.persona for s in SCENARIOS),
     )
     parser.add_argument(
         "--max-hits",
@@ -545,7 +546,8 @@ async def main() -> None:
         help="Max hits per scenario (default: 8)",
     )
     parser.add_argument(
-        "--verbose", "-v",
+        "--verbose",
+        "-v",
         action="store_true",
         help="Show INFO-level logs from the search pipeline",
     )
@@ -577,7 +579,7 @@ async def main() -> None:
     print(f"  provider={settings.llm_provider}, openai_key=set")
 
     # Snapshot DB URLs for novelty check
-    print(f"Taking DB snapshot for novelty detection...")
+    print("Taking DB snapshot for novelty detection...")
     existing_urls = await _snapshot_existing_job_urls()
     print(f"  {len(existing_urls)} existing job URLs in DB")
 
@@ -590,7 +592,9 @@ async def main() -> None:
         print(f"[{i}/{len(scenarios)}] === {scenario.persona} ===")
         print(f"  Guidance:   {scenario.guidance}")
         print(f"  Locations:  {scenario.locations or '—'}")
-        print(f"  Min salary: {'$' + format(scenario.min_salary, ',') if scenario.min_salary else '—'}")
+        print(
+            f"  Min salary: {'$' + format(scenario.min_salary, ',') if scenario.min_salary else '—'}"
+        )
         result = await run_scenario(scenario, existing_urls, max_hits=args.max_hits)
         results.append(result)
 
@@ -605,7 +609,7 @@ async def main() -> None:
                 f"{result.hits_no_match} no_match  [{result.elapsed_sec:.0f}s]"
             )
             if result.no_match_companies:
-                print(f"  Considered but rejected:")
+                print("  Considered but rejected:")
                 for c in result.no_match_companies[:5]:
                     print(f"    - {c['name']}: {c['reason'][:80]}")
         print()
@@ -618,7 +622,7 @@ async def main() -> None:
 
     # Write JSON report
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_path = RESULTS_DIR / f"hot_search_{timestamp}.json"
     report = {
         "eval": "hot_search",

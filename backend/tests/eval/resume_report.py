@@ -16,10 +16,10 @@ from pathlib import Path
 from tests.eval.resume_checks import CheckResult, ResumeCheckReport
 from tests.eval.resume_metrics import JudgeResult
 
-
 # ---------------------------------------------------------------------------
 # Versioned report dataclass (JSON-serialisable)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class VersionedReport:
@@ -79,9 +79,7 @@ def generate_resume_report(
     # --- Deterministic section --------------------------------------------
     total_errors = sum(r.error_count for r in deterministic_results.values())
     total_warnings = sum(r.warning_count for r in deterministic_results.values())
-    clean = sum(
-        1 for r in deterministic_results.values() if r.error_count == 0
-    )
+    clean = sum(1 for r in deterministic_results.values() if r.error_count == 0)
     clean_pct = (clean / n_resumes * 100) if n_resumes else 0.0
 
     lines.append(f"DETERMINISTIC CHECKS ({n_resumes} resumes)")
@@ -113,9 +111,7 @@ def generate_resume_report(
     if offenders:
         lines.append("  Worst offenders:")
         for name, rpt in offenders:
-            lines.append(
-                f"    {name}:  {rpt.error_count} errors, {rpt.warning_count} warnings"
-            )
+            lines.append(f"    {name}:  {rpt.error_count} errors, {rpt.warning_count} warnings")
         lines.append("")
 
     # --- LLM Judge section ------------------------------------------------
@@ -135,9 +131,7 @@ def generate_resume_report(
         col_width = 10
         name_width = 20
 
-        header = f"  {'Resume':<{name_width}}" + "".join(
-            f"{c:>{col_width}}" for c in col_labels
-        )
+        header = f"  {'Resume':<{name_width}}" + "".join(f"{c:>{col_width}}" for c in col_labels)
         lines.append(header)
 
         # Per-resume rows
@@ -145,7 +139,11 @@ def generate_resume_report(
 
         for resume_name in sorted(judge_results):
             per_resume = judge_results[resume_name]
-            truncated = (resume_name[:name_width - 2] + "..") if len(resume_name) > name_width else resume_name
+            truncated = (
+                (resume_name[: name_width - 2] + "..")
+                if len(resume_name) > name_width
+                else resume_name
+            )
             row = f"  {truncated:<{name_width}}"
             for metric in col_labels:
                 jr = per_resume.get(metric)

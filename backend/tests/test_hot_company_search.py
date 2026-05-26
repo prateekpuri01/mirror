@@ -103,15 +103,11 @@ class TestLocationFilter:
         assert "matched" in reason
 
     def test_case_insensitive(self):
-        passes, _ = _job_passes_location_filter(
-            _job(location="SAN FRANCISCO"), ["san francisco"]
-        )
+        passes, _ = _job_passes_location_filter(_job(location="SAN FRANCISCO"), ["san francisco"])
         assert passes is True
 
     def test_alias_match_sf_to_san_francisco(self):
-        passes, _ = _job_passes_location_filter(
-            _job(location="San Francisco, CA"), ["SF"]
-        )
+        passes, _ = _job_passes_location_filter(_job(location="San Francisco, CA"), ["SF"])
         assert passes is True
 
     def test_alias_match_san_francisco_to_sf(self):
@@ -125,9 +121,7 @@ class TestLocationFilter:
         assert passes is True
 
     def test_nyc_to_new_york(self):
-        passes, _ = _job_passes_location_filter(
-            _job(location="New York, NY"), ["NYC"]
-        )
+        passes, _ = _job_passes_location_filter(_job(location="New York, NY"), ["NYC"])
         assert passes is True
 
     def test_remote_job_with_remote_filter(self):
@@ -139,9 +133,7 @@ class TestLocationFilter:
 
     def test_remote_job_without_remote_filter_uses_location(self):
         # Remote job in NY, filter is SF — should reject (location mismatch)
-        passes, _ = _job_passes_location_filter(
-            _job(remote=True, location="New York, NY"), ["SF"]
-        )
+        passes, _ = _job_passes_location_filter(_job(remote=True, location="New York, NY"), ["SF"])
         assert passes is False
 
     def test_unknown_location_passes_to_llm(self):
@@ -161,9 +153,7 @@ class TestLocationFilter:
             assert reason == "vague_location"
 
     def test_known_mismatch_rejects(self):
-        passes, reason = _job_passes_location_filter(
-            _job(location="London, UK"), ["SF"]
-        )
+        passes, reason = _job_passes_location_filter(_job(location="London, UK"), ["SF"])
         assert passes is False
         assert "London" in reason
 
@@ -181,9 +171,7 @@ class TestLocationFilter:
 
     def test_substring_within_larger_location(self):
         # "Bay Area" filter should match "SF Bay Area office"
-        passes, _ = _job_passes_location_filter(
-            _job(location="SF Bay Area office"), ["Bay Area"]
-        )
+        passes, _ = _job_passes_location_filter(_job(location="SF Bay Area office"), ["Bay Area"])
         assert passes is True
 
 
@@ -219,9 +207,7 @@ class TestSalaryFilter:
 
     def test_only_min_set_passes_to_llm(self):
         # Job has salary_min but not salary_max — we can't reject without max
-        passes, _ = _job_passes_salary_filter(
-            _job(salary_min=80_000, salary_max=None), 150_000
-        )
+        passes, _ = _job_passes_salary_filter(_job(salary_min=80_000, salary_max=None), 150_000)
         assert passes is True
 
 
@@ -254,9 +240,7 @@ class TestPrefilterCombinations:
         assert passes is True
 
     def test_sf_filter_rejects_ny_office(self):
-        passes, _ = _job_passes_location_filter(
-            _job(location="New York, NY"), ["San Francisco"]
-        )
+        passes, _ = _job_passes_location_filter(_job(location="New York, NY"), ["San Francisco"])
         assert passes is False
 
     def test_combined_location_and_salary_both_pass(self):

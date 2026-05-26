@@ -25,8 +25,11 @@ class GreenhouseScraper:
         return bool(company.greenhouse_slug)
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient,
-        *, known_urls: set[str] | None = None,
+        self,
+        company: Company,
+        http_client: httpx.AsyncClient,
+        *,
+        known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]:
         url = GREENHOUSE_API.format(slug=company.greenhouse_slug)
         logger.info("Fetching Greenhouse jobs for %s (%s)", company.name, url)
@@ -59,7 +62,7 @@ class GreenhouseScraper:
 
         # Remote detection from metadata array
         remote = False
-        for meta in (entry.get("metadata") or []):
+        for meta in entry.get("metadata") or []:
             if meta.get("name") == "Location Type":
                 val = str(meta.get("value", "")).lower()
                 if "remote" in val:

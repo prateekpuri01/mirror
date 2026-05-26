@@ -20,16 +20,9 @@ compatibility.
 """
 
 # Public types
-from app.services.hot_search.types import (  # noqa: F401
-    CompanyCandidate,
-    CompanyHit,
-    SearchEvent,
-)
-
 # Star-import every public-named symbol from each layer that still has
 # external callers.
 from app.services.hot_search.discovery import *  # noqa: F401, F403
-from app.services.hot_search.evaluation import *  # noqa: F401, F403
 
 # Explicit re-exports for the underscore-prefixed names that external
 # callers (tests, scripts) historically imported. ``from … import *``
@@ -39,6 +32,7 @@ from app.services.hot_search.discovery import (  # noqa: F401
     _looks_like_direct_job_url,
     _looks_like_job_url_relaxed,
 )
+from app.services.hot_search.evaluation import *  # noqa: F401, F403
 from app.services.hot_search.evaluation import (  # noqa: F401
     _expand_location,
     _job_passes_location_filter,
@@ -50,4 +44,9 @@ from app.services.hot_search.evaluation import (  # noqa: F401
 # router both call this name.
 from app.services.hot_search.orchestration_v2 import (  # noqa: F401
     run_hot_company_search_v2 as run_hot_company_search,
+)
+from app.services.hot_search.types import (  # noqa: F401
+    CompanyCandidate,
+    CompanyHit,
+    SearchEvent,
 )

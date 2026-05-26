@@ -12,7 +12,7 @@ Each top-level comment is a job posting. Format varies but commonly:
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 
 import httpx
 
@@ -26,13 +26,27 @@ HN_ITEM_URL = "https://news.ycombinator.com/item?id={}"
 
 # Default keywords for filtering HN posts (research/AI focused)
 DEFAULT_INCLUDE = [
-    "research", "scientist", "machine learning", "ML", "AI",
-    "data science", "NLP", "policy", "technical staff",
-    "deep learning", "LLM", "GPT", "safety", "alignment",
+    "research",
+    "scientist",
+    "machine learning",
+    "ML",
+    "AI",
+    "data science",
+    "NLP",
+    "policy",
+    "technical staff",
+    "deep learning",
+    "LLM",
+    "GPT",
+    "safety",
+    "alignment",
 ]
 
 DEFAULT_EXCLUDE = [
-    "blockchain", "crypto", "web3", "nft",
+    "blockchain",
+    "crypto",
+    "web3",
+    "nft",
 ]
 
 
@@ -49,7 +63,9 @@ def _clean_hn_company(raw: str) -> str:
     # 3. Strip fundraising: "(Series A)", "(Seed)" → ""
     name = re.sub(
         r"\s*\(\s*(?:Series\s+[A-Z]|Seed|Pre-Seed|Funded|Angel)\s*\)",
-        "", name, flags=re.IGNORECASE,
+        "",
+        name,
+        flags=re.IGNORECASE,
     )
 
     # 4. Strip trailing URLs: "Tether - https://..." → "Tether"
@@ -65,14 +81,29 @@ def _clean_hn_company(raw: str) -> str:
 def _clean_hn_title(raw: str, description: str) -> str:
     """Validate title; extract from description if generic."""
     generic = {
-        "full-time", "full time", "fulltime", "part-time", "part time",
-        "remote", "onsite", "on-site", "hybrid", "contract", "contractor",
-        "intern", "internship", "hiring", "we're hiring", "multiple positions",
+        "full-time",
+        "full time",
+        "fulltime",
+        "part-time",
+        "part time",
+        "remote",
+        "onsite",
+        "on-site",
+        "hybrid",
+        "contract",
+        "contractor",
+        "intern",
+        "internship",
+        "hiring",
+        "we're hiring",
+        "multiple positions",
     }
     title = raw.strip()
 
     # Strip "HIRING:" prefixes
-    title = re.sub(r"^(?:HIRING|NOW HIRING|WE'RE HIRING|WANTED|SEEKING)[:\s-]+", "", title, flags=re.IGNORECASE).strip()
+    title = re.sub(
+        r"^(?:HIRING|NOW HIRING|WE'RE HIRING|WANTED|SEEKING)[:\s-]+", "", title, flags=re.IGNORECASE
+    ).strip()
 
     if title.lower() not in generic:
         return title
@@ -142,9 +173,7 @@ async def scrape_hn_who_is_hiring(
     return all_jobs
 
 
-async def _find_threads(
-    http_client: httpx.AsyncClient, limit: int
-) -> list[dict]:
+async def _find_threads(http_client: httpx.AsyncClient, limit: int) -> list[dict]:
     """Find recent 'Who is hiring?' threads via Algolia."""
     resp = await http_client.get(
         ALGOLIA_SEARCH,
@@ -158,9 +187,7 @@ async def _find_threads(
     return resp.json().get("hits", [])
 
 
-async def _fetch_comments(
-    http_client: httpx.AsyncClient, thread_id: str
-) -> list[dict]:
+async def _fetch_comments(http_client: httpx.AsyncClient, thread_id: str) -> list[dict]:
     """Fetch all top-level comments from a thread via Algolia."""
     all_comments: list[dict] = []
     page = 0
@@ -259,7 +286,10 @@ def _parse_comment(comment: dict, thread_title: str) -> ScrapedJob | None:
     careers_url = None
     for u in urls:
         # Prefer career/job URLs
-        if any(kw in u.lower() for kw in ["career", "jobs", "hiring", "apply", "lever", "greenhouse", "ashby"]):
+        if any(
+            kw in u.lower()
+            for kw in ["career", "jobs", "hiring", "apply", "lever", "greenhouse", "ashby"]
+        ):
             careers_url = u
             break
     if not careers_url and urls:
@@ -271,6 +301,7 @@ def _parse_comment(comment: dict, thread_title: str) -> ScrapedJob | None:
 
     # Parse salary from description
     from app.scrapers.base import parse_salary
+
     salary_min, salary_max = parse_salary(plain)
 
     # Posted date from comment timestamp
@@ -304,9 +335,7 @@ def _parse_comment(comment: dict, thread_title: str) -> ScrapedJob | None:
     )
 
 
-def _passes_filter(
-    job: ScrapedJob, include: list[str], exclude: list[str]
-) -> bool:
+def _passes_filter(job: ScrapedJob, include: list[str], exclude: list[str]) -> bool:
     """Check if a parsed HN job matches keyword filters."""
     search_text = f"{job.title} {job.description[:500]}".lower()
 
@@ -322,9 +351,30 @@ def _passes_filter(
 def _looks_like_location(text: str) -> bool:
     """Heuristic: does this text fragment look like a location?"""
     location_hints = [
-        ",", "san", "new york", "nyc", "london", "berlin", "paris",
-        "seattle", "austin", "boston", "chicago", "dc", "denver",
-        "toronto", "vancouver", "sydney", "singapore", "tokyo",
-        "usa", "uk", "eu", "europe", "us ", "ca ", "bay area",
+        ",",
+        "san",
+        "new york",
+        "nyc",
+        "london",
+        "berlin",
+        "paris",
+        "seattle",
+        "austin",
+        "boston",
+        "chicago",
+        "dc",
+        "denver",
+        "toronto",
+        "vancouver",
+        "sydney",
+        "singapore",
+        "tokyo",
+        "usa",
+        "uk",
+        "eu",
+        "europe",
+        "us ",
+        "ca ",
+        "bay area",
     ]
     return any(hint in text for hint in location_hints)

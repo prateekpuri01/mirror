@@ -69,11 +69,13 @@ async def prewarm_company_research_for_jobs(job_ids: list[str | uuid.UUID]) -> N
                         meta["company_research"] = research
                         job.extra_metadata = meta
                         from sqlalchemy.orm.attributes import flag_modified
+
                         flag_modified(job, "extra_metadata")
                         await session.commit()
                         logger.info(
                             "Pre-warmed company research for job %s (%s)",
-                            job.id, getattr(job, "title", "?")[:60],
+                            job.id,
+                            getattr(job, "title", "?")[:60],
                         )
             except Exception:
                 logger.exception("Pre-warm company research failed for job %s", job_id)

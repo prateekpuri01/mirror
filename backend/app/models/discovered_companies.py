@@ -26,20 +26,18 @@ from app.models.base import Base, TimestampMixin
 class DiscoveredCompany(TimestampMixin, Base):
     __tablename__ = "discovered_companies"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
     # Lowercased, suffix-stripped form used for upsert dedup. Unique.
     # E.g. "Anthropic, PBC" → "anthropic".
-    normalized_name: Mapped[str] = mapped_column(
-        Text, unique=True, nullable=False, index=True
-    )
+    normalized_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False, index=True)
     # Last-observed display name — we keep the most recent spelling.
     name: Mapped[str] = mapped_column(Text, nullable=False)
 
     # Resolution outputs. Populated lazily as we learn them.
-    ats: Mapped[str | None] = mapped_column(Text, nullable=True)  # "greenhouse" | "lever" | "ashby" | "direct"
+    ats: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # "greenhouse" | "lever" | "ashby" | "direct"
     slug: Mapped[str | None] = mapped_column(Text, nullable=True)
     careers_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     website: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -74,15 +72,9 @@ class DiscoveredCompany(TimestampMixin, Base):
         Text, nullable=False, server_default=text("'discovered'")
     )
 
-    times_seen: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("1")
-    )
-    times_matched: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
-    times_no_jobs: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default=text("0")
-    )
+    times_seen: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+    times_matched: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    times_no_jobs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     first_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

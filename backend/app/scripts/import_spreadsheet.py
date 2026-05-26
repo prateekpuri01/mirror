@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 
 from openpyxl import load_workbook
-from sqlalchemy import select, func
+from sqlalchemy import select
 
 from app.database import async_session
 from app.models.jobs import Job, JobSource
@@ -71,6 +71,7 @@ def parse_salary(salary_text: str | None) -> tuple[int | None, int | None]:
         return None, None
 
     import re
+
     amounts = re.findall(r"\$?([\d,]+)", salary_text)
     if not amounts:
         return None, None
@@ -107,10 +108,12 @@ async def import_jobs():
             pattern_title = f"%{title.split()[0]}%"  # Match first word of title
 
             result = await session.execute(
-                select(Job).where(
+                select(Job)
+                .where(
                     Job.company.ilike(pattern_company),
                     Job.title.ilike(pattern_title),
-                ).limit(1)
+                )
+                .limit(1)
             )
             existing = result.scalar_one_or_none()
 
@@ -121,12 +124,13 @@ async def import_jobs():
             else:
                 # Create new job entry
                 salary_min, salary_max = parse_salary(entry.get("salary_text"))
-                url = entry.get("url") or f"manual://{company.lower().replace(' ', '-')}/{title.lower().replace(' ', '-')}"
+                url = (
+                    entry.get("url")
+                    or f"manual://{company.lower().replace(' ', '-')}/{title.lower().replace(' ', '-')}"
+                )
 
                 # Check if URL already exists
-                url_check = await session.execute(
-                    select(Job).where(Job.url == url).limit(1)
-                )
+                url_check = await session.execute(select(Job).where(Job.url == url).limit(1))
                 existing_by_url = url_check.scalar_one_or_none()
                 if existing_by_url:
                     existing_by_url.thumbs = 1
@@ -137,7 +141,9 @@ async def import_jobs():
                     title=title,
                     company=company,
                     location=entry.get("location"),
-                    remote=entry.get("location", "").lower() == "remote" if entry.get("location") else False,
+                    remote=entry.get("location", "").lower() == "remote"
+                    if entry.get("location")
+                    else False,
                     salary_min=salary_min,
                     salary_max=salary_max,
                     description=f"Manually tracked job: {title} at {company}",
@@ -150,9 +156,7 @@ async def import_jobs():
                 logger.info("Created: %s at %s (source=manual, thumbs=1)", title, company)
 
         await session.commit()
-        logger.info(
-            "Import complete: %d matched existing, %d created new", matched, created
-        )
+        logger.info("Import complete: %d matched existing, %d created new", matched, created)
 
 
 if __name__ == "__main__":

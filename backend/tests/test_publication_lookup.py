@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from app.ai.publication_enricher import enrich_publication
-from app.services.publication_lookup import search_publication, _title_similarity
+from app.services.publication_lookup import _title_similarity, search_publication
 
 
 def test_title_similarity():

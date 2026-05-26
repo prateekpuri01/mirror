@@ -87,15 +87,11 @@ def _resolve_endpoint() -> tuple[str, str | None]:
     provider = _provider()
     if provider == "openai":
         if not settings.openai_api_key:
-            raise RuntimeError(
-                "OPENAI_API_KEY is not set (LLM_PROVIDER=openai)."
-            )
+            raise RuntimeError("OPENAI_API_KEY is not set (LLM_PROVIDER=openai).")
         return settings.openai_api_key, None
     if provider == "anthropic":
         if not settings.anthropic_api_key:
-            raise RuntimeError(
-                "ANTHROPIC_API_KEY is not set (LLM_PROVIDER=anthropic)."
-            )
+            raise RuntimeError("ANTHROPIC_API_KEY is not set (LLM_PROVIDER=anthropic).")
         return settings.anthropic_api_key, "https://api.anthropic.com/v1/"
     if provider == "ollama":
         # Ollama doesn't validate the api_key, but the OpenAI SDK requires one.

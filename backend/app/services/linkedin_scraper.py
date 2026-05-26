@@ -1,9 +1,10 @@
 """Playwright-based LinkedIn profile scraper."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from playwright.async_api import TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ async def scrape_linkedin_profile(url: str) -> dict:
     if not url or "linkedin.com" not in url:
         return {
             "raw_text": "",
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "scraped_at": datetime.now(UTC).isoformat(),
             "url": url,
             "success": False,
             "error": "Invalid LinkedIn URL",
@@ -59,7 +60,7 @@ async def scrape_linkedin_profile(url: str) -> dict:
                 await browser.close()
                 return {
                     "raw_text": "",
-                    "scraped_at": datetime.now(timezone.utc).isoformat(),
+                    "scraped_at": datetime.now(UTC).isoformat(),
                     "url": url,
                     "success": False,
                     "error": "Page load timed out",
@@ -69,9 +70,7 @@ async def scrape_linkedin_profile(url: str) -> dict:
             current_url = page.url.lower()
             page_text = await page.inner_text("body")
 
-            auth_blocked = any(
-                indicator in current_url for indicator in AUTH_WALL_INDICATORS
-            )
+            auth_blocked = any(indicator in current_url for indicator in AUTH_WALL_INDICATORS)
             if not auth_blocked and len(page_text.strip()) < 200:
                 auth_blocked = True
 
@@ -80,7 +79,7 @@ async def scrape_linkedin_profile(url: str) -> dict:
             if auth_blocked:
                 return {
                     "raw_text": "",
-                    "scraped_at": datetime.now(timezone.utc).isoformat(),
+                    "scraped_at": datetime.now(UTC).isoformat(),
                     "url": url,
                     "success": False,
                     "error": "LinkedIn requires authentication to view this profile",
@@ -88,7 +87,7 @@ async def scrape_linkedin_profile(url: str) -> dict:
 
             return {
                 "raw_text": page_text[:20000],  # Cap text size
-                "scraped_at": datetime.now(timezone.utc).isoformat(),
+                "scraped_at": datetime.now(UTC).isoformat(),
                 "url": url,
                 "success": True,
                 "error": None,
@@ -98,7 +97,7 @@ async def scrape_linkedin_profile(url: str) -> dict:
         logger.exception("LinkedIn scrape failed for %s", url)
         return {
             "raw_text": "",
-            "scraped_at": datetime.now(timezone.utc).isoformat(),
+            "scraped_at": datetime.now(UTC).isoformat(),
             "url": url,
             "success": False,
             "error": f"Scrape failed: {str(e)}",

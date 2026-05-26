@@ -82,8 +82,8 @@ LAYOUTS: dict[str, dict] = {
 COLOR_SCHEMES: dict[str, dict] = {
     "navy": {
         "colors": {
-            "navy": "#1F3A5F",       # section headers + name bold
-            "orange": "#1F3A5F",     # tagline + accents (same as navy here)
+            "navy": "#1F3A5F",  # section headers + name bold
+            "orange": "#1F3A5F",  # tagline + accents (same as navy here)
             "contact": "#555555",
             "separator": "#B8B8B8",
             "dark": "#1A1A1A",
@@ -324,16 +324,26 @@ SAMPLE_RESUME_CONTENT = {
     "experience": {
         "acme_robotics": {
             "bullets": [
-                {"text": "Led migration of the metrics pipeline from Airflow to Dagster, eliminating ~30% of weekly on-call pages."},
-                {"text": "Built a Python SDK adopted by 12 internal teams to publish features into the real-time inference store."},
-                {"text": "Mentored two junior engineers through their first production launches; both promoted within 18 months."},
+                {
+                    "text": "Led migration of the metrics pipeline from Airflow to Dagster, eliminating ~30% of weekly on-call pages."
+                },
+                {
+                    "text": "Built a Python SDK adopted by 12 internal teams to publish features into the real-time inference store."
+                },
+                {
+                    "text": "Mentored two junior engineers through their first production launches; both promoted within 18 months."
+                },
             ],
         },
         "beta_analytics": {
             "bullets": [
-                {"text": "Shipped the first version of the customer-facing analytics API, growing to 2M requests/day in year one."},
+                {
+                    "text": "Shipped the first version of the customer-facing analytics API, growing to 2M requests/day in year one."
+                },
                 {"text": "Reduced ETL runtimes 6x by rewriting the join layer in Polars."},
-                {"text": "Owned cost reduction for the data lake — cut S3 spend 38% via lifecycle policies and columnar repack."},
+                {
+                    "text": "Owned cost reduction for the data lake — cut S3 spend 38% via lifecycle policies and columnar repack."
+                },
             ],
         },
     },

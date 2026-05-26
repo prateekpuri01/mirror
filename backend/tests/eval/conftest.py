@@ -14,8 +14,8 @@ import pytest
 
 from tests.eval.fixtures import (
     EVAL_PROFILE_DATA,
-    POSITIVE_EXAMPLES_TEXT,
     NEGATIVE_EXAMPLES_TEXT,
+    POSITIVE_EXAMPLES_TEXT,
     TEST_CASES,
     TEST_CASES_BY_ID,
 )
@@ -41,12 +41,12 @@ def _make_fake_job(job_dict: dict) -> SimpleNamespace:
 
 async def _score_one_case(case_id: str, job_dict: dict) -> EvalResult:
     """Score a single test case by calling the real LLM pipeline."""
-    from app.ai.client import get_openai_client, RESUME_MODEL
+    from app.ai.client import RESUME_MODEL, get_openai_client
     from app.ai.prompts import (
-        build_role_fit_system,
+        build_interest_fit_prompt,
         build_interest_fit_system,
         build_role_fit_prompt,
-        build_interest_fit_prompt,
+        build_role_fit_system,
         format_job_for_scoring,
     )
     from app.ai.scoring import _build_compact_profile, _parse_json_response
@@ -83,21 +83,25 @@ async def _score_one_case(case_id: str, job_dict: dict) -> EvalResult:
 
     # Apply arithmetic correction (same as scoring.py post-hoc fix)
     rf = role_result.get("role_fit", {})
-    rf_computed = sum([
-        rf.get("hard_skills", {}).get("score", 0),
-        rf.get("experience_level", {}).get("score", 0),
-        rf.get("domain_relevance", {}).get("score", 0),
-        rf.get("education_fit", {}).get("score", 0),
-    ])
+    rf_computed = sum(
+        [
+            rf.get("hard_skills", {}).get("score", 0),
+            rf.get("experience_level", {}).get("score", 0),
+            rf.get("domain_relevance", {}).get("score", 0),
+            rf.get("education_fit", {}).get("score", 0),
+        ]
+    )
     role_score = rf_computed if rf_computed > 0 else rf.get("score", 0)
 
     intf = interest_result.get("interest_fit", {})
-    if_computed = sum([
-        intf.get("role_alignment", {}).get("score", 0),
-        intf.get("domain_excitement", {}).get("score", 0),
-        intf.get("organization_fit", {}).get("score", 0),
-        intf.get("practical_factors", {}).get("score", 0),
-    ])
+    if_computed = sum(
+        [
+            intf.get("role_alignment", {}).get("score", 0),
+            intf.get("domain_excitement", {}).get("score", 0),
+            intf.get("organization_fit", {}).get("score", 0),
+            intf.get("practical_factors", {}).get("score", 0),
+        ]
+    )
     interest_score = if_computed if if_computed > 0 else intf.get("score", 0)
 
     return EvalResult(
@@ -121,11 +125,9 @@ def all_scores() -> dict[str, EvalResult]:
 
     Makes real LLM calls. Results cached for all test functions.
     """
+
     async def _run():
-        tasks = {
-            tc.case_id: _score_one_case(tc.case_id, tc.job)
-            for tc in TEST_CASES
-        }
+        tasks = {tc.case_id: _score_one_case(tc.case_id, tc.job) for tc in TEST_CASES}
         results = {}
         # Run with concurrency limit of 10
         sem = asyncio.Semaphore(10)
@@ -146,7 +148,10 @@ def all_scores() -> dict[str, EvalResult]:
             results[cid] = result
             logger.info(
                 "Scored %s: role=%d interest=%d composite=%.1f",
-                cid, result.role_fit_score, result.interest_fit_score, result.composite,
+                cid,
+                result.role_fit_score,
+                result.interest_fit_score,
+                result.composite,
             )
         return results
 

@@ -41,16 +41,15 @@ def test_seniority_downgrade_drops_experience_score(all_scores):
     if base_result is None:
         pytest.skip("Base case A1 not scored")
 
-    base_exp = base_result.role_fit_detail.get("role_fit", {}).get(
-        "experience_level", {}
-    ).get("score", 0)
-    pert_exp = result.role_fit_detail.get("role_fit", {}).get(
-        "experience_level", {}
-    ).get("score", 0)
+    base_exp = (
+        base_result.role_fit_detail.get("role_fit", {}).get("experience_level", {}).get("score", 0)
+    )
+    pert_exp = (
+        result.role_fit_detail.get("role_fit", {}).get("experience_level", {}).get("score", 0)
+    )
 
     assert pert_exp < base_exp, (
-        f"Seniority downgrade: experience_level did not drop "
-        f"(base={base_exp}, junior={pert_exp})"
+        f"Seniority downgrade: experience_level did not drop (base={base_exp}, junior={pert_exp})"
     )
 
     # Composite should also drop
@@ -71,37 +70,31 @@ def test_domain_swap_drops_domain_score():
     perturbed_job = copy.deepcopy(base.job)
     perturbed_job["title"] = "Senior Research Scientist, Pharmaceutical Manufacturing"
     perturbed_job["company"] = "Pfizer Manufacturing"
-    perturbed_job["description"] = perturbed_job["description"].replace(
-        "LLM", "pharmaceutical process"
-    ).replace(
-        "production LLM tools", "pharmaceutical manufacturing automation"
-    ).replace(
-        "LLM optimization", "process optimization"
-    ).replace(
-        "LLM efficiency", "manufacturing efficiency"
-    ).replace(
-        "ML venues (NeurIPS, ICML, ACL)", "pharmaceutical engineering journals"
-    ).replace(
-        "NLP", "chemical engineering"
+    perturbed_job["description"] = (
+        perturbed_job["description"]
+        .replace("LLM", "pharmaceutical process")
+        .replace("production LLM tools", "pharmaceutical manufacturing automation")
+        .replace("LLM optimization", "process optimization")
+        .replace("LLM efficiency", "manufacturing efficiency")
+        .replace("ML venues (NeurIPS, ICML, ACL)", "pharmaceutical engineering journals")
+        .replace("NLP", "chemical engineering")
     )
 
     result = _run_async(_score_one_case("A1_pharma", perturbed_job))
 
     # Domain relevance should be substantially lower
-    domain_score = result.role_fit_detail.get("role_fit", {}).get(
-        "domain_relevance", {}
-    ).get("score", 30)
-    assert domain_score <= 20, (
-        f"Domain swap: domain_relevance={domain_score}, expected <=20"
+    domain_score = (
+        result.role_fit_detail.get("role_fit", {}).get("domain_relevance", {}).get("score", 30)
     )
+    assert domain_score <= 20, f"Domain swap: domain_relevance={domain_score}, expected <=20"
 
     # Interest domain_excitement should be low
-    domain_exc = result.interest_fit_detail.get("interest_fit", {}).get(
-        "domain_excitement", {}
-    ).get("score", 30)
-    assert domain_exc <= 20, (
-        f"Domain swap: domain_excitement={domain_exc}, expected <=20"
+    domain_exc = (
+        result.interest_fit_detail.get("interest_fit", {})
+        .get("domain_excitement", {})
+        .get("score", 30)
     )
+    assert domain_exc <= 20, f"Domain swap: domain_excitement={domain_exc}, expected <=20"
 
 
 # ---------------------------------------------------------------------------
@@ -123,9 +116,7 @@ def test_deal_breaker_injection_crashes_org_fit(all_scores):
 
     org_score = result.organization_fit_score
     assert org_score is not None, "organization_fit sub-score not found"
-    assert org_score <= 5, (
-        f"Deal-breaker injection: org_fit={org_score}, expected <=5"
-    )
+    assert org_score <= 5, f"Deal-breaker injection: org_fit={org_score}, expected <=5"
 
     # Interest score should drop significantly vs base
     base_result = all_scores.get("A1")

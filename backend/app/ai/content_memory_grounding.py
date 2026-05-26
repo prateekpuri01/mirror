@@ -9,11 +9,10 @@ verbatim.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from app.models import ContentMemory
 from app.services import content_memory_service as svc
-
 
 _HEADER = (
     "## Your past hand-tuned versions for this content\n"
@@ -46,7 +45,8 @@ def format_grounding_block(
         stale = svc.is_stale(row, profile_data)
         stale_note = (
             "(note: underlying accomplishment text has since changed — treat as loose stylistic reference)\n"
-            if stale else ""
+            if stale
+            else ""
         )
         body = _render_payload(row)
         parts.append(f"\n### {recency}{ctx}\n{stale_note}{body}")
@@ -79,7 +79,8 @@ def format_multi_entity_block(
             stale_note = (
                 "(note: underlying accomplishment text has since changed — "
                 "treat as loose stylistic reference)\n"
-                if stale else ""
+                if stale
+                else ""
             )
             body = _render_payload(row)
             parts.append(f"\n**{recency}{ctx}**\n{stale_note}{body}")

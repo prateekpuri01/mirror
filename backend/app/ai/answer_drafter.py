@@ -3,7 +3,7 @@
 import json
 import logging
 
-from app.ai.client import get_openai_client, RESUME_MODEL
+from app.ai.client import RESUME_MODEL, get_openai_client
 from app.ai.prompts import format_job_for_scoring
 from app.ai.resume_prompts import build_full_profile_for_resume
 
@@ -219,10 +219,7 @@ async def draft_all_answers(
     # then to a normalized substring match (handles em-dash/asterisk drift
     # that previously made every field silently fail to update).
     def _normalize(s: str) -> str:
-        return "".join(
-            ch.lower() for ch in (s or "")
-            if ch.isalnum()
-        )
+        return "".join(ch.lower() for ch in (s or "") if ch.isalnum())
 
     label_by_norm = {_normalize(f["label"]): f["label"] for f in short_answer_fields}
     out: dict[str, str] = {}
@@ -251,12 +248,14 @@ async def draft_all_answers(
     if unmatched:
         logger.warning(
             "draft_all_answers: %d response key(s) couldn't be matched to a field: %s",
-            len(unmatched), unmatched,
+            len(unmatched),
+            unmatched,
         )
     if not out:
         logger.warning(
             "draft_all_answers: 0 of %d fields matched any LLM key. Raw keys: %s",
-            len(short_answer_fields), list(raw.keys())[:5],
+            len(short_answer_fields),
+            list(raw.keys())[:5],
         )
 
     return out
@@ -287,14 +286,14 @@ async def draft_single_answer(
     if draft_history:
         history_section = (
             "## Editing History (honor ALL constraints from previous instructions)\n"
-            + _format_history(draft_history) + "\n"
+            + _format_history(draft_history)
+            + "\n"
         )
 
     existing_section = ""
     if field.get("draft_response"):
         existing_section = (
-            f"## Existing Draft (revise based on instructions above)\n"
-            f"{field['draft_response']}\n"
+            f"## Existing Draft (revise based on instructions above)\n{field['draft_response']}\n"
         )
 
     user_content = DRAFT_SINGLE_USER.format(

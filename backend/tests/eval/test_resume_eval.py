@@ -20,11 +20,11 @@ from itertools import combinations
 
 import pytest
 
-from tests.eval.resume_checks import run_deterministic_checks, ResumeCheckReport
+from tests.eval.resume_checks import ResumeCheckReport, run_deterministic_checks
 from tests.eval.resume_metrics import (
-    run_llm_checks,
-    run_all_judges,
     JudgeResult,
+    run_all_judges,
+    run_llm_checks,
 )
 
 logger = logging.getLogger(__name__)
@@ -57,22 +57,24 @@ async def _generate_one_resume(
     """Generate a resume for one test case using the real pipeline steps."""
     from types import SimpleNamespace
 
-    from app.ai.client import get_openai_client, RESUME_MODEL
+    from app.ai.client import RESUME_MODEL, get_openai_client
     from app.ai.prompts import format_job_for_scoring
+    from app.ai.resume_builder import normalize_experience_order
     from app.ai.resume_prompts import (
         RESUME_CRITIC_SYSTEM,
-        build_resume_system,
-        build_resume_prompt,
         build_critic_prompt,
-        build_refiner_system,
-        build_refiner_prompt,
         build_full_profile_for_resume,
+        build_refiner_prompt,
+        build_refiner_system,
+        build_resume_prompt,
+        build_resume_system,
     )
-    from app.ai.resume_builder import normalize_experience_order
 
     client = get_openai_client()
 
-    async def call_llm(system: str, messages: list[dict], temp: float = 0.3, max_tokens: int = 4000) -> dict:
+    async def call_llm(
+        system: str, messages: list[dict], temp: float = 0.3, max_tokens: int = 4000
+    ) -> dict:
         oai_messages = [{"role": "system", "content": system}]
         for msg in messages:
             oai_messages.append({"role": msg["role"], "content": msg["content"]})
@@ -133,8 +135,8 @@ async def _generate_one_resume(
 Job title: {fake_job.title} at {fake_job.company}
 Job description: {fake_job.description[:1000]}
 
-Candidate: {profile_data.get('experience_years', 'N/A')} years post-PhD.
-Recent roles: {', '.join(wh.get('title', '') + ' at ' + wh.get('employer', '') for wh in profile_data.get('work_history', [])[:3])}""",
+Candidate: {profile_data.get("experience_years", "N/A")} years post-PhD.
+Recent roles: {", ".join(wh.get("title", "") + " at " + wh.get("employer", "") for wh in profile_data.get("work_history", [])[:3])}""",
         temp=0.4,
     )
     logger.info("Strategy for %s: %s", case_id, strategy[:150])
@@ -142,7 +144,10 @@ Recent roles: {', '.join(wh.get('title', '') + ' at ' + wh.get('employer', '') f
     # Phase 1: Generate first draft
     resume_system = build_resume_system(profile_data)
     messages = build_resume_prompt(
-        profile_text, job_text, None, None,
+        profile_text,
+        job_text,
+        None,
+        None,
         profile_data=profile_data,
         strategy=strategy,
     )
@@ -158,7 +163,8 @@ Recent roles: {', '.join(wh.get('title', '') + ' at ' + wh.get('employer', '') f
     critique = await call_llm(RESUME_CRITIC_SYSTEM, critic_messages, temp=0.3)
     logger.info(
         "Critique for %s: %s, %d weaknesses",
-        case_id, critique.get("overall_competitiveness", "?"),
+        case_id,
+        critique.get("overall_competitiveness", "?"),
         len(critique.get("weaknesses", [])),
     )
 
@@ -196,6 +202,7 @@ Recent roles: {', '.join(wh.get('title', '') + ' at ' + wh.get('employer', '') f
 def resume_profile() -> dict:
     """Return the eval profile data with complete_profile."""
     from tests.eval.resume_fixtures import RESUME_EVAL_PROFILE
+
     return RESUME_EVAL_PROFILE
 
 
@@ -232,6 +239,7 @@ def all_resumes(resume_profile) -> dict[str, ResumeEvalResult]:
 @pytest.fixture
 def test_cases():
     from tests.eval.resume_fixtures import RESUME_TEST_CASES_BY_ID
+
     return RESUME_TEST_CASES_BY_ID
 
 
@@ -242,6 +250,7 @@ def test_cases():
 
 def _case_ids():
     from tests.eval.resume_fixtures import RESUME_TEST_CASES
+
     return [tc.case_id for tc in RESUME_TEST_CASES]
 
 
@@ -251,9 +260,11 @@ def test_no_participial_tails(all_resumes, case_id):
     if case_id not in all_resumes:
         pytest.skip(f"Resume not generated for {case_id}")
     from tests.eval.resume_checks import check_participial_tails_fast
+
     results = check_participial_tails_fast(all_resumes[case_id].final_resume)
-    assert len(results) == 0, f"{len(results)} participial tails:\n" + \
-        "\n".join(f"  [{r.location}] {r.offending_text}" for r in results)
+    assert len(results) == 0, f"{len(results)} participial tails:\n" + "\n".join(
+        f"  [{r.location}] {r.offending_text}" for r in results
+    )
 
 
 @pytest.mark.eval
@@ -262,10 +273,12 @@ def test_word_counts(all_resumes, case_id):
     if case_id not in all_resumes:
         pytest.skip(f"Resume not generated for {case_id}")
     from tests.eval.resume_checks import check_word_counts
+
     results = check_word_counts(all_resumes[case_id].final_resume)
     errors = [r for r in results if r.severity == "error"]
-    assert len(errors) == 0, f"{len(errors)} word count violations:\n" + \
-        "\n".join(f"  [{r.location}] {r.message}" for r in errors)
+    assert len(errors) == 0, f"{len(errors)} word count violations:\n" + "\n".join(
+        f"  [{r.location}] {r.message}" for r in errors
+    )
 
 
 @pytest.mark.eval
@@ -274,9 +287,11 @@ def test_no_critic_leakage(all_resumes, case_id):
     if case_id not in all_resumes:
         pytest.skip(f"Resume not generated for {case_id}")
     from tests.eval.resume_checks import check_critic_leakage
+
     results = check_critic_leakage(all_resumes[case_id].final_resume)
-    assert len(results) == 0, f"{len(results)} critic leakage:\n" + \
-        "\n".join(f"  [{r.location}] {r.offending_text}" for r in results)
+    assert len(results) == 0, f"{len(results)} critic leakage:\n" + "\n".join(
+        f"  [{r.location}] {r.offending_text}" for r in results
+    )
 
 
 @pytest.mark.eval
@@ -285,9 +300,11 @@ def test_no_pronoun_violations(all_resumes, case_id):
     if case_id not in all_resumes:
         pytest.skip(f"Resume not generated for {case_id}")
     from tests.eval.resume_checks import check_pronoun_violations
+
     results = check_pronoun_violations(all_resumes[case_id].final_resume)
-    assert len(results) == 0, f"{len(results)} pronoun violations:\n" + \
-        "\n".join(f"  [{r.location}] {r.offending_text}" for r in results)
+    assert len(results) == 0, f"{len(results)} pronoun violations:\n" + "\n".join(
+        f"  [{r.location}] {r.offending_text}" for r in results
+    )
 
 
 @pytest.mark.eval
@@ -296,10 +313,12 @@ def test_schema_complete(all_resumes, case_id):
     if case_id not in all_resumes:
         pytest.skip(f"Resume not generated for {case_id}")
     from tests.eval.resume_checks import check_schema_completeness
+
     results = check_schema_completeness(all_resumes[case_id].final_resume)
     errors = [r for r in results if r.severity == "error"]
-    assert len(errors) == 0, f"{len(errors)} schema errors:\n" + \
-        "\n".join(f"  [{r.location}] {r.message}" for r in errors)
+    assert len(errors) == 0, f"{len(errors)} schema errors:\n" + "\n".join(
+        f"  [{r.location}] {r.message}" for r in errors
+    )
 
 
 @pytest.mark.eval
@@ -308,9 +327,11 @@ def test_no_fabrication(all_resumes, resume_profile, case_id):
     if case_id not in all_resumes:
         pytest.skip(f"Resume not generated for {case_id}")
     from tests.eval.resume_checks import check_fabricated_ids
+
     results = check_fabricated_ids(all_resumes[case_id].final_resume, resume_profile)
-    assert len(results) == 0, f"{len(results)} fabricated IDs:\n" + \
-        "\n".join(f"  [{r.location}] {r.message}" for r in results)
+    assert len(results) == 0, f"{len(results)} fabricated IDs:\n" + "\n".join(
+        f"  [{r.location}] {r.message}" for r in results
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -323,8 +344,11 @@ def test_summaries_are_different(all_resumes):
     """Perfect-match cases should produce meaningfully different summaries."""
     from tests.eval.resume_checks import _content_words
 
-    perfect_cases = [cid for cid in all_resumes if cid.startswith("RS_") and
-                     all_resumes[cid].final_resume.get("summary")]
+    perfect_cases = [
+        cid
+        for cid in all_resumes
+        if cid.startswith("RS_") and all_resumes[cid].final_resume.get("summary")
+    ]
 
     if len(perfect_cases) < 2:
         pytest.skip("Need at least 2 resumes for comparison")
@@ -362,8 +386,9 @@ def test_refine_doesnt_regress(all_resumes, case_id):
 
     if final_report.error_count > draft_report.error_count:
         new_errors = final_report.error_count - draft_report.error_count
-        details = "\n".join(f"  [{r.location}] {r.check_name}: {r.message}"
-                          for r in final_report.errors)
+        details = "\n".join(
+            f"  [{r.location}] {r.check_name}: {r.message}" for r in final_report.errors
+        )
         pytest.fail(
             f"Refiner introduced {new_errors} new errors "
             f"(draft: {draft_report.error_count}, final: {final_report.error_count}):\n{details}"
@@ -380,23 +405,27 @@ def test_print_full_report(all_resumes, resume_profile):
     """Print comprehensive report across all generated resumes."""
     from collections import Counter
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"RESUME BENCHMARK REPORT — {len(all_resumes)} resumes generated")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     check_counts: Counter = Counter()
     for case_id, result in sorted(all_resumes.items()):
         report = run_deterministic_checks(result.final_resume, resume_profile)
-        print(f"\n  {case_id}: {report.error_count} errors, {report.warning_count} warnings "
-              f"({result.generation_time_s:.1f}s)")
+        print(
+            f"\n  {case_id}: {report.error_count} errors, {report.warning_count} warnings "
+            f"({result.generation_time_s:.1f}s)"
+        )
         for r in report.results:
             check_counts[r.check_name] += 1
 
         # Print critique summary
         critique = result.critique
         if critique:
-            print(f"    Critique: {critique.get('overall_competitiveness', '?')}, "
-                  f"{len(critique.get('weaknesses', []))} weaknesses")
+            print(
+                f"    Critique: {critique.get('overall_competitiveness', '?')}, "
+                f"{len(critique.get('weaknesses', []))} weaknesses"
+            )
             print(f"    Top concern: {critique.get('top_concern', '?')[:80]}")
 
         # Print summary preview
@@ -404,12 +433,12 @@ def test_print_full_report(all_resumes, resume_profile):
         if summary:
             print(f"    Summary: {summary[:100]}...")
 
-    print(f"\n  Check counts across all resumes:")
+    print("\n  Check counts across all resumes:")
     for check_name, count in check_counts.most_common():
         print(f"    {check_name:25s} {count:3d}")
 
     # Draft vs final comparison
-    print(f"\n  Draft → Final error comparison:")
+    print("\n  Draft → Final error comparison:")
     for case_id, result in sorted(all_resumes.items()):
         draft_report = run_deterministic_checks(result.first_draft)
         final_report = run_deterministic_checks(result.final_resume)
@@ -417,4 +446,4 @@ def test_print_full_report(all_resumes, resume_profile):
         arrow = "↓" if delta < 0 else "↑" if delta > 0 else "="
         print(f"    {case_id}: {draft_report.error_count} → {final_report.error_count} {arrow}")
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")

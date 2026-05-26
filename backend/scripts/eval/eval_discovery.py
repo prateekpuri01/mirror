@@ -58,14 +58,14 @@ for _root in (_HERE.parents[1], _HERE.parents[2] / "backend"):
 from app.config import settings  # noqa: E402
 from app.database import async_session  # noqa: E402
 from app.services import app_settings_service  # noqa: E402
-from app.services.web_search import _searxng_search  # noqa: E402
-from app.services.web_search_llm import llm_web_search  # noqa: E402
 from app.services.hot_search.discovery import (  # noqa: E402
     _ATS_URL_PATTERNS,
     _SKIP_DOMAINS,
-    _looks_like_direct_job_url,
     _looks_like_careers_url,
+    _looks_like_direct_job_url,
 )
+from app.services.web_search import _searxng_search  # noqa: E402
+from app.services.web_search_llm import llm_web_search  # noqa: E402
 
 
 async def _load_runtime_settings() -> None:
@@ -81,6 +81,7 @@ async def _load_runtime_settings() -> None:
         "set" if settings.openai_api_key else "MISSING",
     )
 
+
 logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("eval_discovery")
 logger.setLevel(logging.INFO)
@@ -95,8 +96,8 @@ logger.setLevel(logging.INFO)
 class Case:
     label: str
     query: str
-    shape: str   # broad_domain | named_entity | ats_precision
-    notes: str   # what "good" looks like, qualitative
+    shape: str  # broad_domain | named_entity | ats_precision
+    notes: str  # what "good" looks like, qualitative
 
 
 CASES: list[Case] = [
@@ -158,10 +159,10 @@ CASES: list[Case] = [
 
 def classify_url(url: str) -> tuple[int, str]:
     """Return (rank, label).
-      rank 1: direct ATS URL (full board scrape possible)
-      rank 2: direct job-posting URL on a company domain
-      rank 3: careers page URL on a company domain
-      rank 0: aggregator / noise / non-actionable
+    rank 1: direct ATS URL (full board scrape possible)
+    rank 2: direct job-posting URL on a company domain
+    rank 3: careers page URL on a company domain
+    rank 0: aggregator / noise / non-actionable
     """
     if not url or not url.startswith(("http://", "https://")):
         return 0, "invalid"
@@ -216,8 +217,10 @@ async def run_searxng(query: str, num_results: int = 10) -> ArmResult:
             _searxng_search(query, num_results, time_range=None),
             timeout=_ARM_TIMEOUT_S,
         )
-    except asyncio.TimeoutError:
-        return ArmResult(arm="searxng", elapsed_s=time.monotonic() - t0, error=f"timeout >{_ARM_TIMEOUT_S}s")
+    except TimeoutError:
+        return ArmResult(
+            arm="searxng", elapsed_s=time.monotonic() - t0, error=f"timeout >{_ARM_TIMEOUT_S}s"
+        )
     except Exception as e:
         return ArmResult(arm="searxng", elapsed_s=time.monotonic() - t0, error=str(e)[:200])
     urls = []
@@ -226,13 +229,15 @@ async def run_searxng(query: str, num_results: int = 10) -> ArmResult:
         if not url:
             continue
         rank, kind = classify_url(url)
-        urls.append({
-            "url": url,
-            "title": r.get("title", ""),
-            "snippet": (r.get("snippet") or "")[:200],
-            "rank": rank,
-            "kind": kind,
-        })
+        urls.append(
+            {
+                "url": url,
+                "title": r.get("title", ""),
+                "snippet": (r.get("snippet") or "")[:200],
+                "rank": rank,
+                "kind": kind,
+            }
+        )
     return ArmResult(arm="searxng", urls=urls, elapsed_s=time.monotonic() - t0)
 
 
@@ -243,8 +248,10 @@ async def run_llm_web(query: str, num_results: int = 10) -> ArmResult:
             llm_web_search(query, num_results=num_results),
             timeout=_ARM_TIMEOUT_S,
         )
-    except asyncio.TimeoutError:
-        return ArmResult(arm="llm_web", elapsed_s=time.monotonic() - t0, error=f"timeout >{_ARM_TIMEOUT_S}s")
+    except TimeoutError:
+        return ArmResult(
+            arm="llm_web", elapsed_s=time.monotonic() - t0, error=f"timeout >{_ARM_TIMEOUT_S}s"
+        )
     except Exception as e:
         return ArmResult(arm="llm_web", elapsed_s=time.monotonic() - t0, error=str(e)[:200])
     if res is None:
@@ -255,13 +262,15 @@ async def run_llm_web(query: str, num_results: int = 10) -> ArmResult:
         if not url:
             continue
         rank, kind = classify_url(url)
-        urls.append({
-            "url": url,
-            "title": c.title or "",
-            "snippet": "",
-            "rank": rank,
-            "kind": kind,
-        })
+        urls.append(
+            {
+                "url": url,
+                "title": c.title or "",
+                "snippet": "",
+                "rank": rank,
+                "kind": kind,
+            }
+        )
     return ArmResult(arm="llm_web", urls=urls, elapsed_s=time.monotonic() - t0)
 
 
@@ -394,9 +403,9 @@ def build_markdown(results: list[dict]) -> str:
                 continue
             lines.append(
                 f"| {shape} | {arm_name} | "
-                f"{sum(atsp)/len(atsp):.1f} | "
-                f"{sum(actp)/len(actp):.1f}% | "
-                f"{sum(walls)/len(walls):.1f}s |"
+                f"{sum(atsp) / len(atsp):.1f} | "
+                f"{sum(actp) / len(actp):.1f}% | "
+                f"{sum(walls) / len(walls):.1f}s |"
             )
 
     # Sample of highest-value LLM-only URLs
@@ -493,10 +502,16 @@ async def main():
             logger.info(
                 "  %s: searxng=%s llm_web=%s",
                 case.label,
-                (f"{sx_s['actionable']}/{sx_s['n_urls']} action@{sx['elapsed_s']:.1f}s"
-                 if sx_s else f"ERR {sx.get('error', '')[:40]}"),
-                (f"{lw_s['actionable']}/{lw_s['n_urls']} action@{lw['elapsed_s']:.1f}s"
-                 if lw_s else f"ERR {lw.get('error', '')[:40]}"),
+                (
+                    f"{sx_s['actionable']}/{sx_s['n_urls']} action@{sx['elapsed_s']:.1f}s"
+                    if sx_s
+                    else f"ERR {sx.get('error', '')[:40]}"
+                ),
+                (
+                    f"{lw_s['actionable']}/{lw_s['n_urls']} action@{lw['elapsed_s']:.1f}s"
+                    if lw_s
+                    else f"ERR {lw.get('error', '')[:40]}"
+                ),
             )
 
     # Rebuild markdown from the FULL JSONL on disk (not just this run's

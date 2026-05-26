@@ -93,8 +93,10 @@ def build_single_shot_system(profile_data: dict, memory_text: str = "") -> str:
     available_employers = []
     for wh in work_history:
         key = employer_key(wh["employer"])
-        available_employers.append(f"- {wh['employer']} (key: \"{key}\")")
-    employer_list = "\n".join(available_employers) if available_employers else "- See work history in profile"
+        available_employers.append(f'- {wh["employer"]} (key: "{key}")')
+    employer_list = (
+        "\n".join(available_employers) if available_employers else "- See work history in profile"
+    )
 
     # Example schema (not prescriptive — LLM picks which employers)
     experience_schema = '    "employer_key": {\n      "bullets": [{"text": "...", "accomplishment_ids": ["..."]}]\n    }'
@@ -246,6 +248,7 @@ def build_single_shot_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_generator
+
         company_name = company_research.get("query_company", "the company")
         parts.append(f"\n\n{format_research_for_generator(company_research, company_name)}")
 
@@ -367,7 +370,9 @@ def build_compact_profile_for_plan(data: dict) -> str:
     # Skills (compact)
     skills = data.get("skills", {})
     if skills.get("technical"):
-        tech = skills["technical"] if isinstance(skills["technical"], list) else [skills["technical"]]
+        tech = (
+            skills["technical"] if isinstance(skills["technical"], list) else [skills["technical"]]
+        )
         lines.append(f"Technical skills: {', '.join(tech[:15])}")
 
     # Work history
@@ -384,7 +389,9 @@ def build_compact_profile_for_plan(data: dict) -> str:
         lines.append(f"\nAccomplishments ({len(accomplishments)} total):")
         for a in accomplishments:
             lines.append(f"  ID: {a.get('id', '?')}")
-            lines.append(f"  Employer: {a.get('employer', '?')} (key: {a.get('work_history_key', '?')})")
+            lines.append(
+                f"  Employer: {a.get('employer', '?')} (key: {a.get('work_history_key', '?')})"
+            )
             lines.append(f"  Title: {a.get('title', '?')}")
             quants = a.get("quantitative_specifics", [])
             if quants:
@@ -401,7 +408,9 @@ def build_compact_profile_for_plan(data: dict) -> str:
         for p in publications:
             pid = p.get("id", "?")
             fa = " [FIRST AUTHOR]" if p.get("first_author") else ""
-            lines.append(f"  {pid}: {p.get('title', '?')} ({p.get('venue', '?')}, {p.get('year', '?')}){fa}")
+            lines.append(
+                f"  {pid}: {p.get('title', '?')} ({p.get('venue', '?')}, {p.get('year', '?')}){fa}"
+            )
 
     return "\n".join(lines)
 
@@ -424,12 +433,13 @@ def build_strategic_plan_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_generator
+
         company_name = company_research.get("query_company", "the company")
         parts.append(f"\n\n{format_research_for_generator(company_research, company_name)}")
 
     if score_rationale:
         role_fit = score_rationale.get("role_fit", {})
-        interest_fit = score_rationale.get("interest_fit", {})
+        score_rationale.get("interest_fit", {})
         parts.append("\n\n## AI Scoring Context")
         hard_skills = role_fit.get("hard_skills", {})
         if hard_skills.get("matches"):
@@ -478,7 +488,10 @@ def build_research_picks_prompt(
     job_text: str,
 ) -> list[dict]:
     """Build user message for research accomplishment selection."""
-    return [{"role": "user", "content": f"""\
+    return [
+        {
+            "role": "user",
+            "content": f"""\
 ## Strategic Plan
 {plan_text}
 
@@ -490,14 +503,16 @@ def build_research_picks_prompt(
 
 ---
 
-Confirm or adjust the 3 accomplishment picks from the plan. Output valid JSON."""}]
+Confirm or adjust the 3 accomplishment picks from the plan. Output valid JSON.""",
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Phase 2b: Research Description (one at a time)
 # ---------------------------------------------------------------------------
 
-RESEARCH_DESC_SYSTEM = f"""\
+RESEARCH_DESC_SYSTEM = """\
 You write a single Selected Research entry for a tailored resume.
 
 Write a short paragraph (75-100 words, 2-3 sentences) that sounds like a confident \
@@ -536,14 +551,14 @@ closers. If the job IS in the same domain, lead with domain results.
 
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
-{{
+{
   "category_label": "2-4 WORD LABEL (job-relevant, not internal framing)",
   "title": "accomplishment title (use exactly as provided)",
   "description": "2-3 sentences (75-100 words)",
   "accomplishment_id": "the accomplishment id",
   "reasoning": "why you framed it this way (internal, for the generation log)",
   "avoid_downstream": "what NOT to repeat in experience bullets for this accomplishment"
-}}\
+}\
 """
 
 
@@ -572,7 +587,7 @@ def build_research_desc_prompt(
             "'Replaced', 'Transformed', 'Showed', 'Automated', 'Eliminated', etc."
         )
 
-    parts = [f"## Accomplishment to Describe\n"]
+    parts = ["## Accomplishment to Describe\n"]
     parts.append(f"ID: {accomplishment.get('id', '?')}")
     parts.append(f"Title: {accomplishment.get('title', '?')}")
     parts.append(f"Employer: {accomplishment.get('employer', '?')}")
@@ -588,9 +603,11 @@ def build_research_desc_prompt(
         parts.append(f"Skills: {', '.join(accomplishment['skills_demonstrated'])}")
 
     if plan_entry:
-        parts.append(f"\n## Plan Guidance for This Accomplishment")
+        parts.append("\n## Plan Guidance for This Accomplishment")
         parts.append(f"Framing angle: {plan_entry.get('framing_angle', '?')}")
-        parts.append(f"Reserve for bullets: {plan_entry.get('reserve_for_bullets', 'nothing specific')}")
+        parts.append(
+            f"Reserve for bullets: {plan_entry.get('reserve_for_bullets', 'nothing specific')}"
+        )
 
     parts.append(f"\n## Strategic Plan\n{plan_text}")
     parts.append(f"\n## Resume So Far\n{resume_so_far}")
@@ -612,6 +629,7 @@ BEFORE YOU OUTPUT — check these three things:
 # ---------------------------------------------------------------------------
 # Phase 2c: Experience Bullets (one employer at a time)
 # ---------------------------------------------------------------------------
+
 
 def build_experience_bullets_system(profile_data: dict) -> str:
     """Build per-employer bullet generation system prompt."""
@@ -725,12 +743,14 @@ def build_experience_bullets_prompt(
         # Inject anti-redundancy guidance from research descriptions
         if avoid_downstream_map and aid in avoid_downstream_map:
             parts.append(f"  ⚠️ ALREADY COVERED in Selected Research: {avoid_downstream_map[aid]}")
-            parts.append(f"  → Your bullet for this accomplishment MUST take a different angle.")
+            parts.append("  → Your bullet for this accomplishment MUST take a different angle.")
 
     if plan_mapping:
         parts.append(f"\n## Plan Guidance for {employer_name}")
         parts.append(f"Emphasis: {plan_mapping.get('emphasis', '?')}")
-        parts.append(f"Planned accomplishment IDs: {', '.join(plan_mapping.get('accomplishment_ids', []))}")
+        parts.append(
+            f"Planned accomplishment IDs: {', '.join(plan_mapping.get('accomplishment_ids', []))}"
+        )
 
     parts.append(f"\n## Strategic Plan\n{plan_text}")
     parts.append(f"\n## Resume So Far (research descriptions + prior employers)\n{resume_so_far}")
@@ -798,7 +818,10 @@ def build_summary_prompt(
     job_text: str,
 ) -> list[dict]:
     """Build user message for summary generation (written last)."""
-    return [{"role": "user", "content": f"""\
+    return [
+        {
+            "role": "user",
+            "content": f"""\
 ## Strategic Plan
 {plan_text}
 
@@ -821,12 +844,15 @@ BEFORE YOU OUTPUT — read it aloud. Does it sound like a confident colleague vo
 for someone, or like a template? If it lists capabilities with commas ("Led X, Y, \
 and Z"), rewrite as an argument. 50-80 words. No pronouns.
 
-Output valid JSON."""}]
+Output valid JSON.""",
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
 # Phase 2e: Supporting Sections (tagline + publications + skills + awards)
 # ---------------------------------------------------------------------------
+
 
 def build_supporting_system(profile_data: dict) -> str:
     """Build system prompt for tagline/publications/skills/awards generation."""
@@ -886,7 +912,10 @@ def build_supporting_prompt(
     resume_so_far: str,
 ) -> list[dict]:
     """Build user message for supporting sections."""
-    return [{"role": "user", "content": f"""\
+    return [
+        {
+            "role": "user",
+            "content": f"""\
 ## Full Profile (all publications, skills, awards)
 {profile_text}
 
@@ -898,7 +927,9 @@ def build_supporting_prompt(
 
 ---
 
-Generate tagline, publications, technical_skills, and awards. Output valid JSON."""}]
+Generate tagline, publications, technical_skills, and awards. Output valid JSON.""",
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -991,6 +1022,7 @@ def build_critic_v2_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_critic
+
         parts.append(f"\n\n{format_research_for_critic(company_research)}")
 
     parts.append("""
@@ -1006,6 +1038,7 @@ concrete_rewrite with actual improved text. 3-7 weaknesses, severity-prioritized
 # ---------------------------------------------------------------------------
 # Phase 4: Enhanced Refiner
 # ---------------------------------------------------------------------------
+
 
 def build_refiner_v2_system(profile_data: dict) -> str:
     """Build the v2 refiner system prompt."""
@@ -1086,6 +1119,7 @@ def build_refiner_v2_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_refiner
+
         parts.append(f"\n\n{format_research_for_refiner(company_research)}")
 
     parts.append("""
@@ -1144,7 +1178,11 @@ def build_resume_system(profile_data: dict) -> str:
         total_range = f"{total_min}-{total_max}" if total_min != total_max else str(total_min)
 
     num_employers = len(work_history)
-    experience_schema = ",\n".join(experience_schema_lines) if experience_schema_lines else '    "employer_key": {\n      "bullets": ["..."],\n      "accomplishment_ids": ["..."]\n    }'
+    (
+        ",\n".join(experience_schema_lines)
+        if experience_schema_lines
+        else '    "employer_key": {\n      "bullets": ["..."],\n      "accomplishment_ids": ["..."]\n    }'
+    )
 
     # Build explicit skills whitelist from profile data
     skills = profile_data.get("skills", {})
@@ -1611,8 +1649,8 @@ def _build_experience_schema_example(profile_data: dict) -> str:
         comma = "," if i < len(work_history) - 1 else ""
         lines.append(
             f'    "{key}": {{\n'
-            f"      \"bullets\": [{bullets_example}],\n"
-            f"      \"accomplishment_ids\": [\"id1\", \"id2\"]\n"
+            f'      "bullets": [{bullets_example}],\n'
+            f'      "accomplishment_ids": ["id1", "id2"]\n'
             f"    }}{comma}"
         )
     return "\n".join(lines)
@@ -1729,7 +1767,11 @@ def build_full_profile_for_resume(data: dict) -> str:
                 for pub_id in related_pubs:
                     pub = pub_by_id.get(pub_id)
                     if pub:
-                        abstract = (pub.get("abstract") or pub.get("full_text") or "").strip().replace("\n", " ")
+                        abstract = (
+                            (pub.get("abstract") or pub.get("full_text") or "")
+                            .strip()
+                            .replace("\n", " ")
+                        )
                         if abstract:
                             lines.append(f"  Publication abstract ({pub_id}): {abstract[:1000]}")
             lines.append("")
@@ -1747,7 +1789,7 @@ def build_full_profile_for_resume(data: dict) -> str:
                 lines.append(f"  Position: {p['work_history_key']}")
             lines.append(
                 f"  {', '.join(p.get('authors', []))}. "
-                f"\"{p.get('title', '')}\" {p.get('venue', '')}, {p.get('year', '')}.{fa}"
+                f'"{p.get("title", "")}" {p.get("venue", "")}, {p.get("year", "")}.{fa}'
             )
             if p.get("impact_summary"):
                 impact = p["impact_summary"].strip().replace("\n", " ")[:200]
@@ -1781,19 +1823,22 @@ def build_resume_prompt(
     if strategy:
         parts.append(f"## Resume Strategy (follow this approach)\n{strategy}\n\n---\n")
 
-    parts.extend([
-        "## Candidate Profile & Accomplishments\n",
-        profile_text,
-        "\n---\n",
-        "## Target Job Posting\n",
-        job_text,
-    ])
+    parts.extend(
+        [
+            "## Candidate Profile & Accomplishments\n",
+            profile_text,
+            "\n---\n",
+            "## Target Job Posting\n",
+            job_text,
+        ]
+    )
 
     if company_notes:
         parts.append(f"\n\n## Company Context\n{company_notes}")
 
     if company_research:
         from app.ai.company_research import format_research_for_generator
+
         company_name = company_research.get("query_company", "the company")
         parts.append(f"\n\n{format_research_for_generator(company_research, company_name)}")
 
@@ -1914,6 +1959,7 @@ def build_revision_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_generator
+
         company_name = company_research.get("query_company", "the company")
         parts.append(f"\n\n{format_research_for_generator(company_research, company_name)}")
 
@@ -2037,6 +2083,7 @@ def build_critic_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_critic
+
         parts.append(f"\n\n{format_research_for_critic(company_research)}")
 
     parts.append("""
@@ -2080,6 +2127,7 @@ Rules for the weaknesses array:
 # ---------------------------------------------------------------------------
 # Refiner prompt — addresses critic weaknesses while staying grounded
 # ---------------------------------------------------------------------------
+
 
 def build_refiner_system(profile_data: dict) -> str:
     """Build the refiner system prompt with skills whitelist from profile data."""
@@ -2205,6 +2253,7 @@ def build_refiner_prompt(
 
     if company_research:
         from app.ai.company_research import format_research_for_refiner
+
         parts.append(f"\n\n{format_research_for_refiner(company_research)}")
 
     parts.append("""
@@ -2283,16 +2332,18 @@ def build_research_entry_prompt(
     if skills_demo:
         parts.append(f"Skills: {', '.join(skills_demo)}")
 
-    parts.extend([
-        "\n---\n",
-        "## Target Job Posting\n",
-        job_text,
-        "\n---\n",
-        "Generate a selected_research entry for this accomplishment tailored to the above job. "
-        "Use the accomplishment's title and id exactly as provided. "
-        "Write a 2-4 word category_label that mirrors the job's domain language. "
-        "Write a 2-3 sentence description highlighting the most job-relevant aspects.",
-    ])
+    parts.extend(
+        [
+            "\n---\n",
+            "## Target Job Posting\n",
+            job_text,
+            "\n---\n",
+            "Generate a selected_research entry for this accomplishment tailored to the above job. "
+            "Use the accomplishment's title and id exactly as provided. "
+            "Write a 2-4 word category_label that mirrors the job's domain language. "
+            "Write a 2-3 sentence description highlighting the most job-relevant aspects.",
+        ]
+    )
 
     return [{"role": "user", "content": "\n".join(parts)}]
 
@@ -2347,7 +2398,10 @@ def build_selection_prompt(
     compact_profile: str,
     job_text: str,
 ) -> list[dict]:
-    return [{"role": "user", "content": f"""\
+    return [
+        {
+            "role": "user",
+            "content": f"""\
 ## Strategic Plan
 {plan_text}
 
@@ -2361,7 +2415,9 @@ def build_selection_prompt(
 
 Pick the accomplishment IDs and employer anchors. Output valid JSON.
 - Cross-check that each ID exists in the catalog.
-- Use the employer ``key`` field exactly as it appears in the work history above."""}]
+- Use the employer ``key`` field exactly as it appears in the work history above.""",
+        }
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -2447,7 +2503,9 @@ def build_research_entry_v4_prompt(
     if plan_entry:
         parts.append("\n## Plan Guidance for This Accomplishment")
         parts.append(f"Framing angle: {plan_entry.get('framing_angle', '?')}")
-        parts.append(f"Reserve for bullets: {plan_entry.get('reserve_for_bullets', 'nothing specific')}")
+        parts.append(
+            f"Reserve for bullets: {plan_entry.get('reserve_for_bullets', 'nothing specific')}"
+        )
 
     parts.append(f"\n## Strategic Plan\n{plan_text}")
     parts.append(f"\n## Target Job\n{job_text}")
@@ -2456,7 +2514,9 @@ def build_research_entry_v4_prompt(
         parts.append("\n" + grounding_text)
 
     if critic_notes:
-        parts.append("\n## Critic notes on the previous attempt — fix THESE specifically\n" + critic_notes)
+        parts.append(
+            "\n## Critic notes on the previous attempt — fix THESE specifically\n" + critic_notes
+        )
 
     parts.append(
         "\n---\n"
@@ -2517,18 +2577,19 @@ def build_skill_bucket_prompt(
         f"\n## Target Job\n{job_text}",
     ]
     if other_buckets:
-        parts.append("\n## Other buckets in this resume (skills appearing here MUST NOT appear in your bucket)")
+        parts.append(
+            "\n## Other buckets in this resume (skills appearing here MUST NOT appear in your bucket)"
+        )
         for name, value in other_buckets.items():
             if value:
                 parts.append(f"- {name}: {value}")
     if grounding_text:
         parts.append("\n" + grounding_text)
     if critic_notes:
-        parts.append("\n## Critic notes on the previous attempt — fix THESE specifically\n" + critic_notes)
-    parts.append(
-        "\n---\n"
-        f"Write the {bucket_name} skill list. Output valid JSON."
-    )
+        parts.append(
+            "\n## Critic notes on the previous attempt — fix THESE specifically\n" + critic_notes
+        )
+    parts.append(f"\n---\nWrite the {bucket_name} skill list. Output valid JSON.")
     return [{"role": "user", "content": "\n".join(parts)}]
 
 
@@ -2671,7 +2732,9 @@ def build_bullet_set_prompt(
         parts.append("\n" + grounding_text)
 
     if critic_notes:
-        parts.append("\n## Critic notes on the previous attempt — fix THESE specifically\n" + critic_notes)
+        parts.append(
+            "\n## Critic notes on the previous attempt — fix THESE specifically\n" + critic_notes
+        )
 
     parts.append(
         f"\n---\n"
@@ -2819,7 +2882,10 @@ def build_critic_v4_prompt(
     grounding_summary: str,
     job_text: str,
 ) -> list[dict]:
-    return [{"role": "user", "content": f"""\
+    return [
+        {
+            "role": "user",
+            "content": f"""\
 ## Strategic Plan
 {plan_text}
 
@@ -2834,7 +2900,9 @@ def build_critic_v4_prompt(
 
 ---
 
-Audit the draft. Flag specific, fixable issues per entity. Output valid JSON."""}]
+Audit the draft. Flag specific, fixable issues per entity. Output valid JSON.""",
+        }
+    ]
 
 
 PUBLICATIONS_SYSTEM = """\
@@ -2860,7 +2928,10 @@ def build_publications_prompt(
     plan_text: str,
     job_text: str,
 ) -> list[dict]:
-    return [{"role": "user", "content": f"""\
+    return [
+        {
+            "role": "user",
+            "content": f"""\
 ## Available Publications
 {publications_text}
 
@@ -2874,7 +2945,9 @@ def build_publications_prompt(
 
 Pick the most job-relevant publications. Use the publication_id exactly as \
 provided. Format the citation as "Authors. \\"Title.\\" Venue, Year." Output \
-valid JSON."""}]
+valid JSON.""",
+        }
+    ]
 
 
 def build_summary_tagline_prompt(

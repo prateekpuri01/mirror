@@ -15,9 +15,9 @@ class Settings(BaseSettings):
 
     # Per-provider model overrides. Leave blank to use sensible defaults
     # baked into client.py for each provider.
-    llm_resume_model: str = ""       # heavy lift: full resume + revisions
-    llm_scoring_model: str = ""      # mid: scoring, planning, agent edits
-    llm_extraction_model: str = ""   # light: extraction, dedup, parsing
+    llm_resume_model: str = ""  # heavy lift: full resume + revisions
+    llm_scoring_model: str = ""  # mid: scoring, planning, agent edits
+    llm_extraction_model: str = ""  # light: extraction, dedup, parsing
     # Specifically for native web search (Responses API on OpenAI, Messages
     # API w/ web_search tool on Anthropic). Defaults live in
     # web_search_llm.py — currently gpt-5.5 (OpenAI) and claude-opus-4-7

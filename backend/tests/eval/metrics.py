@@ -5,7 +5,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 
-from tests.eval.fixtures import ScoringTestCase, TIERS
+from tests.eval.fixtures import TIERS, ScoringTestCase
 
 
 @dataclass
@@ -31,9 +31,7 @@ class EvalResult:
     @property
     def deal_breaker_detected(self) -> bool | None:
         """Check if the model flagged a deal-breaker."""
-        return self.interest_fit_detail.get("interest_fit", {}).get(
-            "deal_breaker_detected"
-        )
+        return self.interest_fit_detail.get("interest_fit", {}).get("deal_breaker_detected")
 
 
 def compute_composite(role_fit: int, interest_fit: int) -> float:
@@ -179,11 +177,7 @@ def calibration_stats(results: dict[str, EvalResult]) -> CalibrationStats:
 
     tier_centroids = {}
     for tier_name, cases in TIERS.items():
-        tier_scores = [
-            results[tc.case_id].composite
-            for tc in cases
-            if tc.case_id in results
-        ]
+        tier_scores = [results[tc.case_id].composite for tc in cases if tc.case_id in results]
         if tier_scores:
             tier_centroids[tier_name] = statistics.mean(tier_scores)
 

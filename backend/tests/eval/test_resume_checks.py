@@ -154,7 +154,7 @@ def test_aggregate_report():
     total_warnings = 0
     resumes_with_errors = 0
 
-    for name, resume in SAVED_RESUMES:
+    for _name, resume in SAVED_RESUMES:
         report = run_deterministic_checks(resume)
         total_errors += report.error_count
         total_warnings += report.warning_count
@@ -165,13 +165,13 @@ def test_aggregate_report():
 
     total = len(SAVED_RESUMES)
     clean = total - resumes_with_errors
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"DETERMINISTIC CHECKS — {total} saved resumes")
-    print(f"{'='*60}")
-    print(f"  Clean resumes: {clean}/{total} ({100*clean/total:.0f}%)")
+    print(f"{'=' * 60}")
+    print(f"  Clean resumes: {clean}/{total} ({100 * clean / total:.0f}%)")
     print(f"  Total errors:   {total_errors}")
     print(f"  Total warnings: {total_warnings}")
-    print(f"\n  By check type:")
+    print("\n  By check type:")
     for check_name, count in check_counts.most_common():
         print(f"    {check_name:25s} {count:3d}")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")

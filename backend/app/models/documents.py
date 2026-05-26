@@ -9,7 +9,6 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Text,
-    func,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -17,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class DocType(str, enum.Enum):
+class DocType(enum.StrEnum):
     resume = "resume"
     cover_letter = "cover_letter"
     short_answer = "short_answer"

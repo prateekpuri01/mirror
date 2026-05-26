@@ -60,11 +60,16 @@ class ContentMemory(UUIDPrimaryKey, TimestampMixin, Base):
 
     __table_args__ = (
         UniqueConstraint(
-            "entity_type", "entity_key", "source_doc_id",
+            "entity_type",
+            "entity_key",
+            "source_doc_id",
             name="uq_content_memory_entity_doc",
         ),
         Index(
             "ix_content_memory_lookup",
-            "entity_type", "entity_key", "is_active", "updated_at",
+            "entity_type",
+            "entity_key",
+            "is_active",
+            "updated_at",
         ),
     )

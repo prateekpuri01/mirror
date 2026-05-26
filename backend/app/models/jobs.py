@@ -22,7 +22,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey
 
 
-class JobSource(str, enum.Enum):
+class JobSource(enum.StrEnum):
     greenhouse = "greenhouse"
     linkedin = "linkedin"
     ai_discovered = "ai_discovered"
@@ -34,7 +34,7 @@ class JobSource(str, enum.Enum):
     eightfold = "eightfold"
 
 
-class JobStatus(str, enum.Enum):
+class JobStatus(enum.StrEnum):
     new = "new"
     interested = "interested"
     applied = "applied"
@@ -54,7 +54,9 @@ class Job(UUIDPrimaryKey, TimestampMixin, Base):
     )
     location: Mapped[str | None] = mapped_column(Text, nullable=True)
     remote: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    work_model: Mapped[str | None] = mapped_column(Text, nullable=True)  # "remote", "hybrid", "onsite"
+    work_model: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )  # "remote", "hybrid", "onsite"
     salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
@@ -76,9 +78,7 @@ class Job(UUIDPrimaryKey, TimestampMixin, Base):
     relevance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     role_fit_score: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     interest_fit_score: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
-    score_rationale: Mapped[dict | None] = mapped_column(
-        JSONB(astext_type=Text()), nullable=True
-    )
+    score_rationale: Mapped[dict | None] = mapped_column(JSONB(astext_type=Text()), nullable=True)
     thumbs: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
     user_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra_metadata: Mapped[dict | None] = mapped_column(

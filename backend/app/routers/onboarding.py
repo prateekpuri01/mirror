@@ -16,14 +16,13 @@ from app.ai.resume_extractor import (
     extract_complete_profile_from_resume,
     extract_profile_from_resume,
 )
-from app.database import async_session
-from app.database import get_session
+from app.database import async_session, get_session
 from app.models.profile import UserProfile
 from app.services.onboarding_progress import progress
-from app.services.resume_parser import extract_text
-from app.services.url_crawler import crawl_urls
 from app.services.profile_sync import update_complete_profile, update_profile_section
 from app.services.publication_lookup import fetch_author_publications
+from app.services.resume_parser import extract_text
+from app.services.url_crawler import crawl_urls
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +70,7 @@ class ImportPublicationsStreamRequest(BaseModel):
     LLM's descriptions). `scholar_url` is optional — if absent we fall back
     to `profile.personal.google_scholar`.
     """
+
     profile: dict
     scholar_url: str | None = None
 
@@ -133,9 +133,7 @@ async def upload_resume(file: UploadFile):
         raise HTTPException(status_code=422, detail=str(e))
 
     # Extract accomplishments (and publications if no Scholar URL)
-    has_scholar = bool(
-        (extracted_profile.get("personal") or {}).get("google_scholar")
-    )
+    has_scholar = bool((extracted_profile.get("personal") or {}).get("google_scholar"))
     try:
         extracted_complete = await extract_complete_profile_from_resume(
             resume_text, extracted_profile, has_scholar_url=has_scholar
@@ -171,6 +169,7 @@ async def crawl_urls_endpoint(
 
     async def _run_crawl():
         try:
+
             def on_complete(url: str, result: dict):
                 progress.url_completed(url, result)
 
@@ -239,29 +238,33 @@ async def import_publications_stream(
 
     async def event_stream():
         try:
-            scholar_url = (
-                body.scholar_url
-                or (body.profile.get("personal") or {}).get("google_scholar")
+            scholar_url = body.scholar_url or (body.profile.get("personal") or {}).get(
+                "google_scholar"
             )
             author_name = (body.profile.get("personal") or {}).get("name")
 
             if not scholar_url and not author_name:
-                err = json.dumps({
-                    "message": "No Google Scholar URL or author name available",
-                })
+                err = json.dumps(
+                    {
+                        "message": "No Google Scholar URL or author name available",
+                    }
+                )
                 yield f"event: error\ndata: {err}\n\n"
                 done = json.dumps({"total": 0, "imported": 0})
                 yield f"event: done\ndata: {done}\n\n"
                 return
 
-            status_msg = json.dumps({
-                "message": "Fetching papers from Semantic Scholar...",
-            })
+            status_msg = json.dumps(
+                {
+                    "message": "Fetching papers from Semantic Scholar...",
+                }
+            )
             yield f"event: status\ndata: {status_msg}\n\n"
 
             try:
                 papers = await fetch_author_publications(
-                    scholar_url=scholar_url, author_name=author_name,
+                    scholar_url=scholar_url,
+                    author_name=author_name,
                 )
             except Exception as e:
                 logger.exception("Scholar fetch failed")
@@ -280,11 +283,13 @@ async def import_publications_stream(
                 try:
                     pub = await enrich_publication(paper, body.profile)
                     pub["auto_populated"] = True
-                    payload = json.dumps({
-                        "publication": pub,
-                        "index": i,
-                        "total": len(papers),
-                    })
+                    payload = json.dumps(
+                        {
+                            "publication": pub,
+                            "index": i,
+                            "total": len(papers),
+                        }
+                    )
                     yield f"event: publication\ndata: {payload}\n\n"
                     imported += 1
                 except Exception:
@@ -292,12 +297,14 @@ async def import_publications_stream(
                         "Failed to enrich Scholar paper '%s' during streaming import",
                         paper.get("title", ""),
                     )
-                    skip = json.dumps({
-                        "title": paper.get("title", "unknown"),
-                        "index": i,
-                        "total": len(papers),
-                        "reason": "Enrichment failed",
-                    })
+                    skip = json.dumps(
+                        {
+                            "title": paper.get("title", "unknown"),
+                            "index": i,
+                            "total": len(papers),
+                            "reason": "Enrichment failed",
+                        }
+                    )
                     yield f"event: skip\ndata: {skip}\n\n"
 
             done = json.dumps({"total": len(papers), "imported": imported})
@@ -336,7 +343,7 @@ async def save_profile(
     if request.complete_profile:
         try:
             await update_complete_profile(session, request.complete_profile)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to save complete profile")
             # Non-fatal — base profile was already saved
 
@@ -356,9 +363,7 @@ async def _import_scholar_publications(
 ) -> None:
     """Background task: import publications from Google Scholar via Semantic Scholar API."""
     try:
-        papers = await fetch_author_publications(
-            scholar_url=scholar_url, author_name=author_name
-        )
+        papers = await fetch_author_publications(scholar_url=scholar_url, author_name=author_name)
         if not papers:
             logger.info("Scholar import: no publications found for %s", scholar_url)
             return
@@ -388,12 +393,9 @@ async def _import_scholar_publications(
             existing_pubs = complete.get("publications", [])
 
             # Deduplicate by title (case-insensitive)
-            existing_titles = {
-                p.get("title", "").lower().strip() for p in existing_pubs
-            }
+            existing_titles = {p.get("title", "").lower().strip() for p in existing_pubs}
             new_pubs = [
-                p for p in enriched
-                if p.get("title", "").lower().strip() not in existing_titles
+                p for p in enriched if p.get("title", "").lower().strip() not in existing_titles
             ]
 
             if new_pubs:
@@ -401,6 +403,7 @@ async def _import_scholar_publications(
                 data["complete_profile"] = complete
                 profile.data = data
                 from sqlalchemy.orm.attributes import flag_modified
+
                 flag_modified(profile, "data")
                 await session.commit()
                 logger.info(

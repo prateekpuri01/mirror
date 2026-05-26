@@ -16,7 +16,6 @@ from tests.eval.external.vanetik_loader import (
     annotator_ranking_to_relevance,
 )
 
-
 # ---------------------------------------------------------------------------
 # CSV vacancy parser
 # ---------------------------------------------------------------------------
@@ -104,6 +103,7 @@ ANNOTATOR_1_RANKINGS=[[2,1,4,3,5]]
 ANNOTATOR_2_RANKINGS=[[5,4,3,2,1]]
 """
     import tempfile
+
     with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as f:
         f.write(text)
         path = Path(f.name)

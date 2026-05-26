@@ -13,9 +13,7 @@ async def get_for_job(session: AsyncSession, job_id: uuid.UUID) -> ApplicationRe
     return result.scalar_one_or_none()
 
 
-async def upsert(
-    session: AsyncSession, job_id: uuid.UUID, data: dict
-) -> ApplicationRequirements:
+async def upsert(session: AsyncSession, job_id: uuid.UUID, data: dict) -> ApplicationRequirements:
     existing = await get_for_job(session, job_id)
     if existing is None:
         req = ApplicationRequirements(job_id=job_id, **data)

@@ -12,7 +12,7 @@ import asyncio
 import json
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,18 +21,19 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from app.ai import writing_memory as wm_ai
 from app.config import settings
 from app.models.writing_memory import WritingMemory
 from app.services import writing_memory_service as svc
-from app.ai import writing_memory as wm_ai
-
 
 # ---------------------------------------------------------------------------
 # Test-specific engine with NullPool to avoid connection state leaks
 # ---------------------------------------------------------------------------
 
 _test_engine = create_async_engine(settings.database_url, echo=False, poolclass=NullPool)
-_test_session_factory = async_sessionmaker(_test_engine, class_=AsyncSession, expire_on_commit=False)
+_test_session_factory = async_sessionmaker(
+    _test_engine, class_=AsyncSession, expire_on_commit=False
+)
 
 
 @asynccontextmanager
@@ -234,7 +235,9 @@ async def test_dedup_exact_match(session, clean_memory):
     original_count = r1.occurrence_count
 
     # Persist via the extraction flow with same text
-    rules = [{"rule_text": "Never use 'leveraged'", "category": "word_choice", "scope": "universal"}]
+    rules = [
+        {"rule_text": "Never use 'leveraged'", "category": "word_choice", "scope": "universal"}
+    ]
     created = await wm_ai.persist_extracted_rules(
         session, rules, "auto_inline_edit", None, "resume"
     )
@@ -256,7 +259,9 @@ async def test_dedup_different_rules_not_merged(session, clean_memory):
 @pytest.mark.asyncio
 async def test_dedup_across_domains_independent(session, clean_memory):
     await _make_rule(session, domain="resume", rule_text="Never use 'leveraged'", confidence=0.5)
-    rules = [{"rule_text": "Never use 'leveraged'", "category": "word_choice", "scope": "universal"}]
+    rules = [
+        {"rule_text": "Never use 'leveraged'", "category": "word_choice", "scope": "universal"}
+    ]
     # Different domain — should create new
     created = await wm_ai.persist_extracted_rules(
         session, rules, "auto_answer_edit", None, "answer"
@@ -311,7 +316,7 @@ async def test_cap_per_domain(session, clean_memory):
 async def test_decay_stale_rules(session, clean_memory):
     rule = await _make_rule(session, confidence=0.8, rule_text="Stale rule")
     # Manually set updated_at to 100 days ago
-    cutoff = datetime.now(timezone.utc) - timedelta(days=100)
+    cutoff = datetime.now(UTC) - timedelta(days=100)
     await session.execute(
         text("UPDATE writing_memory SET updated_at = :ts WHERE id = :id"),
         {"ts": cutoff, "id": rule.id},
@@ -327,7 +332,7 @@ async def test_decay_stale_rules(session, clean_memory):
 @pytest.mark.asyncio
 async def test_decay_deactivates_below_threshold(session, clean_memory):
     rule = await _make_rule(session, confidence=0.35, rule_text="Nearly dead")
-    cutoff = datetime.now(timezone.utc) - timedelta(days=100)
+    cutoff = datetime.now(UTC) - timedelta(days=100)
     await session.execute(
         text("UPDATE writing_memory SET updated_at = :ts WHERE id = :id"),
         {"ts": cutoff, "id": rule.id},
@@ -353,7 +358,7 @@ async def test_decay_ignores_recently_used(session, clean_memory):
 @pytest.mark.asyncio
 async def test_decay_ignores_inactive(session, clean_memory):
     rule = await _make_rule(session, confidence=0.5, is_active=False, rule_text="Dead rule")
-    cutoff = datetime.now(timezone.utc) - timedelta(days=200)
+    cutoff = datetime.now(UTC) - timedelta(days=200)
     await session.execute(
         text("UPDATE writing_memory SET updated_at = :ts WHERE id = :id"),
         {"ts": cutoff, "id": rule.id},
@@ -382,16 +387,18 @@ async def test_consolidate_merges_similar(session, clean_memory):
     # get_all_rules returns updated_at DESC, so most recently created first:
     # [Keep rule 2, Keep rule 1, Keep rule 0, Don't use architected, Don't use utilized, Don't use leveraged]
     # Indices 4,5,6 correspond to the "Don't use" rules
-    mock_response = json.dumps([
-        {"indices": [1], "merged_rule_text": "Keep rule 2", "merged_category": "content"},
-        {"indices": [2], "merged_rule_text": "Keep rule 1", "merged_category": "content"},
-        {"indices": [3], "merged_rule_text": "Keep rule 0", "merged_category": "content"},
-        {
-            "indices": [4, 5, 6],
-            "merged_rule_text": "Avoid corporate verbs: leveraged, utilized, architected",
-            "merged_category": "word_choice",
-        },
-    ])
+    mock_response = json.dumps(
+        [
+            {"indices": [1], "merged_rule_text": "Keep rule 2", "merged_category": "content"},
+            {"indices": [2], "merged_rule_text": "Keep rule 1", "merged_category": "content"},
+            {"indices": [3], "merged_rule_text": "Keep rule 0", "merged_category": "content"},
+            {
+                "indices": [4, 5, 6],
+                "merged_rule_text": "Avoid corporate verbs: leveraged, utilized, architected",
+                "merged_category": "word_choice",
+            },
+        ]
+    )
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_resp = MagicMock()
@@ -415,14 +422,24 @@ async def test_consolidate_preserves_unrelated(session, clean_memory):
     for i in range(4):
         await _make_rule(session, rule_text=f"Filler rule {i}", confidence=0.8)
 
-    mock_response = json.dumps([
-        {"indices": [1], "merged_rule_text": "Don't use leveraged", "merged_category": "word_choice"},
-        {"indices": [2], "merged_rule_text": "Keep bullets under 20 words", "merged_category": "structure"},
-        {"indices": [3], "merged_rule_text": "Filler rule 0", "merged_category": "content"},
-        {"indices": [4], "merged_rule_text": "Filler rule 1", "merged_category": "content"},
-        {"indices": [5], "merged_rule_text": "Filler rule 2", "merged_category": "content"},
-        {"indices": [6], "merged_rule_text": "Filler rule 3", "merged_category": "content"},
-    ])
+    mock_response = json.dumps(
+        [
+            {
+                "indices": [1],
+                "merged_rule_text": "Don't use leveraged",
+                "merged_category": "word_choice",
+            },
+            {
+                "indices": [2],
+                "merged_rule_text": "Keep bullets under 20 words",
+                "merged_category": "structure",
+            },
+            {"indices": [3], "merged_rule_text": "Filler rule 0", "merged_category": "content"},
+            {"indices": [4], "merged_rule_text": "Filler rule 1", "merged_category": "content"},
+            {"indices": [5], "merged_rule_text": "Filler rule 2", "merged_category": "content"},
+            {"indices": [6], "merged_rule_text": "Filler rule 3", "merged_category": "content"},
+        ]
+    )
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_resp = MagicMock()
@@ -506,9 +523,7 @@ async def test_format_writing_memory_skips_job_specific(session, clean_memory):
 @pytest.mark.asyncio
 async def test_format_writing_memory_includes_examples(session, clean_memory):
     examples = [{"before": "Utilized tools", "after": "Built tools"}]
-    await _make_rule(
-        session, rule_text="Avoid utilized", confidence=0.9, examples_json=examples
-    )
+    await _make_rule(session, rule_text="Avoid utilized", confidence=0.9, examples_json=examples)
 
     result = await wm_ai.format_writing_memory(session, "resume")
     assert "Utilized tools" in result
@@ -521,7 +536,8 @@ async def test_format_writing_memory_token_cap(session, clean_memory):
     for i in range(40):
         await _make_rule(
             session,
-            rule_text=f"This is a verbose rule number {i} that contains many words to test the token budget cap mechanism " * 3,
+            rule_text=f"This is a verbose rule number {i} that contains many words to test the token budget cap mechanism "
+            * 3,
             confidence=0.9,
         )
 
@@ -537,14 +553,16 @@ async def test_format_writing_memory_token_cap(session, clean_memory):
 
 @pytest.mark.asyncio
 async def test_extract_from_word_substitution():
-    mock_response = json.dumps([
-        {
-            "rule_text": "Use 'built' instead of 'utilized'",
-            "scope": "universal",
-            "category": "word_choice",
-            "examples": [{"before": "Utilized Python", "after": "Built with Python"}],
-        }
-    ])
+    mock_response = json.dumps(
+        [
+            {
+                "rule_text": "Use 'built' instead of 'utilized'",
+                "scope": "universal",
+                "category": "word_choice",
+                "examples": [{"before": "Utilized Python", "after": "Built with Python"}],
+            }
+        ]
+    )
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_resp = MagicMock()
@@ -564,13 +582,15 @@ async def test_extract_from_word_substitution():
 
 @pytest.mark.asyncio
 async def test_extract_from_job_specific_edit():
-    mock_response = json.dumps([
-        {
-            "rule_text": "Emphasize ML pipeline experience",
-            "scope": "job_specific",
-            "category": "content",
-        }
-    ])
+    mock_response = json.dumps(
+        [
+            {
+                "rule_text": "Emphasize ML pipeline experience",
+                "scope": "job_specific",
+                "category": "content",
+            }
+        ]
+    )
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_resp = MagicMock()
@@ -603,20 +623,22 @@ async def test_extract_returns_empty_for_trivial_edit():
 @pytest.mark.asyncio
 async def test_extract_returns_empty_on_llm_error():
     with patch.object(wm_ai, "get_openai_client") as mock_client:
-        mock_client.return_value.chat.completions.create = AsyncMock(side_effect=Exception("API error"))
-
-        rules = await wm_ai.extract_rules_from_diff(
-            "Old text", "New text", "summary"
+        mock_client.return_value.chat.completions.create = AsyncMock(
+            side_effect=Exception("API error")
         )
+
+        rules = await wm_ai.extract_rules_from_diff("Old text", "New text", "summary")
     assert rules == []
 
 
 @pytest.mark.asyncio
 async def test_extract_multiple_rules_from_one_diff():
-    mock_response = json.dumps([
-        {"rule_text": "Rule one", "category": "word_choice", "scope": "universal"},
-        {"rule_text": "Rule two", "category": "structure", "scope": "universal"},
-    ])
+    mock_response = json.dumps(
+        [
+            {"rule_text": "Rule one", "category": "word_choice", "scope": "universal"},
+            {"rule_text": "Rule two", "category": "structure", "scope": "universal"},
+        ]
+    )
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_resp = MagicMock()
@@ -691,6 +713,7 @@ def test_revision_prompt_without_memory():
 
 def test_find_duplicate_high_overlap():
     """Rules with >60% word overlap should match."""
+
     class FakeRule:
         def __init__(self, text, id=None):
             self.rule_text = text

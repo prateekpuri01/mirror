@@ -92,8 +92,10 @@ class HNAdapter:
         # The cache stores already-shaped AggregatorEntry dicts so we skip
         # the scraper + URL-extraction work entirely on a hit.
         from app.services.scrape_cache import (
-            get_aggregator_pull, set_aggregator_pull,
+            get_aggregator_pull,
+            set_aggregator_pull,
         )
+
         cache_scope = (guidance or "").lower().strip()
         cached = await get_aggregator_pull(self.source_name, cache_scope)
         if cached is not None:
@@ -102,7 +104,8 @@ class HNAdapter:
 
         try:
             jobs = await scrape_hn_who_is_hiring(
-                http_client, include_patterns=include,
+                http_client,
+                include_patterns=include,
             )
         except Exception:
             logger.warning("HN adapter fetch failed", exc_info=True)
@@ -117,23 +120,27 @@ class HNAdapter:
             harvest_url = j.application_url or j.url
             if not harvest_url:
                 continue
-            entries.append(AggregatorEntry(
-                company_name=j.company_name,
-                job_url=harvest_url,
-                title=j.title,
-                location=j.location,
-                description=j.description,
-                salary_min=j.salary_min,
-                salary_max=j.salary_max,
-                remote=j.remote,
-                source=self.source_name,
-            ))
+            entries.append(
+                AggregatorEntry(
+                    company_name=j.company_name,
+                    job_url=harvest_url,
+                    title=j.title,
+                    location=j.location,
+                    description=j.description,
+                    salary_min=j.salary_min,
+                    salary_max=j.salary_max,
+                    remote=j.remote,
+                    source=self.source_name,
+                )
+            )
 
         # Persist for the next run. asdict() handles the dataclass cleanly;
         # AggregatorEntry has only primitive fields so JSON serializes fine.
         from dataclasses import asdict
+
         await set_aggregator_pull(
-            self.source_name, cache_scope,
+            self.source_name,
+            cache_scope,
             [asdict(e) for e in entries],
         )
         return entries
@@ -183,15 +190,17 @@ class RemotiveAdapter:
                 continue
             # Remotive's `salary` is a free-text field; we don't try to parse
             # it here — the LLM verifier downstream will read the JD.
-            entries.append(AggregatorEntry(
-                company_name=j.get("company_name", "Unknown"),
-                job_url=url,
-                title=j.get("title", ""),
-                location=j.get("candidate_required_location") or "Remote",
-                description=html_to_text(j.get("description", "") or "")[:4000],
-                remote=True,
-                source=self.source_name,
-            ))
+            entries.append(
+                AggregatorEntry(
+                    company_name=j.get("company_name", "Unknown"),
+                    job_url=url,
+                    title=j.get("title", ""),
+                    location=j.get("candidate_required_location") or "Remote",
+                    description=html_to_text(j.get("description", "") or "")[:4000],
+                    remote=True,
+                    source=self.source_name,
+                )
+            )
         logger.info("Remotive adapter: %d entries", len(entries))
         return entries
 
@@ -236,7 +245,9 @@ class TheMuseAdapter:
                 except Exception:
                     logger.warning(
                         "TheMuse adapter fetch failed (loc=%s page=%d)",
-                        loc, page, exc_info=True,
+                        loc,
+                        page,
+                        exc_info=True,
                     )
                     break
 
@@ -259,8 +270,7 @@ class TheMuseAdapter:
                     # prepend the requested filter location to the location
                     # string when the API returned only Flexible/Remote.
                     api_locs = [
-                        l.get("name") for l in locs
-                        if isinstance(l, dict) and l.get("name")
+                        l.get("name") for l in locs if isinstance(l, dict) and l.get("name")
                     ]
                     location_str = ", ".join(api_locs) if api_locs else None
                     if loc and location_str and "flexible" in location_str.lower():
@@ -269,14 +279,16 @@ class TheMuseAdapter:
                         location_str = f"{loc}; {location_str}"
                     elif loc and not location_str:
                         location_str = loc
-                    entries.append(AggregatorEntry(
-                        company_name=company,
-                        job_url=url,
-                        title=j.get("name", ""),
-                        location=location_str,
-                        description=html_to_text(j.get("contents", "") or "")[:4000],
-                        source=self.source_name,
-                    ))
+                    entries.append(
+                        AggregatorEntry(
+                            company_name=company,
+                            job_url=url,
+                            title=j.get("name", ""),
+                            location=location_str,
+                            description=html_to_text(j.get("contents", "") or "")[:4000],
+                            source=self.source_name,
+                        )
+                    )
                 page_count = data.get("page_count", 0)
                 if page >= page_count:
                     break
@@ -320,15 +332,17 @@ class ArbeitnowAdapter:
             url = j.get("url")
             if not url:
                 continue
-            entries.append(AggregatorEntry(
-                company_name=j.get("company_name", "Unknown"),
-                job_url=url,
-                title=j.get("title", ""),
-                location=j.get("location"),
-                description=(j.get("description") or "")[:4000],
-                remote=bool(j.get("remote", False)),
-                source=self.source_name,
-            ))
+            entries.append(
+                AggregatorEntry(
+                    company_name=j.get("company_name", "Unknown"),
+                    job_url=url,
+                    title=j.get("title", ""),
+                    location=j.get("location"),
+                    description=(j.get("description") or "")[:4000],
+                    remote=bool(j.get("remote", False)),
+                    source=self.source_name,
+                )
+            )
         logger.info("Arbeitnow adapter: %d entries", len(entries))
         return entries
 
@@ -391,17 +405,19 @@ class RemoteOKAdapter:
             url = j.get("apply_url") or j.get("url")
             if not url:
                 continue
-            entries.append(AggregatorEntry(
-                company_name=j.get("company", "Unknown"),
-                job_url=url,
-                title=j.get("position", ""),
-                location=j.get("location") or "Remote",
-                description=html_to_text(j.get("description", "") or "")[:4000],
-                salary_min=j.get("salary_min"),
-                salary_max=j.get("salary_max"),
-                remote=True,
-                source=self.source_name,
-            ))
+            entries.append(
+                AggregatorEntry(
+                    company_name=j.get("company", "Unknown"),
+                    job_url=url,
+                    title=j.get("position", ""),
+                    location=j.get("location") or "Remote",
+                    description=html_to_text(j.get("description", "") or "")[:4000],
+                    salary_min=j.get("salary_min"),
+                    salary_max=j.get("salary_max"),
+                    remote=True,
+                    source=self.source_name,
+                )
+            )
         logger.info("RemoteOK adapter: %d entries", len(entries))
         return entries
 
@@ -448,15 +464,17 @@ class JobicyAdapter:
             url = j.get("url")
             if not url:
                 continue
-            entries.append(AggregatorEntry(
-                company_name=j.get("companyName", "Unknown"),
-                job_url=url,
-                title=j.get("jobTitle", ""),
-                location=j.get("jobGeo") or "Remote",
-                description=html_to_text(j.get("jobDescription", "") or "")[:4000],
-                remote=True,
-                source=self.source_name,
-            ))
+            entries.append(
+                AggregatorEntry(
+                    company_name=j.get("companyName", "Unknown"),
+                    job_url=url,
+                    title=j.get("jobTitle", ""),
+                    location=j.get("jobGeo") or "Remote",
+                    description=html_to_text(j.get("jobDescription", "") or "")[:4000],
+                    remote=True,
+                    source=self.source_name,
+                )
+            )
         logger.info("Jobicy adapter: %d entries", len(entries))
         return entries
 

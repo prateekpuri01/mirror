@@ -23,7 +23,6 @@ import json
 import logging
 import sys
 import time
-from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -89,7 +88,6 @@ async def run_one(persona: Persona, max_hits: int) -> dict:
     hits: list[dict] = []
     skips_n = 0
     final_funnel: dict = {}
-    last_status = ""
 
     gen = run_hot_company_search(
         sources=["web", "greenhouse", "lever", "ashby"],
@@ -102,18 +100,22 @@ async def run_one(persona: Persona, max_hits: int) -> dict:
     try:
         async for ev in gen:
             if ev.event == "status":
-                last_status = ev.data.get("message", "")
+                ev.data.get("message", "")
             elif ev.event == "hit":
-                hits.append({
-                    "name": ev.data.get("name"),
-                    "match_score": ev.data.get("match_score"),
-                    "is_tentative": ev.data.get("is_tentative"),
-                    "relevant_jobs": ev.data.get("relevant_jobs"),
-                    "top_job_title": (ev.data.get("top_jobs", [{}]) or [{}])[0].get("title"),
-                    "match_reason": (ev.data.get("match_reason") or "")[:150],
-                })
-                print(f"  HIT: {hits[-1]['name']} (score={hits[-1]['match_score']}, "
-                      f"jobs={hits[-1]['relevant_jobs']}, tent={hits[-1]['is_tentative']})")
+                hits.append(
+                    {
+                        "name": ev.data.get("name"),
+                        "match_score": ev.data.get("match_score"),
+                        "is_tentative": ev.data.get("is_tentative"),
+                        "relevant_jobs": ev.data.get("relevant_jobs"),
+                        "top_job_title": (ev.data.get("top_jobs", [{}]) or [{}])[0].get("title"),
+                        "match_reason": (ev.data.get("match_reason") or "")[:150],
+                    }
+                )
+                print(
+                    f"  HIT: {hits[-1]['name']} (score={hits[-1]['match_score']}, "
+                    f"jobs={hits[-1]['relevant_jobs']}, tent={hits[-1]['is_tentative']})"
+                )
             elif ev.event == "skip":
                 skips_n += 1
             elif ev.event == "done":
@@ -145,12 +147,13 @@ async def run_one(persona: Persona, max_hits: int) -> dict:
 
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--personas", default=None,
-                        help="Comma-separated names; default: all")
+    parser.add_argument("--personas", default=None, help="Comma-separated names; default: all")
     parser.add_argument("--max-hits", type=int, default=5)
-    parser.add_argument("--output",
-                        default=str(Path(__file__).resolve().parent / "output" / "v2_smoke.json"),
-                        help="Where to dump JSON results")
+    parser.add_argument(
+        "--output",
+        default=str(Path(__file__).resolve().parent / "output" / "v2_smoke.json"),
+        help="Where to dump JSON results",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -196,17 +199,22 @@ async def main():
     # Dump
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps({
-        "version": "v2_smoke",
-        "n_personas": len(results),
-        "total_elapsed_sec": round(total, 1),
-        "aggregate": {
-            "coverage_count": f"{coverage}/{len(results)}",
-            "mean_hits_per_persona": round(mean_hits, 2),
-            "mean_elapsed_sec": round(mean_elapsed, 1),
-        },
-        "results": results,
-    }, indent=2))
+    out_path.write_text(
+        json.dumps(
+            {
+                "version": "v2_smoke",
+                "n_personas": len(results),
+                "total_elapsed_sec": round(total, 1),
+                "aggregate": {
+                    "coverage_count": f"{coverage}/{len(results)}",
+                    "mean_hits_per_persona": round(mean_hits, 2),
+                    "mean_elapsed_sec": round(mean_elapsed, 1),
+                },
+                "results": results,
+            },
+            indent=2,
+        )
+    )
     print(f"Wrote {out_path}")
 
 

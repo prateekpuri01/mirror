@@ -4,11 +4,9 @@ AtsDomainCache: exact domain-to-ATS mappings (always verified, always safe).
 AtsLearnedPattern: generalizable regex rules discovered by LLM (carry risk, auto-disabled on failures).
 """
 
-import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Boolean, DateTime, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPrimaryKey

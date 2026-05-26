@@ -60,29 +60,31 @@ from app.services.document_service import (
 )
 from app.services.job_url_importer import _ashby_jid_from_url
 
-
 # ---------------------------------------------------------------------------
 # employer_key — slug normalization that's threaded through the whole codebase
 # ---------------------------------------------------------------------------
 
 
 class TestEmployerKey:
-    @pytest.mark.parametrize("name,expected", [
-        ("The RAND Corporation", "rand_corporation"),
-        ("FINRA", "finra"),
-        ("UCLA — Department of Physics", "ucla_department_of_physics"),
-        ("OpenAI", "openai"),
-        ("Lila Sciences", "lila_sciences"),
-        ("Reka AI", "reka_ai"),
-        # "the" prefix is stripped; preserved later in the word
-        ("The The Company", "the_company"),
-        # Whitespace + leading/trailing junk
-        ("  Brightline Health  ", "brightline_health"),
-        # Punctuation collapses to underscore
-        ("A&B Co.", "a_b_co"),
-        # Unicode em-dash gets replaced with space
-        ("Foo — Bar", "foo_bar"),
-    ])
+    @pytest.mark.parametrize(
+        "name,expected",
+        [
+            ("The RAND Corporation", "rand_corporation"),
+            ("FINRA", "finra"),
+            ("UCLA — Department of Physics", "ucla_department_of_physics"),
+            ("OpenAI", "openai"),
+            ("Lila Sciences", "lila_sciences"),
+            ("Reka AI", "reka_ai"),
+            # "the" prefix is stripped; preserved later in the word
+            ("The The Company", "the_company"),
+            # Whitespace + leading/trailing junk
+            ("  Brightline Health  ", "brightline_health"),
+            # Punctuation collapses to underscore
+            ("A&B Co.", "a_b_co"),
+            # Unicode em-dash gets replaced with space
+            ("Foo — Bar", "foo_bar"),
+        ],
+    )
     def test_canonical_slugs(self, name, expected):
         assert employer_key(name) == expected
 
@@ -115,7 +117,10 @@ class TestPathToEntity:
                 "rand_corporation": {
                     "bullets": [
                         {"text": "Shipped MUSE…", "accomplishment_ids": ["rand-muse"]},
-                        {"text": "Led DARPA work…", "accomplishment_ids": ["rand-darpa-ckc", "rand-air-force-training"]},
+                        {
+                            "text": "Led DARPA work…",
+                            "accomplishment_ids": ["rand-darpa-ckc", "rand-air-force-training"],
+                        },
                     ],
                 },
             },
@@ -161,12 +166,15 @@ class TestPathToEntity:
         resume = {"selected_research": [{"description": "text", "title": "T"}]}
         assert path_to_entity("selected_research.0.description", resume) is None
 
-    @pytest.mark.parametrize("path", [
-        "experience.rand_corporation.bullets",
-        "experience.rand_corporation.bullets.0",
-        "experience.rand_corporation.bullets.0.text",
-        "experience.rand_corporation.bullets.1.accomplishment_ids",
-    ])
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "experience.rand_corporation.bullets",
+            "experience.rand_corporation.bullets.0",
+            "experience.rand_corporation.bullets.0.text",
+            "experience.rand_corporation.bullets.1.accomplishment_ids",
+        ],
+    )
     def test_bullet_edits_collapse_to_employer_set(self, resume, path):
         # Any descendant under experience.{emp}.bullets memorizes the WHOLE
         # final array — that's the design. One row per (employer, doc).
@@ -178,10 +186,16 @@ class TestPathToEntity:
         assert d["accomplishment_ids"] == ["rand-muse", "rand-darpa-ckc", "rand-air-force-training"]
 
     def test_bullet_edits_with_empty_accomplishment_ids(self):
-        resume = {"experience": {"rand_corporation": {"bullets": [
-            {"text": "No anchor", "accomplishment_ids": []},
-            {"text": "Anchored", "accomplishment_ids": ["rand-muse"]},
-        ]}}}
+        resume = {
+            "experience": {
+                "rand_corporation": {
+                    "bullets": [
+                        {"text": "No anchor", "accomplishment_ids": []},
+                        {"text": "Anchored", "accomplishment_ids": ["rand-muse"]},
+                    ]
+                }
+            }
+        }
         d = path_to_entity("experience.rand_corporation.bullets.0.text", resume)
         assert d["entity_type"] == EXPERIENCE_BULLETS_SET
         assert d["accomplishment_ids"] == ["rand-muse"]
@@ -234,14 +248,20 @@ class TestSourceTextHash:
 
     def test_changes_when_underlying_text_changes(self, profile):
         h1 = _hash_source_text(RESEARCH_DESCRIPTION, ["rand-muse"], profile)
-        profile["complete_profile"]["accomplishments"][0]["impact_summary"] = "Built a different thing."
+        profile["complete_profile"]["accomplishments"][0]["impact_summary"] = (
+            "Built a different thing."
+        )
         h2 = _hash_source_text(RESEARCH_DESCRIPTION, ["rand-muse"], profile)
         assert h1 != h2
 
     def test_invariant_to_id_order(self, profile):
-        profile["complete_profile"]["accomplishments"].append({
-            "id": "rand-darpa-ckc", "title": "DARPA", "impact_summary": "Other thing.",
-        })
+        profile["complete_profile"]["accomplishments"].append(
+            {
+                "id": "rand-darpa-ckc",
+                "title": "DARPA",
+                "impact_summary": "Other thing.",
+            }
+        )
         h_ab = _hash_source_text(EXPERIENCE_BULLETS_SET, ["rand-muse", "rand-darpa-ckc"], profile)
         h_ba = _hash_source_text(EXPERIENCE_BULLETS_SET, ["rand-darpa-ckc", "rand-muse"], profile)
         assert h_ab == h_ba
@@ -268,6 +288,7 @@ class TestIsStale:
         # Cheap stand-in for a ContentMemory row
         class Row:
             pass
+
         r = Row()
         r.entity_type = kwargs.get("entity_type", RESEARCH_DESCRIPTION)
         r.entity_key = kwargs.get("entity_key", "rand-muse")
@@ -297,6 +318,7 @@ class TestAccomplishmentIdsFromRow:
             entity_type = RESEARCH_DESCRIPTION
             entity_key = "rand-muse"
             user_payload_json = None
+
         assert _accomplishment_ids_from_row(Row()) == ["rand-muse"]
 
     def test_experience_bullets_unions_payload_ids(self):
@@ -308,6 +330,7 @@ class TestAccomplishmentIdsFromRow:
                 {"text": "b", "accomplishment_ids": ["rand-muse"]},  # dedupes
                 {"text": "c", "accomplishment_ids": []},
             ]
+
         # Dedupes, preserves first-seen order
         assert _accomplishment_ids_from_row(Row()) == ["rand-muse", "rand-darpa-ckc"]
 
@@ -316,6 +339,7 @@ class TestAccomplishmentIdsFromRow:
             entity_type = SKILL_BUCKET
             entity_key = "ai_systems"
             user_payload_json = None
+
         assert _accomplishment_ids_from_row(Row()) == []
 
 
@@ -329,10 +353,14 @@ class TestNestedPath:
     def doc(self):
         return {
             "summary": "S",
-            "experience": {"rand_corporation": {"bullets": [
-                {"text": "first", "accomplishment_ids": ["a"]},
-                {"text": "second", "accomplishment_ids": ["b"]},
-            ]}},
+            "experience": {
+                "rand_corporation": {
+                    "bullets": [
+                        {"text": "first", "accomplishment_ids": ["a"]},
+                        {"text": "second", "accomplishment_ids": ["b"]},
+                    ]
+                }
+            },
         }
 
     def test_get_top_level(self, doc):
@@ -364,17 +392,27 @@ class TestNestedPath:
 
 class TestMigrateResumeJson:
     def test_idempotent_on_new_format(self):
-        new_format = {"experience": {"emp": {"bullets": [
-            {"text": "b1", "accomplishment_ids": ["a"]},
-        ]}}}
+        new_format = {
+            "experience": {
+                "emp": {
+                    "bullets": [
+                        {"text": "b1", "accomplishment_ids": ["a"]},
+                    ]
+                }
+            }
+        }
         out = migrate_resume_json(new_format)
         assert out["experience"]["emp"]["bullets"][0] == {"text": "b1", "accomplishment_ids": ["a"]}
 
     def test_converts_parallel_arrays_to_objects(self):
-        old = {"experience": {"emp": {
-            "bullets": ["b1", "b2", "b3"],
-            "accomplishment_ids": ["a1", "a2"],  # only 2 ids, 3 bullets
-        }}}
+        old = {
+            "experience": {
+                "emp": {
+                    "bullets": ["b1", "b2", "b3"],
+                    "accomplishment_ids": ["a1", "a2"],  # only 2 ids, 3 bullets
+                }
+            }
+        }
         out = migrate_resume_json(old)
         bullets = out["experience"]["emp"]["bullets"]
         assert bullets[0] == {"text": "b1", "accomplishment_ids": ["a1"]}
@@ -393,32 +431,38 @@ class TestMigrateResumeJson:
 
 
 class TestDomainFromUrl:
-    @pytest.mark.parametrize("url,expected", [
-        ("https://surge.ai/jobs/123", "surge.ai"),
-        ("https://www.surge.ai/jobs/123", "surge.ai"),
-        ("http://anthropic.com/", "anthropic.com"),
-        # Ditto subdomain — kept (not an ATS host)
-        ("https://api.example.com/v1/foo", "api.example.com"),
-    ])
+    @pytest.mark.parametrize(
+        "url,expected",
+        [
+            ("https://surge.ai/jobs/123", "surge.ai"),
+            ("https://www.surge.ai/jobs/123", "surge.ai"),
+            ("http://anthropic.com/", "anthropic.com"),
+            # Ditto subdomain — kept (not an ATS host)
+            ("https://api.example.com/v1/foo", "api.example.com"),
+        ],
+    )
     def test_extracts_domain(self, url, expected):
         assert _domain_from_url(url) == expected
 
-    @pytest.mark.parametrize("ats_url", [
-        "https://boards.greenhouse.io/anthropic",
-        "https://job-boards.greenhouse.io/x",
-        "https://jobs.lever.co/somecompany/foo",
-        "https://jobs.ashbyhq.com/Ditto/abc",
-        "https://example.workday.com/careers",
-        "https://example.myworkdayjobs.com/foo",
-        "https://jobs.ashbyhq.com/embed/whatever",
-        "https://example.smartrecruiters.com/x",
-        "https://example.bamboohr.com/x",
-        "https://www.linkedin.com/jobs/view/123",
-        "https://www.indeed.com/viewjob",
-        "https://www.glassdoor.com/job",
-        "https://news.ycombinator.com/item",
-        "https://wellfound.com/jobs/x",
-    ])
+    @pytest.mark.parametrize(
+        "ats_url",
+        [
+            "https://boards.greenhouse.io/anthropic",
+            "https://job-boards.greenhouse.io/x",
+            "https://jobs.lever.co/somecompany/foo",
+            "https://jobs.ashbyhq.com/Ditto/abc",
+            "https://example.workday.com/careers",
+            "https://example.myworkdayjobs.com/foo",
+            "https://jobs.ashbyhq.com/embed/whatever",
+            "https://example.smartrecruiters.com/x",
+            "https://example.bamboohr.com/x",
+            "https://www.linkedin.com/jobs/view/123",
+            "https://www.indeed.com/viewjob",
+            "https://www.glassdoor.com/job",
+            "https://news.ycombinator.com/item",
+            "https://wellfound.com/jobs/x",
+        ],
+    )
     def test_returns_none_for_ats_hosts(self, ats_url):
         assert _domain_from_url(ats_url) is None
 
@@ -445,7 +489,9 @@ class TestDisambiguatorLine:
     def test_returns_none_when_no_anchor_available(self):
         # Ambiguous company name + ATS-only URL → no disambiguator
         line = _disambiguator_line(
-            "Surge", website=None, job_url="https://boards.greenhouse.io/foo",
+            "Surge",
+            website=None,
+            job_url="https://boards.greenhouse.io/foo",
         )
         assert line is None
 
@@ -456,22 +502,29 @@ class TestDisambiguatorLine:
 
 
 class TestAshbyJidFromUrl:
-    @pytest.mark.parametrize("url,expected", [
-        ("https://ditto.ai/careers?ashby_jid=c3ecca63-e3e7-4572-afd2-7727b1bfaf3a",
-         "c3ecca63-e3e7-4572-afd2-7727b1bfaf3a"),
-        ("https://example.com/careers?other=1&ashby_jid=abc12345-def0&z=2",
-         "abc12345-def0"),
-    ])
+    @pytest.mark.parametrize(
+        "url,expected",
+        [
+            (
+                "https://ditto.ai/careers?ashby_jid=c3ecca63-e3e7-4572-afd2-7727b1bfaf3a",
+                "c3ecca63-e3e7-4572-afd2-7727b1bfaf3a",
+            ),
+            ("https://example.com/careers?other=1&ashby_jid=abc12345-def0&z=2", "abc12345-def0"),
+        ],
+    )
     def test_extracts_jid(self, url, expected):
         assert _ashby_jid_from_url(url) == expected
 
-    @pytest.mark.parametrize("url", [
-        "https://ditto.ai/careers",
-        "https://ditto.ai/careers?other=1",
-        "https://jobs.ashbyhq.com/Ditto/c3ecca63",
-        "",
-        None,
-    ])
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://ditto.ai/careers",
+            "https://ditto.ai/careers?other=1",
+            "https://jobs.ashbyhq.com/Ditto/c3ecca63",
+            "",
+            None,
+        ],
+    )
     def test_no_jid(self, url):
         assert _ashby_jid_from_url(url) is None
 
@@ -487,6 +540,7 @@ class TestParseFilename:
 
     def _parse_filename(self):
         from pathlib import Path
+
         ingest_path = Path(__file__).resolve().parent.parent / "scripts" / "ingest_past_resumes.py"
         # Extract the parser-only portion (everything before the DB writer
         # section) and exec it in an isolated namespace. The script's
@@ -514,28 +568,53 @@ class TestParseFilename:
     def parse(self):
         return self._parse_filename()
 
-    @pytest.mark.parametrize("owner,multiword,filename,expected", [
-        # Standard "{Name} {Company} {Title}.docx"
-        ("Sam Rivera", (), "Sam Rivera Helio Senior ML Engineer.docx",
-         ("Helio", "Senior ML Engineer")),
-        # Multi-word company captured by the multiword list
-        ("Sam Rivera", ("Lila Sciences",),
-         "Sam Rivera Lila Sciences Research Scientist, Frontier.docx",
-         ("Lila Sciences", "Research Scientist, Frontier")),
-        # Comma-after-company variant
-        ("Sam Rivera", (), "Sam Rivera OpenAI, AI Success Engineer.docx",
-         ("OpenAI", "AI Success Engineer")),
-        # Underscore-separated reverse-name format
-        ("Sam Rivera", (), "Rivera_Sam_Cohere_Senior_Research_Scientist.docx",
-         ("Cohere", "Senior Research Scientist")),
-        # Different owner name proves the parametrization
-        ("Prateek Puri", (),
-         "Prateek Puri Anthropic Research Engineer, Economic Research.docx",
-         ("Anthropic", "Research Engineer, Economic Research")),
-        # Title artifact like " (1)" gets stripped
-        ("Sam Rivera", (), "Sam Rivera Helio Senior ML Engineer (1).docx",
-         ("Helio", "Senior ML Engineer")),
-    ])
+    @pytest.mark.parametrize(
+        "owner,multiword,filename,expected",
+        [
+            # Standard "{Name} {Company} {Title}.docx"
+            (
+                "Sam Rivera",
+                (),
+                "Sam Rivera Helio Senior ML Engineer.docx",
+                ("Helio", "Senior ML Engineer"),
+            ),
+            # Multi-word company captured by the multiword list
+            (
+                "Sam Rivera",
+                ("Lila Sciences",),
+                "Sam Rivera Lila Sciences Research Scientist, Frontier.docx",
+                ("Lila Sciences", "Research Scientist, Frontier"),
+            ),
+            # Comma-after-company variant
+            (
+                "Sam Rivera",
+                (),
+                "Sam Rivera OpenAI, AI Success Engineer.docx",
+                ("OpenAI", "AI Success Engineer"),
+            ),
+            # Underscore-separated reverse-name format
+            (
+                "Sam Rivera",
+                (),
+                "Rivera_Sam_Cohere_Senior_Research_Scientist.docx",
+                ("Cohere", "Senior Research Scientist"),
+            ),
+            # Different owner name proves the parametrization
+            (
+                "Prateek Puri",
+                (),
+                "Prateek Puri Anthropic Research Engineer, Economic Research.docx",
+                ("Anthropic", "Research Engineer, Economic Research"),
+            ),
+            # Title artifact like " (1)" gets stripped
+            (
+                "Sam Rivera",
+                (),
+                "Sam Rivera Helio Senior ML Engineer (1).docx",
+                ("Helio", "Senior ML Engineer"),
+            ),
+        ],
+    )
     def test_parses_canonical_shapes(self, parse, owner, multiword, filename, expected):
         assert parse(filename, owner_name=owner, multiword_companies=multiword) == expected
 
@@ -666,10 +745,7 @@ class TestTrimmedChatHistory:
 
     def test_char_budget_drops_oldest_first(self):
         # 100-char messages × 20 → 2000 chars > 1500 budget → some drop
-        history = [
-            {"role": "user", "content": f"msg-{i}: " + "x" * 90}
-            for i in range(20)
-        ]
+        history = [{"role": "user", "content": f"msg-{i}: " + "x" * 90} for i in range(20)]
         history.append({"role": "user", "content": "current"})
         out = _trimmed_chat_history(history, "summary", char_budget=300)
         # Newest survives; oldest dropped
@@ -685,8 +761,12 @@ class TestOtherSectionsExcerpt:
         resume = {
             "summary": "S",
             "selected_research": [
-                {"category_label": "RES", "title": "T", "description": "D",
-                 "accomplishment_id": "a"},
+                {
+                    "category_label": "RES",
+                    "title": "T",
+                    "description": "D",
+                    "accomplishment_id": "a",
+                },
             ],
         }
         out = _other_sections_excerpt(resume, "summary")
@@ -700,8 +780,12 @@ class TestOtherSectionsExcerpt:
         resume = {
             "summary": "S",
             "selected_research": [
-                {"category_label": "L", "title": "T", "description": long_text,
-                 "accomplishment_id": "a"},
+                {
+                    "category_label": "L",
+                    "title": "T",
+                    "description": long_text,
+                    "accomplishment_id": "a",
+                },
             ],
         }
         out = _other_sections_excerpt(resume, "tagline")
@@ -747,14 +831,20 @@ class TestFocusedProfileForEdit:
             "selected_research": [
                 {"accomplishment_id": "rand-muse", "title": "MUSE", "description": "..."},
             ],
-            "experience": {"rand_corporation": {"bullets": [
-                {"text": "x", "accomplishment_ids": ["rand-muse", "rand-darpa-ckc"]},
-            ]}},
+            "experience": {
+                "rand_corporation": {
+                    "bullets": [
+                        {"text": "x", "accomplishment_ids": ["rand-muse", "rand-darpa-ckc"]},
+                    ]
+                }
+            },
         }
 
     def test_research_path_sends_only_referenced_accomplishment(self, profile, resume):
         out = _focused_profile_for_edit(
-            "selected_research.0.description", resume, profile,
+            "selected_research.0.description",
+            resume,
+            profile,
         )
         assert "rand-muse" in out
         assert "MUSE" in out
@@ -765,7 +855,9 @@ class TestFocusedProfileForEdit:
 
     def test_bullet_path_sends_all_bullet_accomplishments(self, profile, resume):
         out = _focused_profile_for_edit(
-            "experience.rand_corporation.bullets.0.text", resume, profile,
+            "experience.rand_corporation.bullets.0.text",
+            resume,
+            profile,
         )
         assert "MUSE" in out
         assert "DARPA CKC" in out
@@ -774,7 +866,9 @@ class TestFocusedProfileForEdit:
 
     def test_skills_path_returns_whitelist(self, profile, resume):
         out = _focused_profile_for_edit(
-            "technical_skills.ai_systems", resume, profile,
+            "technical_skills.ai_systems",
+            resume,
+            profile,
         )
         assert "Skills whitelist" in out
         assert "Python" in out and "Docker" in out
@@ -797,9 +891,16 @@ class TestFocusedProfileForEdit:
 
 class TestGroundingRendering:
     class _Row:
-        def __init__(self, *, user_text=None, user_payload_json=None, job_context=None,
-                     entity_type=RESEARCH_DESCRIPTION, entity_key="rand-muse",
-                     source_text_hash=None):
+        def __init__(
+            self,
+            *,
+            user_text=None,
+            user_payload_json=None,
+            job_context=None,
+            entity_type=RESEARCH_DESCRIPTION,
+            entity_key="rand-muse",
+            source_text_hash=None,
+        ):
             self.user_text = user_text
             self.user_payload_json = user_payload_json
             self.job_context = job_context
@@ -822,11 +923,13 @@ class TestGroundingRendering:
         assert _render_payload(row) == "Designed and built MUSE."
 
     def test_render_payload_bullet_list(self):
-        row = self._Row(user_payload_json=[
-            {"text": "First.", "accomplishment_ids": ["a"]},
-            {"text": "Second.", "accomplishment_ids": ["b"]},
-            {"text": "", "accomplishment_ids": ["c"]},  # empty ones drop
-        ])
+        row = self._Row(
+            user_payload_json=[
+                {"text": "First.", "accomplishment_ids": ["a"]},
+                {"text": "Second.", "accomplishment_ids": ["b"]},
+                {"text": "", "accomplishment_ids": ["c"]},  # empty ones drop
+            ]
+        )
         out = _render_payload(row)
         assert out == "- First.\n- Second."
 
@@ -852,8 +955,9 @@ class TestGroundingRendering:
         assert "Replaced manual workflow." in out
 
     def test_format_grounding_block_caps_at_three(self):
-        rows = [self._Row(user_text=f"Version {i}.", job_context={"job_title": "X"})
-                for i in range(5)]
+        rows = [
+            self._Row(user_text=f"Version {i}.", job_context={"job_title": "X"}) for i in range(5)
+        ]
         out = format_grounding_block(rows)
         assert "Version 0." in out
         assert "Version 2." in out

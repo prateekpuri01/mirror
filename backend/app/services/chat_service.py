@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import delete, select, func
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.chat import ChatMessage
@@ -38,8 +38,6 @@ async def add_message(
 
 async def clear_chat(session: AsyncSession, job_id: uuid.UUID) -> int:
     """Delete all chat messages for a job. Returns count deleted."""
-    result = await session.execute(
-        delete(ChatMessage).where(ChatMessage.job_id == job_id)
-    )
+    result = await session.execute(delete(ChatMessage).where(ChatMessage.job_id == job_id))
     await session.commit()
     return result.rowcount

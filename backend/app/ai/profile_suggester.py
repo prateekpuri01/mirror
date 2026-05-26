@@ -22,7 +22,6 @@ Rules:
 - Examples: "AI/ML Systems", "National Security Policy", "Data Science", "Science Communication"
 - If the user already has domains listed, keep ones that are well-supported and add any missing ones
 - Output ONLY valid JSON, no markdown fences""",
-
     "skills": """\
 You are a career profile assistant. Given the user's professional background, \
 suggest skills organized into three categories.
@@ -41,7 +40,6 @@ Rules:
 - Only include skills actually evidenced by the user's accomplishments, publications, and work
 - If the user already has skills listed, keep well-supported ones and add missing ones
 - Output ONLY valid JSON, no markdown fences""",
-
     "target_roles": """\
 You are a career profile assistant. Given the user's professional background, \
 suggest target job roles they would be competitive for.
@@ -83,8 +81,7 @@ def _build_suggestion_context(profile_data: dict) -> str:
         for w in wh:
             end = w.get("end") or "present"
             lines.append(
-                f"  - {w.get('employer', '')} — {w.get('title', '')} "
-                f"({w.get('start', '')}-{end})"
+                f"  - {w.get('employer', '')} — {w.get('title', '')} ({w.get('start', '')}-{end})"
             )
         lines.append("")
 
@@ -92,9 +89,7 @@ def _build_suggestion_context(profile_data: dict) -> str:
     complete = profile_data.get("complete_profile", {})
     accs = complete.get("accomplishments", [])
     if accs:
-        top = sorted(
-            accs, key=lambda a: a.get("relevance_weight", 0), reverse=True
-        )[:10]
+        top = sorted(accs, key=lambda a: a.get("relevance_weight", 0), reverse=True)[:10]
         lines.append(f"Top accomplishments ({len(accs)} total, showing top 10):")
         for a in top:
             lines.append(f"  - [{a.get('employer', '')}] {a.get('title', '')}")
@@ -113,8 +108,7 @@ def _build_suggestion_context(profile_data: dict) -> str:
         for p in pubs:
             fa = " [first author]" if p.get("first_author") else ""
             lines.append(
-                f"  - \"{p.get('title', '')}\" "
-                f"({p.get('venue', '')}, {p.get('year', '')}){fa}"
+                f'  - "{p.get("title", "")}" ({p.get("venue", "")}, {p.get("year", "")}){fa}'
             )
         lines.append("")
 
@@ -141,10 +135,7 @@ def _build_suggestion_context(profile_data: dict) -> str:
 
     existing_roles = profile_data.get("target_roles", [])
     if existing_roles:
-        role_strs = [
-            f"{r.get('title', '')} ({r.get('seniority', '')})"
-            for r in existing_roles
-        ]
+        role_strs = [f"{r.get('title', '')} ({r.get('seniority', '')})" for r in existing_roles]
         lines.append(f"Current target roles: {', '.join(role_strs)}")
 
     return "\n".join(lines)

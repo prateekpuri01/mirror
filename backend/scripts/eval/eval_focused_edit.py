@@ -68,6 +68,7 @@ def _build_state(
 ) -> dict:
     """Construct a complete AgentState dict for ``edit_section``."""
     from app.services.document_service import _get_nested
+
     try:
         target_value = _get_nested(resume_json, target_path)
     except (KeyError, IndexError, TypeError):
@@ -195,7 +196,7 @@ def _accomplishment_by_id(profile_data: dict, accomplishment_id: str) -> dict | 
 
 def _short(value, n: int = 120) -> str:
     if isinstance(value, str):
-        return (value[:n] + ("…" if len(value) > n else ""))
+        return value[:n] + ("…" if len(value) > n else "")
     rendered = json.dumps(value)
     return rendered[:n] + ("…" if len(rendered) > n else "")
 
@@ -223,13 +224,16 @@ async def run_scenario(
     print(f"  path: {target_path}")
     print("=" * 78)
 
-    accomplishment = _accomplishment_by_id(profile_data, accomplishment_id) if accomplishment_id else None
+    accomplishment = (
+        _accomplishment_by_id(profile_data, accomplishment_id) if accomplishment_id else None
+    )
     chat_history: list[dict] = []
     state_resume = copy.deepcopy(resume_json)
 
     turn_reports: list[dict] = []
     prior_value = None
     from app.services.document_service import _get_nested
+
     prior_value = _get_nested(state_resume, target_path)
 
     for i, instruction in enumerate(turns, 1):
@@ -277,13 +281,15 @@ async def run_scenario(
         )
         print(f"  {judgment.get('summary', '')}")
 
-        turn_reports.append({
-            "turn": i,
-            "instruction": instruction,
-            "before": prior_value,
-            "after": new_value,
-            "judgment": judgment,
-        })
+        turn_reports.append(
+            {
+                "turn": i,
+                "instruction": instruction,
+                "before": prior_value,
+                "after": new_value,
+                "judgment": judgment,
+            }
+        )
         prior_value = new_value
 
     return {"name": name, "turns": turn_reports}
@@ -448,16 +454,24 @@ async def main():
                 if j.get("voice_matches_grounding") == "pass":
                     pass_count += 1
             fails = [
-                a for a in ("respects_instruction", "no_fabrication", "differs_from_prior", "voice_matches_grounding")
+                a
+                for a in (
+                    "respects_instruction",
+                    "no_fabrication",
+                    "differs_from_prior",
+                    "voice_matches_grounding",
+                )
                 if j.get(a) == "fail"
             ]
             if fails:
-                failed_checks.append({
-                    "scenario": r["name"],
-                    "turn": t["turn"],
-                    "axes": fails,
-                    "summary": j.get("summary", ""),
-                })
+                failed_checks.append(
+                    {
+                        "scenario": r["name"],
+                        "turn": t["turn"],
+                        "axes": fails,
+                        "summary": j.get("summary", ""),
+                    }
+                )
 
     pass_rate = (pass_count / total) if total else 0.0
     print(f"  passed {pass_count} / {total} graded checks   ({pass_rate * 100:.1f}%)")
@@ -466,7 +480,9 @@ async def main():
         print()
         print("  failed checks:")
         for fc in failed_checks:
-            print(f"    [{fc['scenario']}] turn {fc['turn']}: {', '.join(fc['axes'])} — {fc['summary']}")
+            print(
+                f"    [{fc['scenario']}] turn {fc['turn']}: {', '.join(fc['axes'])} — {fc['summary']}"
+            )
 
     # ----- CI artifact -----------------------------------------------------
     threshold = float(os.environ.get("EVAL_PASS_THRESHOLD", "0.80"))

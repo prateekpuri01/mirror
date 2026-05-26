@@ -106,9 +106,7 @@ async def web_search_precise(
     return []
 
 
-async def _searxng_search(
-    query: str, num_results: int, time_range: str | None
-) -> list[dict]:
+async def _searxng_search(query: str, num_results: int, time_range: str | None) -> list[dict]:
     """Query SearXNG JSON API."""
     try:
         params: dict = {
@@ -130,11 +128,13 @@ async def _searxng_search(
 
         results = []
         for item in data.get("results", [])[:num_results]:
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("url", ""),
-                "snippet": item.get("content", ""),
-            })
+            results.append(
+                {
+                    "title": item.get("title", ""),
+                    "url": item.get("url", ""),
+                    "snippet": item.get("content", ""),
+                }
+            )
         return results
 
     except Exception as e:

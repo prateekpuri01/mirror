@@ -39,9 +39,7 @@ async def update_profile(
 
 
 @router.delete("/search-profiles/{profile_id}", status_code=204)
-async def delete_profile(
-    profile_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def delete_profile(profile_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     deleted = await search_profile_service.delete_search_profile(session, profile_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Search profile not found")

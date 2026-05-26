@@ -5,7 +5,6 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session, get_session
-from app.services.pipeline import process_new_jobs
 from app.schemas.companies import (
     CompanyCreate,
     CompanyList,
@@ -20,6 +19,7 @@ from app.schemas.companies import (
 )
 from app.services import company_service
 from app.services.company_discovery import discover_company, import_company, refresh_company_jobs
+from app.services.pipeline import process_new_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -68,9 +68,7 @@ async def update_company(
 
 
 @router.delete("/companies/{company_id}", status_code=204)
-async def delete_company(
-    company_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def delete_company(company_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     deleted = await company_service.delete_company_with_jobs(session, company_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -106,13 +104,15 @@ async def refresh_company_endpoint(
 async def scrape_progress():
     """Lightweight polling endpoint for real-time scrape progress."""
     from app.services.scrape_progress import progress
+
     return progress.to_dict()
 
 
 @router.post("/companies/discover", response_model=DiscoverResponse)
 async def discover(body: DiscoverRequest, session: AsyncSession = Depends(get_session)):
     # Quick URL resolution first (no scraping) to check for duplicates
-    from app.services.company_discovery import resolve_job_url, _find_company_by_slug
+    from app.services.company_discovery import _find_company_by_slug, resolve_job_url
+
     resolution = await resolve_job_url(body.job_url)
     if resolution.ats and resolution.slug:
         existing = await _find_company_by_slug(session, resolution.ats, resolution.slug)
@@ -122,7 +122,7 @@ async def discover(body: DiscoverRequest, session: AsyncSession = Depends(get_se
                 slug=resolution.slug,
                 company_name=existing.name,
                 error=f'"{existing.name}" has already been added. '
-                      f"Use the Refresh button on the Companies page to check for new jobs.",
+                f"Use the Refresh button on the Companies page to check for new jobs.",
             )
 
     # Not a duplicate — proceed with full discover (scrape + score)
@@ -165,8 +165,10 @@ async def import_company_endpoint(
             from app.services.company_research_prewarm import (
                 prewarm_company_research_for_jobs,
             )
+
             background_tasks.add_task(
-                prewarm_company_research_for_jobs, job_ids,
+                prewarm_company_research_for_jobs,
+                job_ids,
             )
 
     return ImportResponse(**result)

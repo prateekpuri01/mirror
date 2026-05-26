@@ -22,8 +22,8 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -47,6 +47,7 @@ logger = logging.getLogger(__name__)
 # URL Resolution data types
 # ===========================================================================
 
+
 @dataclass
 class URLResolution:
     """Result of the multi-prong URL resolution pipeline."""
@@ -54,7 +55,9 @@ class URLResolution:
     ats: str | None = None  # "greenhouse", "lever", "ashby"
     slug: str | None = None
     job_url: str = ""
-    method: str = "unresolved"  # "regex", "fingerprint", "llm", "cache", "learned_pattern", "unresolved"
+    method: str = (
+        "unresolved"  # "regex", "fingerprint", "llm", "cache", "learned_pattern", "unresolved"
+    )
     confidence: str = "none"  # "high", "medium", "low", "none"
     careers_url: str | None = None
     error: str | None = None
@@ -63,6 +66,7 @@ class URLResolution:
 # ===========================================================================
 # In-process pattern cache (loaded from DB, refreshed every 5 min)
 # ===========================================================================
+
 
 class _LearnedPatternCache:
     """In-memory cache of ats_domain_cache and ats_learned_patterns tables.
@@ -74,7 +78,9 @@ class _LearnedPatternCache:
 
     def __init__(self) -> None:
         self._domains: dict[str, tuple[str, str]] = {}  # hostname → (ats, slug)
-        self._patterns: list[tuple[re.Pattern, str, int | None, object]] = []  # (compiled, ats, slug_group, row_id)
+        self._patterns: list[
+            tuple[re.Pattern, str, int | None, object]
+        ] = []  # (compiled, ats, slug_group, row_id)
         self._last_refresh: float = 0
         self._loaded: bool = False
 
@@ -93,10 +99,14 @@ class _LearnedPatternCache:
 
                 # Load active learned patterns
                 rows = (
-                    await sess.execute(
-                        select(AtsLearnedPattern).where(AtsLearnedPattern.is_active.is_(True))
+                    (
+                        await sess.execute(
+                            select(AtsLearnedPattern).where(AtsLearnedPattern.is_active.is_(True))
+                        )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 patterns = []
                 for r in rows:
                     try:
@@ -110,7 +120,8 @@ class _LearnedPatternCache:
             self._loaded = True
             logger.debug(
                 "Pattern cache refreshed: %d domains, %d patterns",
-                len(self._domains), len(self._patterns),
+                len(self._domains),
+                len(self._patterns),
             )
         except Exception:
             logger.warning("Failed to refresh pattern cache", exc_info=True)
@@ -139,7 +150,9 @@ class _LearnedPatternCache:
         """Immediate in-process update after a write."""
         self._domains[hostname] = (ats, slug)
 
-    def add_pattern(self, compiled: re.Pattern, ats: str, slug_group: int | None, pattern_id: object) -> None:
+    def add_pattern(
+        self, compiled: re.Pattern, ats: str, slug_group: int | None, pattern_id: object
+    ) -> None:
         """Immediate in-process update after persisting a new pattern."""
         self._patterns.append((compiled, ats, slug_group, pattern_id))
 
@@ -181,24 +194,33 @@ def _regex_match(url: str) -> URLResolution | None:
         m = pattern.search(url)
         if m:
             return URLResolution(
-                ats="greenhouse", slug=m.group("slug"), job_url=url,
-                method="regex", confidence="high",
+                ats="greenhouse",
+                slug=m.group("slug"),
+                job_url=url,
+                method="regex",
+                confidence="high",
             )
 
     for pattern in _LEVER_PATTERNS:
         m = pattern.search(url)
         if m:
             return URLResolution(
-                ats="lever", slug=m.group("slug"), job_url=url,
-                method="regex", confidence="high",
+                ats="lever",
+                slug=m.group("slug"),
+                job_url=url,
+                method="regex",
+                confidence="high",
             )
 
     for pattern in _ASHBY_PATTERNS:
         m = pattern.search(url)
         if m:
             return URLResolution(
-                ats="ashby", slug=m.group("slug"), job_url=url,
-                method="regex", confidence="high",
+                ats="ashby",
+                slug=m.group("slug"),
+                job_url=url,
+                method="regex",
+                confidence="high",
             )
 
     for pattern in _EIGHTFOLD_PATTERNS:
@@ -210,15 +232,19 @@ def _regex_match(url: str) -> URLResolution | None:
             slug = m.group("slug")
             if parsed.query:
                 filter_params = "&".join(
-                    f"{k}={v}" for k, v in parse_qs(parsed.query).items()
+                    f"{k}={v}"
+                    for k, v in parse_qs(parsed.query).items()
                     if k.startswith("filter_")
                     for v in [v[0]]  # take first value
                 )
                 if filter_params:
                     slug = f"{slug}?{filter_params}"
             return URLResolution(
-                ats="eightfold", slug=slug, job_url=url,
-                method="regex", confidence="high",
+                ats="eightfold",
+                slug=slug,
+                job_url=url,
+                method="regex",
+                confidence="high",
                 careers_url=careers_url,
             )
 
@@ -229,9 +255,8 @@ def _regex_match(url: str) -> URLResolution | None:
 # API verification — lightweight probe to confirm a slug is valid
 # ===========================================================================
 
-async def _verify_ats_slug(
-    ats: str, slug: str, http_client: httpx.AsyncClient
-) -> bool:
+
+async def _verify_ats_slug(ats: str, slug: str, http_client: httpx.AsyncClient) -> bool:
     """Hit the ATS API to verify a slug actually exists. Returns True if valid."""
     try:
         if ats == "greenhouse":
@@ -246,6 +271,7 @@ async def _verify_ats_slug(
 
         elif ats == "ashby":
             from app.scrapers.ashby import ASHBY_GQL, LIST_QUERY
+
             resp = await http_client.post(
                 ASHBY_GQL,
                 json={
@@ -261,7 +287,8 @@ async def _verify_ats_slug(
             return board is not None
 
         elif ats == "eightfold":
-            from app.scrapers.eightfold import parse_eightfold_slug, _HEADERS
+            from app.scrapers.eightfold import _HEADERS, parse_eightfold_slug
+
             domain, _ = parse_eightfold_slug(slug)
             api_base = f"https://jobs.{domain}"
             # Need session cookie first
@@ -289,6 +316,7 @@ async def _verify_ats_slug(
 # ===========================================================================
 # Step 1c: HTML fingerprinting (hardcoded patterns)
 # ===========================================================================
+
 
 async def _fetch_raw_html(
     url: str, http_client: httpx.AsyncClient, *, max_bytes: int = 500_000
@@ -322,8 +350,8 @@ _FP_GREENHOUSE = [
 ]
 
 # Presence markers (no slug — indicates ATS is used, slug extracted via probing)
-_GH_PRESENCE = re.compile(r'gh_jid[=:]')
-_ASHBY_PRESENCE = re.compile(r'ashby_jid[=:]')
+_GH_PRESENCE = re.compile(r"gh_jid[=:]")
+_ASHBY_PRESENCE = re.compile(r"ashby_jid[=:]")
 
 _FP_LEVER = [
     re.compile(r'jobs\.lever\.co/([^/"\s?]+)'),
@@ -338,9 +366,7 @@ _FP_ASHBY = [
 # Slug extraction from Greenhouse JSON blobs embedded in HTML.
 # Many custom-domain pages embed the full Greenhouse API response as JSON
 # which contains the board_token or can be probed by domain-derived slugs.
-_GH_JSON_SLUG = re.compile(
-    r'"board_token"\s*:\s*"([^"]+)"'
-)
+_GH_JSON_SLUG = re.compile(r'"board_token"\s*:\s*"([^"]+)"')
 
 
 def _fingerprint_html(html: str) -> tuple[str, str] | None:
@@ -393,7 +419,7 @@ def _fingerprint_html(html: str) -> tuple[str, str] | None:
 
     # --- Eightfold ---
     # Eightfold pages reference pcsxConfig or eightfold-font-base
-    eightfold_markers = re.search(r'pcsxConfig|eightfold-font-base|/api/pcsx/', html)
+    eightfold_markers = re.search(r"pcsxConfig|eightfold-font-base|/api/pcsx/", html)
     if eightfold_markers:
         # Extract domain from the page's pcsxConfig or URL references
         domain_match = re.search(r'"domain"\s*:\s*"([^"]+)"', html)
@@ -410,6 +436,7 @@ def _fingerprint_html(html: str) -> tuple[str, str] | None:
 # ===========================================================================
 # Step 1e: Domain-based slug probing
 # ===========================================================================
+
 
 def _slug_candidates_from_url(url: str) -> list[str]:
     """Generate plausible ATS slug candidates from a URL's domain.
@@ -463,9 +490,7 @@ def _slug_candidates_from_url(url: str) -> list[str]:
     return candidates
 
 
-async def _probe_domain_slugs(
-    ats: str, url: str, http_client: httpx.AsyncClient
-) -> str | None:
+async def _probe_domain_slugs(ats: str, url: str, http_client: httpx.AsyncClient) -> str | None:
     """Try domain-derived slug candidates against an ATS API."""
     candidates = _slug_candidates_from_url(url)
     logger.info("Probing %s with slug candidates: %s", ats, candidates)
@@ -481,6 +506,7 @@ async def _probe_domain_slugs(
 # ===========================================================================
 # Persistence helpers (use own sessions so learnings survive regardless)
 # ===========================================================================
+
 
 def _hostname_from_url(url: str) -> str:
     """Extract hostname from URL, stripping www."""
@@ -508,12 +534,23 @@ async def _persist_domain_mapping(url: str, ats: str, slug: str, method: str) ->
         return  # slug is per-path, not per-domain
     try:
         async with async_session() as sess:
-            stmt = pg_insert(AtsDomainCache).values(
-                domain=domain, ats=ats, slug=slug, source_method=method,
-            ).on_conflict_do_update(
-                index_elements=["domain"],
-                set_={"ats": ats, "slug": slug, "source_method": method,
-                       "updated_at": datetime.now(timezone.utc)},
+            stmt = (
+                pg_insert(AtsDomainCache)
+                .values(
+                    domain=domain,
+                    ats=ats,
+                    slug=slug,
+                    source_method=method,
+                )
+                .on_conflict_do_update(
+                    index_elements=["domain"],
+                    set_={
+                        "ats": ats,
+                        "slug": slug,
+                        "source_method": method,
+                        "updated_at": datetime.now(UTC),
+                    },
+                )
             )
             await sess.execute(stmt)
             await sess.commit()
@@ -532,7 +569,7 @@ async def _record_cache_hit(domain: str) -> None:
                 .where(AtsDomainCache.domain == domain)
                 .values(
                     hit_count=AtsDomainCache.hit_count + 1,
-                    last_hit_at=datetime.now(timezone.utc),
+                    last_hit_at=datetime.now(UTC),
                 )
             )
             await sess.execute(stmt)
@@ -542,7 +579,10 @@ async def _record_cache_hit(domain: str) -> None:
 
 
 def _sanity_check_pattern(
-    regex_str: str, slug_group: int | None, html: str, expected_slug: str | None,
+    regex_str: str,
+    slug_group: int | None,
+    html: str,
+    expected_slug: str | None,
 ) -> bool:
     """Validate a learned pattern before persisting.
 
@@ -572,7 +612,9 @@ def _sanity_check_pattern(
             return False
         if extracted != expected_slug:
             logger.debug(
-                "Extracted slug %r != expected %r", extracted, expected_slug,
+                "Extracted slug %r != expected %r",
+                extracted,
+                expected_slug,
             )
             return False
 
@@ -580,8 +622,11 @@ def _sanity_check_pattern(
 
 
 async def _persist_learned_pattern(
-    ats: str, regex_str: str, slug_group: int | None,
-    description: str | None, source_url: str,
+    ats: str,
+    regex_str: str,
+    slug_group: int | None,
+    description: str | None,
+    source_url: str,
 ) -> None:
     """Insert a new learned pattern and update in-process cache."""
     try:
@@ -591,10 +636,17 @@ async def _persist_learned_pattern(
 
     try:
         async with async_session() as sess:
-            stmt = pg_insert(AtsLearnedPattern).values(
-                ats=ats, pattern=regex_str, slug_group=slug_group,
-                description=description, source_url=source_url,
-            ).on_conflict_do_nothing(index_elements=["pattern"])
+            stmt = (
+                pg_insert(AtsLearnedPattern)
+                .values(
+                    ats=ats,
+                    pattern=regex_str,
+                    slug_group=slug_group,
+                    description=description,
+                    source_url=source_url,
+                )
+                .on_conflict_do_nothing(index_elements=["pattern"])
+            )
             result = await sess.execute(stmt)
             await sess.commit()
 
@@ -707,7 +759,7 @@ async def _llm_identify_ats(html: str, url: str) -> dict | None:
     Returns None on failure.
     """
     try:
-        from app.ai.client import get_openai_client, EXTRACTION_MODEL
+        from app.ai.client import EXTRACTION_MODEL, get_openai_client
     except Exception:
         logger.warning("OpenAI client not available for LLM ATS detection")
         return None
@@ -725,10 +777,7 @@ async def _llm_identify_ats(html: str, url: str) -> dict | None:
                 {"role": "system", "content": _LLM_SYSTEM},
                 {
                     "role": "user",
-                    "content": (
-                        f"URL: {url}\n\n"
-                        f"HTML content (truncated):\n{truncated}"
-                    ),
+                    "content": (f"URL: {url}\n\nHTML content (truncated):\n{truncated}"),
                 },
             ],
         )
@@ -748,7 +797,10 @@ async def _llm_identify_ats(html: str, url: str) -> dict | None:
         if ats and slug:
             logger.info(
                 "LLM identified ATS: %s/%s (confidence: %s, reason: %s)",
-                ats, slug, confidence, result.get("reasoning", ""),
+                ats,
+                slug,
+                confidence,
+                result.get("reasoning", ""),
             )
             return result
 
@@ -762,6 +814,7 @@ async def _llm_identify_ats(html: str, url: str) -> dict | None:
 # Main resolution pipeline
 # ===========================================================================
 
+
 async def resolve_job_url(url: str) -> URLResolution:
     """Self-improving URL resolution pipeline.
 
@@ -774,7 +827,6 @@ async def resolve_job_url(url: str) -> URLResolution:
     Step 2 — LLM fallback (teaches Step 1 for next time)
     """
     async with httpx.AsyncClient(timeout=30.0) as http_client:
-
         # --- Step 1a: Domain cache lookup ---
         hostname = _hostname_from_url(url)
         cached = await _pattern_cache.lookup_domain(hostname)
@@ -786,8 +838,11 @@ async def resolve_job_url(url: str) -> URLResolution:
                 # Record hit in background (fire-and-forget intent, but await for safety)
                 await _record_cache_hit(hostname)
                 return URLResolution(
-                    ats=ats, slug=slug, job_url=url,
-                    method="cache", confidence="high",
+                    ats=ats,
+                    slug=slug,
+                    job_url=url,
+                    method="cache",
+                    confidence="high",
                 )
             else:
                 logger.info("Step 1a (cache): %s/%s stale, continuing pipeline", ats, slug)
@@ -803,7 +858,8 @@ async def resolve_job_url(url: str) -> URLResolution:
             else:
                 logger.info(
                     "Step 1b (regex): %s/%s matched but failed verification",
-                    result.ats, result.slug,
+                    result.ats,
+                    result.slug,
                 )
 
         # --- Step 1c: Hardcoded HTML fingerprint ---
@@ -828,14 +884,18 @@ async def resolve_job_url(url: str) -> URLResolution:
                         logger.info("Step 1c (fingerprint): %s/%s verified", ats, slug)
                         await _persist_domain_mapping(url, ats, slug, "fingerprint")
                         return URLResolution(
-                            ats=ats, slug=slug, job_url=url,
-                            method="fingerprint", confidence="high",
+                            ats=ats,
+                            slug=slug,
+                            job_url=url,
+                            method="fingerprint",
+                            confidence="high",
                             careers_url=url,
                         )
                     else:
                         logger.info(
                             "Step 1c (fingerprint): %s/%s found but failed verification",
-                            ats, slug,
+                            ats,
+                            slug,
                         )
 
         # --- Step 1d: Learned patterns ---
@@ -855,14 +915,18 @@ async def resolve_job_url(url: str) -> URLResolution:
                         await _persist_domain_mapping(url, ats, slug, "learned_pattern")
                         await _increment_pattern_verified(pattern_id)
                         return URLResolution(
-                            ats=ats, slug=slug, job_url=url,
-                            method="learned_pattern", confidence="high",
+                            ats=ats,
+                            slug=slug,
+                            job_url=url,
+                            method="learned_pattern",
+                            confidence="high",
                             careers_url=url,
                         )
                     else:
                         logger.info(
                             "Step 1d (learned_pattern): %s/%s failed verification",
-                            ats, slug,
+                            ats,
+                            slug,
                         )
                         await _record_pattern_failure(pattern_id)
 
@@ -874,8 +938,11 @@ async def resolve_job_url(url: str) -> URLResolution:
                     logger.info("Step 1e (probe): %s/%s verified", probe_ats, probed)
                     await _persist_domain_mapping(url, probe_ats, probed, "probe")
                     return URLResolution(
-                        ats=probe_ats, slug=probed, job_url=url,
-                        method="probe", confidence="medium",
+                        ats=probe_ats,
+                        slug=probed,
+                        job_url=url,
+                        method="probe",
+                        confidence="medium",
                         careers_url=url,
                     )
 
@@ -902,10 +969,17 @@ async def resolve_job_url(url: str) -> URLResolution:
                         description = suggested.get("description")
 
                         if regex_str and _sanity_check_pattern(
-                            regex_str, slug_group, html, slug,
+                            regex_str,
+                            slug_group,
+                            html,
+                            slug,
                         ):
                             await _persist_learned_pattern(
-                                ats, regex_str, slug_group, description, url,
+                                ats,
+                                regex_str,
+                                slug_group,
+                                description,
+                                url,
                             )
                         else:
                             logger.debug(
@@ -914,25 +988,35 @@ async def resolve_job_url(url: str) -> URLResolution:
                             )
 
                     return URLResolution(
-                        ats=ats, slug=slug, job_url=url,
-                        method="llm", confidence=confidence,
+                        ats=ats,
+                        slug=slug,
+                        job_url=url,
+                        method="llm",
+                        confidence=confidence,
                         careers_url=url,
                     )
                 else:
                     # LLM found something but API doesn't confirm — still
                     # return it with lower confidence so caller can decide
                     logger.info(
-                        "Step 2 (LLM): %s/%s found but unverified", ats, slug,
+                        "Step 2 (LLM): %s/%s found but unverified",
+                        ats,
+                        slug,
                     )
                     return URLResolution(
-                        ats=ats, slug=slug, job_url=url,
-                        method="llm", confidence="low",
+                        ats=ats,
+                        slug=slug,
+                        job_url=url,
+                        method="llm",
+                        confidence="low",
                         careers_url=url,
                     )
 
     # All steps failed
     return URLResolution(
-        job_url=url, method="unresolved", confidence="none",
+        job_url=url,
+        method="unresolved",
+        confidence="none",
         careers_url=url,
         error="Could not detect ATS platform. Supported: Greenhouse, Lever, Ashby.",
     )
@@ -941,6 +1025,7 @@ async def resolve_job_url(url: str) -> URLResolution:
 # ===========================================================================
 # Relevance scoring (LLM-free)
 # ===========================================================================
+
 
 def _tokenize(text: str) -> set[str]:
     """Lowercase split into word tokens."""
@@ -970,6 +1055,7 @@ def _build_keyword_sets(profile_data: dict) -> dict:
         keywords["domains"].add(domain.lower())
 
     from app.ai.skill_utils import flatten_skills
+
     for skill in flatten_skills(profile_data.get("skills", {})):
         keywords["technical_skills"].add(skill.lower())
 
@@ -1077,7 +1163,10 @@ async def _load_profile_keywords(session: AsyncSession) -> dict:
 
 
 async def discover_company(
-    session: AsyncSession, job_url: str, *, known_urls: set[str] | None = None,
+    session: AsyncSession,
+    job_url: str,
+    *,
+    known_urls: set[str] | None = None,
 ) -> dict:
     """Resolve URL via multi-prong pipeline, fetch all jobs, score, return preview.
 
@@ -1085,6 +1174,7 @@ async def discover_company(
     Pass known_urls to skip detail fetches for jobs already in the DB.
     """
     from app.services.scrape_progress import progress
+
     progress.start()
 
     try:
@@ -1094,7 +1184,11 @@ async def discover_company(
 
 
 async def _discover_company_inner(
-    session: AsyncSession, job_url: str, progress, *, known_urls: set[str] | None = None,
+    session: AsyncSession,
+    job_url: str,
+    progress,
+    *,
+    known_urls: set[str] | None = None,
 ) -> dict:
     resolution = await resolve_job_url(job_url)
 
@@ -1106,8 +1200,7 @@ async def _discover_company_inner(
             "total_jobs": 0,
             "jobs": [],
             "resolution_method": resolution.method,
-            "error": resolution.error
-                or "Could not detect ATS platform from URL.",
+            "error": resolution.error or "Could not detect ATS platform from URL.",
         }
 
     scraper = _SCRAPER_MAP.get(resolution.ats)
@@ -1145,16 +1238,18 @@ async def _discover_company_inner(
     for sj in scraped_jobs:
         relevance = score_job_relevance(sj, profile_keywords) if profile_keywords else 0
         meta = sj.metadata or {}
-        job_previews.append({
-            "title": sj.title,
-            "location": sj.location,
-            "department": meta.get("departments", meta.get("department")),
-            "url": sj.url,
-            "posted_at": sj.posted_at.isoformat() if sj.posted_at else None,
-            "relevance": relevance,
-            "description_html": sj.description_html,
-            "remote": sj.remote,
-        })
+        job_previews.append(
+            {
+                "title": sj.title,
+                "location": sj.location,
+                "department": meta.get("departments", meta.get("department")),
+                "url": sj.url,
+                "posted_at": sj.posted_at.isoformat() if sj.posted_at else None,
+                "relevance": relevance,
+                "description_html": sj.description_html,
+                "remote": sj.remote,
+            }
+        )
 
     job_previews.sort(key=lambda j: j["relevance"], reverse=True)
 
@@ -1171,6 +1266,7 @@ async def _discover_company_inner(
 # ===========================================================================
 # Import orchestration
 # ===========================================================================
+
 
 async def import_company(
     session: AsyncSession,
@@ -1233,7 +1329,12 @@ async def import_company(
         scraper = _SCRAPER_MAP.get(ats)
         if not scraper:
             await session.commit()
-            return {"company_id": str(company.id), "company_name": company.name, "jobs_imported": 0, "job_ids": []}
+            return {
+                "company_id": str(company.id),
+                "company_name": company.name,
+                "jobs_imported": 0,
+                "job_ids": [],
+            }
         logger.info("Cache miss for %s/%s — re-scraping", ats, slug)
         async with httpx.AsyncClient(timeout=60.0) as client:
             scraped_jobs = await scraper.scrape_company(company, client)
@@ -1280,7 +1381,7 @@ async def import_company(
         job_ids.append(str(job.id))
         new_count += 1
 
-    company.last_scraped_at = datetime.now(timezone.utc)
+    company.last_scraped_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(company)
 
@@ -1367,7 +1468,7 @@ async def _import_direct_jobs(
         job_ids.append(str(job.id))
         new_count += 1
 
-    company.last_scraped_at = datetime.now(timezone.utc)
+    company.last_scraped_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(company)
     return {
@@ -1427,10 +1528,12 @@ async def refresh_company_jobs(
     else:
         # Fallback: pick a job URL as the probe
         probe_result = await session.execute(
-            select(Job.url).where(
+            select(Job.url)
+            .where(
                 Job.company_id == company_id,
                 Job.url.isnot(None),
-            ).limit(1)
+            )
+            .limit(1)
         )
         probe_url = probe_result.scalar_one_or_none()
 
@@ -1450,7 +1553,12 @@ async def refresh_company_jobs(
         select(Job.url).where(Job.company_id == company_id, Job.url.isnot(None))
     )
     known_urls = {row[0] for row in existing_url_result.all()}
-    logger.info("Refreshing %s via discover_company(%s), %d known URLs", company.name, probe_url, len(known_urls))
+    logger.info(
+        "Refreshing %s via discover_company(%s), %d known URLs",
+        company.name,
+        probe_url,
+        len(known_urls),
+    )
 
     # Run the same discovery pipeline used by Add Company
     discovery = await discover_company(session, probe_url, known_urls=known_urls)
@@ -1473,9 +1581,7 @@ async def refresh_company_jobs(
         _ensure_slug(company, ats, slug)
 
     # Get existing job URLs for this company
-    existing_result = await session.execute(
-        select(Job.url).where(Job.company_id == company_id)
-    )
+    existing_result = await session.execute(select(Job.url).where(Job.company_id == company_id))
     existing_urls = {row[0] for row in existing_result.all()}
 
     # Mark expired: jobs in DB but no longer in discovery results.
@@ -1486,6 +1592,7 @@ async def refresh_company_jobs(
     disappeared_urls = existing_urls - all_discovered_urls
     if disappeared_urls and ats:
         from app.models.jobs import JobSource
+
         source_enum = getattr(JobSource, ats, None)
         source_filter = Job.source == source_enum if source_enum else Job.source != "manual"
         result = await session.execute(
@@ -1496,14 +1603,14 @@ async def refresh_company_jobs(
                 Job.expired_at.is_(None),
                 source_filter,
             )
-            .values(expired_at=datetime.now(timezone.utc))
+            .values(expired_at=datetime.now(UTC))
         )
         expired_count = result.rowcount
 
     # Filter to new jobs only
     new_jobs = [j for j in discovery.get("jobs", []) if j["url"] not in existing_urls]
 
-    company.last_scraped_at = datetime.now(timezone.utc)
+    company.last_scraped_at = datetime.now(UTC)
     await session.commit()
 
     return {
@@ -1520,9 +1627,8 @@ async def refresh_company_jobs(
 # Helpers
 # ===========================================================================
 
-async def _find_company_by_slug(
-    session: AsyncSession, ats: str, slug: str
-) -> Company | None:
+
+async def _find_company_by_slug(session: AsyncSession, ats: str, slug: str) -> Company | None:
     """Find an existing company by ATS slug."""
     col = {
         "greenhouse": Company.greenhouse_slug,

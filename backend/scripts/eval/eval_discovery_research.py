@@ -27,9 +27,9 @@ import logging
 import re
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 # Make app importable
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
@@ -121,27 +121,73 @@ SYNTHETIC_PROFILES: dict[str, dict] = {
             {"title": "Distinguished Engineer, ML Platform"},
         ],
         "domains": ["ML infrastructure", "distributed training", "LLM serving", "model platforms"],
-        "skills": {"technical": [
-            "Python", "PyTorch", "Ray", "Kubernetes", "CUDA", "distributed systems",
-            "Triton", "TensorRT", "GPU optimization", "TorchServe", "vLLM",
-            "AWS", "Terraform", "gRPC",
-        ]},
+        "skills": {
+            "technical": [
+                "Python",
+                "PyTorch",
+                "Ray",
+                "Kubernetes",
+                "CUDA",
+                "distributed systems",
+                "Triton",
+                "TensorRT",
+                "GPU optimization",
+                "TorchServe",
+                "vLLM",
+                "AWS",
+                "Terraform",
+                "gRPC",
+            ]
+        },
         "search_preferences": {
             "looking_for": "staff/principal IC roles building ML platforms at scale",
             "not_looking_for": "management track, early-stage startups without infra needs, crypto",
         },
         "work_history": [
-            {"title": "Staff ML Engineer", "employer": "Lyft", "start": "2022-09", "end": None, "location": "San Francisco, CA"},
-            {"title": "Senior Software Engineer, ML Platform", "employer": "Stripe", "start": "2019-06", "end": "2022-09", "location": "San Francisco, CA"},
-            {"title": "Software Engineer", "employer": "Cloudera", "start": "2015-08", "end": "2019-06", "location": "Palo Alto, CA"},
+            {
+                "title": "Staff ML Engineer",
+                "employer": "Lyft",
+                "start": "2022-09",
+                "end": None,
+                "location": "San Francisco, CA",
+            },
+            {
+                "title": "Senior Software Engineer, ML Platform",
+                "employer": "Stripe",
+                "start": "2019-06",
+                "end": "2022-09",
+                "location": "San Francisco, CA",
+            },
+            {
+                "title": "Software Engineer",
+                "employer": "Cloudera",
+                "start": "2015-08",
+                "end": "2019-06",
+                "location": "Palo Alto, CA",
+            },
         ],
         "complete_profile": {
             "accomplishments": [
-                {"title": "Scaled distributed training to 800+ H100s with 92% MFU", "tags": ["distributed-training", "ml-infra", "gpu-optimization"]},
-                {"title": "Cut p99 inference latency 3x by rewriting Triton ensemble", "tags": ["inference", "latency", "triton"]},
-                {"title": "Designed multi-tenant model-serving platform serving 1B+ daily requests", "tags": ["platform", "serving", "scale"]},
-                {"title": "Open-sourced vLLM-compatible request router used by 50+ teams", "tags": ["open-source", "vllm", "infrastructure"]},
-                {"title": "Migrated 200+ models from custom serving to KServe in 6 months", "tags": ["migration", "kserve"]},
+                {
+                    "title": "Scaled distributed training to 800+ H100s with 92% MFU",
+                    "tags": ["distributed-training", "ml-infra", "gpu-optimization"],
+                },
+                {
+                    "title": "Cut p99 inference latency 3x by rewriting Triton ensemble",
+                    "tags": ["inference", "latency", "triton"],
+                },
+                {
+                    "title": "Designed multi-tenant model-serving platform serving 1B+ daily requests",
+                    "tags": ["platform", "serving", "scale"],
+                },
+                {
+                    "title": "Open-sourced vLLM-compatible request router used by 50+ teams",
+                    "tags": ["open-source", "vllm", "infrastructure"],
+                },
+                {
+                    "title": "Migrated 200+ models from custom serving to KServe in 6 months",
+                    "tags": ["migration", "kserve"],
+                },
             ],
             "publications": [],
         },
@@ -152,25 +198,65 @@ SYNTHETIC_PROFILES: dict[str, dict] = {
             {"title": "Senior Data Analyst"},
         ],
         "domains": ["product analytics", "experimentation", "growth", "B2C metrics"],
-        "skills": {"technical": [
-            "Python", "SQL", "scikit-learn", "Tableau", "Looker",
-            "statistics", "A/B testing", "causal inference", "pandas", "dbt",
-        ]},
+        "skills": {
+            "technical": [
+                "Python",
+                "SQL",
+                "scikit-learn",
+                "Tableau",
+                "Looker",
+                "statistics",
+                "A/B testing",
+                "causal inference",
+                "pandas",
+                "dbt",
+            ]
+        },
         "search_preferences": {
             "looking_for": "growth/product data science at consumer companies, mid-stage startups",
             "not_looking_for": "ML research roles, infrastructure work, defense, fintech-trading",
         },
         "work_history": [
-            {"title": "Data Scientist II", "employer": "DoorDash", "start": "2023-07", "end": None, "location": "San Francisco, CA"},
-            {"title": "Data Analyst", "employer": "Shopify", "start": "2022-05", "end": "2023-07", "location": "Remote"},
-            {"title": "Data Science Intern", "employer": "Atlassian", "start": "2021-06", "end": "2021-09", "location": "Mountain View, CA"},
+            {
+                "title": "Data Scientist II",
+                "employer": "DoorDash",
+                "start": "2023-07",
+                "end": None,
+                "location": "San Francisco, CA",
+            },
+            {
+                "title": "Data Analyst",
+                "employer": "Shopify",
+                "start": "2022-05",
+                "end": "2023-07",
+                "location": "Remote",
+            },
+            {
+                "title": "Data Science Intern",
+                "employer": "Atlassian",
+                "start": "2021-06",
+                "end": "2021-09",
+                "location": "Mountain View, CA",
+            },
         ],
         "complete_profile": {
             "accomplishments": [
-                {"title": "Ran 80+ A/B tests on Dasher matching, $14M annual lift", "tags": ["experimentation", "ab-testing", "growth"]},
-                {"title": "Built Dasher retention model improving 60-day retention 9%", "tags": ["retention-modeling", "ml-product"]},
-                {"title": "Designed and shipped the Atlassian acquisition-funnel dashboard", "tags": ["dashboards", "saas", "looker"]},
-                {"title": "Codified the experimentation playbook used by 4 product teams", "tags": ["experimentation", "process"]},
+                {
+                    "title": "Ran 80+ A/B tests on Dasher matching, $14M annual lift",
+                    "tags": ["experimentation", "ab-testing", "growth"],
+                },
+                {
+                    "title": "Built Dasher retention model improving 60-day retention 9%",
+                    "tags": ["retention-modeling", "ml-product"],
+                },
+                {
+                    "title": "Designed and shipped the Atlassian acquisition-funnel dashboard",
+                    "tags": ["dashboards", "saas", "looker"],
+                },
+                {
+                    "title": "Codified the experimentation playbook used by 4 product teams",
+                    "tags": ["experimentation", "process"],
+                },
             ],
             "publications": [],
         },
@@ -182,31 +268,89 @@ SYNTHETIC_PROFILES: dict[str, dict] = {
             {"title": "Member of Technical Staff"},
         ],
         "domains": ["AI safety", "alignment", "interpretability", "RLHF", "LLM evaluation"],
-        "skills": {"technical": [
-            "PyTorch", "JAX", "Transformers", "RLHF", "interpretability tools",
-            "mechanistic interpretability", "agent evaluation", "research engineering",
-        ]},
+        "skills": {
+            "technical": [
+                "PyTorch",
+                "JAX",
+                "Transformers",
+                "RLHF",
+                "interpretability tools",
+                "mechanistic interpretability",
+                "agent evaluation",
+                "research engineering",
+            ]
+        },
         "search_preferences": {
             "looking_for": "frontier-lab research scientist roles in safety/alignment, IC track",
             "not_looking_for": "applied ML at non-research companies, sales-adjacent roles, defense",
         },
         "work_history": [
-            {"title": "Research Scientist", "employer": "Allen Institute for AI", "start": "2024-01", "end": None, "location": "Seattle, WA"},
-            {"title": "PhD Researcher", "employer": "Stanford CS — Hashimoto group", "start": "2019-09", "end": "2023-12", "location": "Stanford, CA"},
-            {"title": "Research Intern", "employer": "Anthropic", "start": "2022-06", "end": "2022-09", "location": "San Francisco, CA"},
+            {
+                "title": "Research Scientist",
+                "employer": "Allen Institute for AI",
+                "start": "2024-01",
+                "end": None,
+                "location": "Seattle, WA",
+            },
+            {
+                "title": "PhD Researcher",
+                "employer": "Stanford CS — Hashimoto group",
+                "start": "2019-09",
+                "end": "2023-12",
+                "location": "Stanford, CA",
+            },
+            {
+                "title": "Research Intern",
+                "employer": "Anthropic",
+                "start": "2022-06",
+                "end": "2022-09",
+                "location": "San Francisco, CA",
+            },
         ],
         "complete_profile": {
             "accomplishments": [
-                {"title": "First author on 'Sparse Autoencoders for Feature Discovery in Llama-3-70B' (NeurIPS 2024)", "tags": ["interpretability", "sae", "llm"]},
-                {"title": "Co-designed BIG-Bench Hard evaluation subset, used by 100+ groups", "tags": ["evals", "benchmark", "research-tooling"]},
-                {"title": "Released SAE-Lens, 800+ stars, default toolkit for SAE research", "tags": ["open-source", "interpretability"]},
-                {"title": "Shipped agentic-evaluation pipeline catching jailbreaks in pre-release Claude 3.5", "tags": ["safety", "evaluation", "anthropic"]},
+                {
+                    "title": "First author on 'Sparse Autoencoders for Feature Discovery in Llama-3-70B' (NeurIPS 2024)",
+                    "tags": ["interpretability", "sae", "llm"],
+                },
+                {
+                    "title": "Co-designed BIG-Bench Hard evaluation subset, used by 100+ groups",
+                    "tags": ["evals", "benchmark", "research-tooling"],
+                },
+                {
+                    "title": "Released SAE-Lens, 800+ stars, default toolkit for SAE research",
+                    "tags": ["open-source", "interpretability"],
+                },
+                {
+                    "title": "Shipped agentic-evaluation pipeline catching jailbreaks in pre-release Claude 3.5",
+                    "tags": ["safety", "evaluation", "anthropic"],
+                },
             ],
             "publications": [
-                {"title": "Sparse Autoencoders for Feature Discovery in Llama-3-70B", "venue": "NeurIPS", "year": 2024, "relevance_weight": 1.0},
-                {"title": "Steering Vectors for Controllable Generation", "venue": "ICML", "year": 2024, "relevance_weight": 0.9},
-                {"title": "Mechanistic Interpretability of Induction Heads in MoE Models", "venue": "ICLR", "year": 2023, "relevance_weight": 0.85},
-                {"title": "Red Teaming with Tree-of-Attacks: Adversarial Probes for LLMs", "venue": "EMNLP", "year": 2023, "relevance_weight": 0.7},
+                {
+                    "title": "Sparse Autoencoders for Feature Discovery in Llama-3-70B",
+                    "venue": "NeurIPS",
+                    "year": 2024,
+                    "relevance_weight": 1.0,
+                },
+                {
+                    "title": "Steering Vectors for Controllable Generation",
+                    "venue": "ICML",
+                    "year": 2024,
+                    "relevance_weight": 0.9,
+                },
+                {
+                    "title": "Mechanistic Interpretability of Induction Heads in MoE Models",
+                    "venue": "ICLR",
+                    "year": 2023,
+                    "relevance_weight": 0.85,
+                },
+                {
+                    "title": "Red Teaming with Tree-of-Attacks: Adversarial Probes for LLMs",
+                    "venue": "EMNLP",
+                    "year": 2023,
+                    "relevance_weight": 0.7,
+                },
             ],
         },
     },
@@ -217,26 +361,68 @@ SYNTHETIC_PROFILES: dict[str, dict] = {
             {"title": "Founding Engineer"},
         ],
         "domains": ["developer tools", "B2B SaaS", "design systems", "design-engineering"],
-        "skills": {"technical": [
-            "TypeScript", "React", "Next.js", "Tailwind", "design systems",
-            "Storybook", "Vite", "tRPC", "GraphQL", "Figma", "Framer Motion",
-            "accessibility", "WebGL",
-        ]},
+        "skills": {
+            "technical": [
+                "TypeScript",
+                "React",
+                "Next.js",
+                "Tailwind",
+                "design systems",
+                "Storybook",
+                "Vite",
+                "tRPC",
+                "GraphQL",
+                "Figma",
+                "Framer Motion",
+                "accessibility",
+                "WebGL",
+            ]
+        },
         "search_preferences": {
             "looking_for": "small companies (10-150 ppl), founding/early product engineer, design-leaning",
             "not_looking_for": "FAANG, ad-tech, crypto, primarily-backend or ML roles",
         },
         "work_history": [
-            {"title": "Senior Frontend Engineer", "employer": "Linear", "start": "2022-08", "end": None, "location": "Remote"},
-            {"title": "Frontend Engineer", "employer": "Vercel", "start": "2019-09", "end": "2022-08", "location": "San Francisco, CA"},
-            {"title": "Frontend Engineer", "employer": "Figma", "start": "2017-05", "end": "2019-09", "location": "San Francisco, CA"},
+            {
+                "title": "Senior Frontend Engineer",
+                "employer": "Linear",
+                "start": "2022-08",
+                "end": None,
+                "location": "Remote",
+            },
+            {
+                "title": "Frontend Engineer",
+                "employer": "Vercel",
+                "start": "2019-09",
+                "end": "2022-08",
+                "location": "San Francisco, CA",
+            },
+            {
+                "title": "Frontend Engineer",
+                "employer": "Figma",
+                "start": "2017-05",
+                "end": "2019-09",
+                "location": "San Francisco, CA",
+            },
         ],
         "complete_profile": {
             "accomplishments": [
-                {"title": "Shipped the Linear inbox redesign, +18% week-2 retention", "tags": ["frontend", "design", "linear"]},
-                {"title": "Authored Linear's design system migration from styled-components to vanilla-extract", "tags": ["design-system", "migration"]},
-                {"title": "Built the Vercel deploy-summary UI used by 500k+ developers", "tags": ["dx", "deploy", "vercel"]},
-                {"title": "Co-designed the Figma plugin runtime sandbox", "tags": ["sandboxing", "plugins", "figma"]},
+                {
+                    "title": "Shipped the Linear inbox redesign, +18% week-2 retention",
+                    "tags": ["frontend", "design", "linear"],
+                },
+                {
+                    "title": "Authored Linear's design system migration from styled-components to vanilla-extract",
+                    "tags": ["design-system", "migration"],
+                },
+                {
+                    "title": "Built the Vercel deploy-summary UI used by 500k+ developers",
+                    "tags": ["dx", "deploy", "vercel"],
+                },
+                {
+                    "title": "Co-designed the Figma plugin runtime sandbox",
+                    "tags": ["sandboxing", "plugins", "figma"],
+                },
             ],
             "publications": [],
         },
@@ -247,32 +433,92 @@ SYNTHETIC_PROFILES: dict[str, dict] = {
             {"title": "Computational Biologist"},
             {"title": "ML Research Engineer, Biology"},
         ],
-        "domains": ["drug discovery", "computational biology", "protein modeling", "RNA biology", "single-cell"],
-        "skills": {"technical": [
-            "PyTorch", "JAX", "ESM/protein language models", "AlphaFold2/3",
-            "bioinformatics", "single-cell RNA-seq", "Python", "Snakemake",
-            "molecular dynamics", "diffusion models",
-        ]},
+        "domains": [
+            "drug discovery",
+            "computational biology",
+            "protein modeling",
+            "RNA biology",
+            "single-cell",
+        ],
+        "skills": {
+            "technical": [
+                "PyTorch",
+                "JAX",
+                "ESM/protein language models",
+                "AlphaFold2/3",
+                "bioinformatics",
+                "single-cell RNA-seq",
+                "Python",
+                "Snakemake",
+                "molecular dynamics",
+                "diffusion models",
+            ]
+        },
         "search_preferences": {
             "looking_for": "AI-native biotechs / drug discovery startups (Series A-C), IC research role",
             "not_looking_for": "academic positions, pure software companies without biology focus",
         },
         "work_history": [
-            {"title": "ML Scientist, Computational Biology", "employer": "Genentech", "start": "2022-08", "end": None, "location": "South San Francisco, CA"},
-            {"title": "Postdoctoral Researcher, Computational Biology", "employer": "MIT — Berger lab", "start": "2020-07", "end": "2022-08", "location": "Cambridge, MA"},
-            {"title": "PhD Researcher", "employer": "Harvard / Broad Institute", "start": "2015-09", "end": "2020-06", "location": "Cambridge, MA"},
+            {
+                "title": "ML Scientist, Computational Biology",
+                "employer": "Genentech",
+                "start": "2022-08",
+                "end": None,
+                "location": "South San Francisco, CA",
+            },
+            {
+                "title": "Postdoctoral Researcher, Computational Biology",
+                "employer": "MIT — Berger lab",
+                "start": "2020-07",
+                "end": "2022-08",
+                "location": "Cambridge, MA",
+            },
+            {
+                "title": "PhD Researcher",
+                "employer": "Harvard / Broad Institute",
+                "start": "2015-09",
+                "end": "2020-06",
+                "location": "Cambridge, MA",
+            },
         ],
         "complete_profile": {
             "accomplishments": [
-                {"title": "Trained 600M-parameter protein language model used in 4 internal drug-discovery programs at Genentech", "tags": ["protein-modeling", "esm", "pretraining"]},
-                {"title": "Co-led integration of AlphaFold-3 into Genentech's structure-based drug design pipeline", "tags": ["alphafold", "structure-based"]},
-                {"title": "First-author on Nature Methods paper on single-cell perturbation prediction", "tags": ["single-cell", "perturbation", "publication"]},
-                {"title": "Released SCBert, a foundation model for single-cell RNA-seq, 500+ GitHub stars", "tags": ["single-cell", "open-source", "foundation-models"]},
+                {
+                    "title": "Trained 600M-parameter protein language model used in 4 internal drug-discovery programs at Genentech",
+                    "tags": ["protein-modeling", "esm", "pretraining"],
+                },
+                {
+                    "title": "Co-led integration of AlphaFold-3 into Genentech's structure-based drug design pipeline",
+                    "tags": ["alphafold", "structure-based"],
+                },
+                {
+                    "title": "First-author on Nature Methods paper on single-cell perturbation prediction",
+                    "tags": ["single-cell", "perturbation", "publication"],
+                },
+                {
+                    "title": "Released SCBert, a foundation model for single-cell RNA-seq, 500+ GitHub stars",
+                    "tags": ["single-cell", "open-source", "foundation-models"],
+                },
             ],
             "publications": [
-                {"title": "Protein Language Models for Multimodal Drug Discovery", "venue": "Nature Methods", "year": 2024, "relevance_weight": 1.0},
-                {"title": "Single-Cell Perturbation Prediction with Conditional Diffusion", "venue": "Nature Methods", "year": 2023, "relevance_weight": 0.9},
-                {"title": "SCBert: A Foundation Model for Single-Cell Transcriptomics", "venue": "Nature Biotech", "year": 2023, "relevance_weight": 0.85},
+                {
+                    "title": "Protein Language Models for Multimodal Drug Discovery",
+                    "venue": "Nature Methods",
+                    "year": 2024,
+                    "relevance_weight": 1.0,
+                },
+                {
+                    "title": "Single-Cell Perturbation Prediction with Conditional Diffusion",
+                    "venue": "Nature Methods",
+                    "year": 2023,
+                    "relevance_weight": 0.9,
+                },
+                {
+                    "title": "SCBert: A Foundation Model for Single-Cell Transcriptomics",
+                    "venue": "Nature Biotech",
+                    "year": 2023,
+                    "relevance_weight": 0.85,
+                },
             ],
         },
     },
@@ -377,6 +623,7 @@ def _preference_block(scenario: Scenario) -> str:
 
 # --- Variant 1: current production prompt (URL-focused, avoid listicles)
 
+
 def variant_baseline_jobs(scenario: Scenario, profile: dict) -> str:
     """Mirror of discovery_v2._build_llm_web_query — the current prompt."""
     parts: list[str] = []
@@ -403,37 +650,49 @@ def variant_baseline_jobs(scenario: Scenario, profile: dict) -> str:
 
 # --- Variant 2: research mode (names only, listicles encouraged), minimal context
 
+
 def variant_research_minimal(scenario: Scenario, profile: dict) -> str:
     return _research_prompt(
-        scenario, profile,
-        include_history=False, include_accomplishments=False,
+        scenario,
+        profile,
+        include_history=False,
+        include_accomplishments=False,
     )
 
 
 # --- Variant 3: research mode + work history
 
+
 def variant_research_with_history(scenario: Scenario, profile: dict) -> str:
     return _research_prompt(
-        scenario, profile,
-        include_history=True, include_accomplishments=False,
+        scenario,
+        profile,
+        include_history=True,
+        include_accomplishments=False,
     )
 
 
 # --- Variant 4: research mode + accomplishments
 
+
 def variant_research_with_accomplishments(scenario: Scenario, profile: dict) -> str:
     return _research_prompt(
-        scenario, profile,
-        include_history=False, include_accomplishments=True,
+        scenario,
+        profile,
+        include_history=False,
+        include_accomplishments=True,
     )
 
 
 # --- Variant 5: research mode + history + accomplishments
 
+
 def variant_research_full(scenario: Scenario, profile: dict) -> str:
     return _research_prompt(
-        scenario, profile,
-        include_history=True, include_accomplishments=True,
+        scenario,
+        profile,
+        include_history=True,
+        include_accomplishments=True,
     )
 
 
@@ -502,6 +761,7 @@ def _format_publications(profile: dict, n: int = 5) -> str:
     pubs = cp.get("publications") or []
     if not pubs:
         return ""
+
     # Sort: relevance_weight desc, then year desc
     def _sort_key(p):
         rw = p.get("relevance_weight")
@@ -510,6 +770,7 @@ def _format_publications(profile: dict, n: int = 5) -> str:
             -(rw if isinstance(rw, (int, float)) else 0),
             -(int(y) if str(y).isdigit() else 0),
         )
+
     top = sorted(pubs, key=_sort_key)[:n]
     lines = []
     for p in top:
@@ -527,13 +788,16 @@ def _format_publications(profile: dict, n: int = 5) -> str:
 
 # --- Variant: research mode + work history + publications
 
+
 def variant_research_with_publications(scenario: Scenario, profile: dict) -> str:
     """research_with_history extended with top 5 publications. Tests
     whether scholarly output helps the agent infer fit for research
     labs / scientific software companies."""
     base = _research_prompt(
-        scenario, profile,
-        include_history=True, include_accomplishments=False,
+        scenario,
+        profile,
+        include_history=True,
+        include_accomplishments=False,
     )
     pubs = _format_publications(profile)
     if not pubs:
@@ -556,6 +820,7 @@ def variant_research_with_publications(scenario: Scenario, profile: dict) -> str
 # removed) but actually *hurt* — it pushed the agent so hard into the
 # new domain that it lost the skill-transfer reasoning that made plain
 # recruiter framing pivot-friendly in the first place.
+
 
 def variant_research_recruiter(scenario: Scenario, profile: dict) -> str:
     """Reframes the task as a recruiter pitching the candidate, rather
@@ -600,13 +865,12 @@ def variant_research_recruiter(scenario: Scenario, profile: dict) -> str:
         "the companies."
     )
     sections.append("")
-    sections.append(
-        'Output one company per line: "Name — why they\'re a fit."'
-    )
+    sections.append('Output one company per line: "Name — why they\'re a fit."')
     return "\n".join(sections)
 
 
 # --- Variant: emphasize recently-funded growth-stage companies
+
 
 def variant_research_funded_recent(scenario: Scenario, profile: dict) -> str:
     """Same shape as research_with_history but with explicit emphasis
@@ -614,8 +878,10 @@ def variant_research_funded_recent(scenario: Scenario, profile: dict) -> str:
     a growth-stage signal surfaces companies that are aggressively
     hiring (vs companies that are stable but not expanding)."""
     base = _research_prompt(
-        scenario, profile,
-        include_history=True, include_accomplishments=False,
+        scenario,
+        profile,
+        include_history=True,
+        include_accomplishments=False,
     )
     # Inject growth-stage emphasis into the TASK section.
     return base.replace(
@@ -632,6 +898,7 @@ def variant_research_funded_recent(scenario: Scenario, profile: dict) -> str:
 
 
 # --- Variant: concise / selective — fewer but more carefully chosen
+
 
 def variant_research_concise(scenario: Scenario, profile: dict) -> str:
     """Shorter prompt, asks for only 8 carefully chosen companies.
@@ -659,9 +926,7 @@ def variant_research_concise(scenario: Scenario, profile: dict) -> str:
         "candidate would genuinely want over big names of last resort."
     )
     sections.append("")
-    sections.append(
-        'Output: one company per line, "Name — one-line why they\'re a top fit."'
-    )
+    sections.append('Output: one company per line, "Name — one-line why they\'re a top fit."')
     return "\n".join(sections)
 
 
@@ -844,7 +1109,7 @@ async def judge_companies(
     if not companies:
         return [], ""
 
-    from app.ai.client import get_openai_client, SCORING_MODEL
+    from app.ai.client import SCORING_MODEL, get_openai_client
 
     parts: list[str] = []
     parts.append("CANDIDATE")
@@ -896,7 +1161,7 @@ async def judge_companies(
 
     try:
         parsed = json.loads(raw)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         m = re.search(r"\{.*\}", raw, re.DOTALL)
         if not m:
             return [], f"unparseable JSON: {raw[:120]}"
@@ -916,11 +1181,13 @@ async def judge_companies(
             except (TypeError, ValueError):
                 continue
             if 1 <= i <= len(companies) and 1 <= score <= 5:
-                results.append({
-                    "i": i,
-                    "score": score,
-                    "reason": str(entry.get("reason", ""))[:200],
-                })
+                results.append(
+                    {
+                        "i": i,
+                        "score": score,
+                        "reason": str(entry.get("reason", ""))[:200],
+                    }
+                )
     if not results:
         return [], f"no valid entries in: {raw[:120]}"
     return results, ""
@@ -942,23 +1209,26 @@ async def run_one(
         res = await llm_web_search(prompt, num_results=num_results)
     except Exception as e:
         return CellResult(
-            variant=variant_name, scenario=scenario.name,
+            variant=variant_name,
+            scenario=scenario.name,
             profile_name=profile_name,
-            elapsed_sec=time.monotonic() - t0, error=str(e)[:200],
+            elapsed_sec=time.monotonic() - t0,
+            error=str(e)[:200],
         )
     if res is None:
         return CellResult(
-            variant=variant_name, scenario=scenario.name,
+            variant=variant_name,
+            scenario=scenario.name,
             profile_name=profile_name,
-            elapsed_sec=time.monotonic() - t0, error="llm_web_search returned None",
+            elapsed_sec=time.monotonic() - t0,
+            error="llm_web_search returned None",
         )
 
     companies = extract_companies_from_answer(res.answer)
-    citations = [
-        {"title": c.title, "url": c.url} for c in res.citations[:num_results]
-    ]
+    citations = [{"title": c.title, "url": c.url} for c in res.citations[:num_results]]
     result = CellResult(
-        variant=variant_name, scenario=scenario.name,
+        variant=variant_name,
+        scenario=scenario.name,
         profile_name=profile_name,
         elapsed_sec=time.monotonic() - t0,
         raw_answer=res.answer,
@@ -978,7 +1248,13 @@ async def run_one(
 def _cell_summary(r: CellResult) -> dict:
     """Pull aggregate numbers from a cell. % scoring 4+ is the headline."""
     if not r.judge_scores:
-        return {"n": len(r.companies), "n_scored": 0, "mean": None, "pct_geq_4": None, "pct_geq_3": None}
+        return {
+            "n": len(r.companies),
+            "n_scored": 0,
+            "mean": None,
+            "pct_geq_4": None,
+            "pct_geq_3": None,
+        }
     scores = [s["score"] for s in r.judge_scores]
     n = len(scores)
     mean = sum(scores) / n
@@ -1014,23 +1290,24 @@ def build_markdown(
             cells = []
             for v in variants:
                 cell = next(
-                    (r for r in results
-                     if r.variant == v and r.scenario == s.name and r.profile_name == pname),
+                    (
+                        r
+                        for r in results
+                        if r.variant == v and r.scenario == s.name and r.profile_name == pname
+                    ),
                     None,
                 )
                 if cell is None:
                     cells.append("—")
                 elif cell.error:
-                    cells.append(f"_err_")
+                    cells.append("_err_")
                 else:
                     summ = _cell_summary(cell)
                     if summ["mean"] is None:
                         cells.append(f"{summ['n']}co _no judge_")
                     else:
                         cells.append(
-                            f"{summ['n']}co · "
-                            f"mean {summ['mean']} · "
-                            f"{summ['pct_geq_4']}%≥4"
+                            f"{summ['n']}co · mean {summ['mean']} · {summ['pct_geq_4']}%≥4"
                         )
             lines.append(f"| {s.name} | " + " | ".join(cells) + " |")
         lines.append("")
@@ -1038,9 +1315,12 @@ def build_markdown(
     # Cross-profile variant ranking — mean of means
     if len(profile_names) >= 2:
         lines.append("## Variant ranking across all profiles + scenarios\n")
-        lines.append("Aggregated mean judge score and aggregate % score≥4 per variant. "
-                     "Higher is better.\n")
-        lines.append("| variant | mean judge score | mean % score≥4 | total companies judged | cells |")
+        lines.append(
+            "Aggregated mean judge score and aggregate % score≥4 per variant. Higher is better.\n"
+        )
+        lines.append(
+            "| variant | mean judge score | mean % score≥4 | total companies judged | cells |"
+        )
         lines.append("|---|---|---|---|---|")
         rows = []
         for v in variants:
@@ -1060,13 +1340,15 @@ def build_markdown(
                 cells += 1
             if not ms:
                 continue
-            rows.append((
-                v,
-                round(sum(ms) / len(ms), 2),
-                round(sum(pcts) / len(pcts), 1),
-                total_n,
-                cells,
-            ))
+            rows.append(
+                (
+                    v,
+                    round(sum(ms) / len(ms), 2),
+                    round(sum(pcts) / len(pcts), 1),
+                    total_n,
+                    cells,
+                )
+            )
         rows.sort(key=lambda r: r[1], reverse=True)
         for v, mm, mp, tn, c in rows:
             lines.append(f"| {v} | {mm} | {mp}% | {tn} | {c} |")
@@ -1079,15 +1361,22 @@ def build_markdown(
         for s in scenarios:
             lines.append(f"#### scenario: `{s.name}`")
             intent_summary = []
-            if s.guidance: intent_summary.append(f"guidance: '{s.guidance}'")
-            if s.locations: intent_summary.append(f"locations: {s.locations}")
-            if s.min_salary: intent_summary.append(f"min_salary: ${s.min_salary:,}")
-            if not intent_summary: intent_summary = ["(profile-only)"]
+            if s.guidance:
+                intent_summary.append(f"guidance: '{s.guidance}'")
+            if s.locations:
+                intent_summary.append(f"locations: {s.locations}")
+            if s.min_salary:
+                intent_summary.append(f"min_salary: ${s.min_salary:,}")
+            if not intent_summary:
+                intent_summary = ["(profile-only)"]
             lines.append(f"_{'  '.join(intent_summary)}_\n")
             for v in variants:
                 cell = next(
-                    (r for r in results
-                     if r.variant == v and r.scenario == s.name and r.profile_name == pname),
+                    (
+                        r
+                        for r in results
+                        if r.variant == v and r.scenario == s.name and r.profile_name == pname
+                    ),
                     None,
                 )
                 lines.append(f"##### variant: `{v}`")
@@ -1101,7 +1390,9 @@ def build_markdown(
                         f"{summ['pct_geq_4']}%≥4 · {summ['pct_geq_3']}%≥3_\n"
                     )
                 else:
-                    lines.append(f"_{cell.elapsed_sec:.0f}s · {summ['n']} co · no judge ({cell.judge_error})_\n")
+                    lines.append(
+                        f"_{cell.elapsed_sec:.0f}s · {summ['n']} co · no judge ({cell.judge_error})_\n"
+                    )
                 # Build score map
                 score_map = {j["i"]: (j["score"], j["reason"]) for j in cell.judge_scores}
                 for idx, c in enumerate(cell.companies[:25], start=1):
@@ -1110,13 +1401,18 @@ def build_markdown(
                         lines.append(f"- **{c['name']}** — {c['context']}")
                     else:
                         sc, reason = s_info
-                        lines.append(f"- **{c['name']}** [`score={sc}`] — {c['context']}  ↳ _{reason}_")
+                        lines.append(
+                            f"- **{c['name']}** [`score={sc}`] — {c['context']}  ↳ _{reason}_"
+                        )
                 lines.append("")
         lines.append("")
     return "\n".join(lines) + "\n"
 
+
 # Original signature kept for back-compat with any existing callers (none in repo).
-def build_markdown_legacy(results: list[CellResult], scenarios: list[Scenario], variants: list[str]) -> str:
+def build_markdown_legacy(
+    results: list[CellResult], scenarios: list[Scenario], variants: list[str]
+) -> str:
     return build_markdown(results, scenarios, variants, ["real"])
 
     # Per-cell company lists
@@ -1124,10 +1420,14 @@ def build_markdown_legacy(results: list[CellResult], scenarios: list[Scenario], 
     for s in scenarios:
         lines.append(f"### scenario: `{s.name}`")
         intent_summary = []
-        if s.guidance: intent_summary.append(f"guidance: '{s.guidance}'")
-        if s.locations: intent_summary.append(f"locations: {s.locations}")
-        if s.min_salary: intent_summary.append(f"min_salary: ${s.min_salary:,}")
-        if not intent_summary: intent_summary = ["(profile-only)"]
+        if s.guidance:
+            intent_summary.append(f"guidance: '{s.guidance}'")
+        if s.locations:
+            intent_summary.append(f"locations: {s.locations}")
+        if s.min_salary:
+            intent_summary.append(f"min_salary: ${s.min_salary:,}")
+        if not intent_summary:
+            intent_summary = ["(profile-only)"]
         lines.append(f"_{'  '.join(intent_summary)}_\n")
         if s.notes:
             lines.append(f"> {s.notes}\n")
@@ -1173,7 +1473,7 @@ def build_markdown_legacy(results: list[CellResult], scenarios: list[Scenario], 
                     continue
                 inter = len(ai & aj)
                 union = len(ai | aj)
-                row.append(f"{inter}/{union} = {inter/union:.2f}")
+                row.append(f"{inter}/{union} = {inter / union:.2f}")
             lines.append("| " + " | ".join(row) + " |")
         lines.append("")
 
@@ -1189,8 +1489,12 @@ async def _hydrate_settings():
 
 async def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--variants", default=None, help="Comma-separated variant names; default all")
-    parser.add_argument("--scenarios", default=None, help="Comma-separated scenario names; default all")
+    parser.add_argument(
+        "--variants", default=None, help="Comma-separated variant names; default all"
+    )
+    parser.add_argument(
+        "--scenarios", default=None, help="Comma-separated scenario names; default all"
+    )
     parser.add_argument(
         "--profiles",
         default="real",
@@ -1218,8 +1522,10 @@ async def main():
     for pname in profile_names:
         if pname == "real":
             p = await _load_profile_data()
-            print(f"Loaded 'real' profile — work_history={len(p.get('work_history',[]))}, "
-                  f"accomplishments={len((p.get('complete_profile') or {}).get('accomplishments', []))}")
+            print(
+                f"Loaded 'real' profile — work_history={len(p.get('work_history', []))}, "
+                f"accomplishments={len((p.get('complete_profile') or {}).get('accomplishments', []))}"
+            )
             profiles[pname] = p
         elif pname in SYNTHETIC_PROFILES:
             profiles[pname] = SYNTHETIC_PROFILES[pname]
@@ -1230,14 +1536,8 @@ async def main():
         print("No valid profiles selected.", file=sys.stderr)
         return
 
-    scen_keep = (
-        {s.strip() for s in args.scenarios.split(",")}
-        if args.scenarios else None
-    )
-    var_keep = (
-        {v.strip() for v in args.variants.split(",")}
-        if args.variants else None
-    )
+    scen_keep = {s.strip() for s in args.scenarios.split(",")} if args.scenarios else None
+    var_keep = {v.strip() for v in args.variants.split(",")} if args.variants else None
     selected_scenarios = [s for s in SCENARIOS if not scen_keep or s.name in scen_keep]
     selected_variants = [v for v in VARIANTS if not var_keep or v in var_keep]
     if not selected_scenarios or not selected_variants:
@@ -1245,8 +1545,10 @@ async def main():
         return
 
     n_cells = len(profiles) * len(selected_scenarios) * len(selected_variants)
-    print(f"\nRunning {len(profiles)} profiles × {len(selected_scenarios)} scenarios × "
-          f"{len(selected_variants)} variants = {n_cells} cells")
+    print(
+        f"\nRunning {len(profiles)} profiles × {len(selected_scenarios)} scenarios × "
+        f"{len(selected_variants)} variants = {n_cells} cells"
+    )
     print(f"  profiles:  {list(profiles.keys())}")
     print(f"  scenarios: {[s.name for s in selected_scenarios]}")
     print(f"  variants:  {selected_variants}")
@@ -1268,7 +1570,9 @@ async def main():
                 print(f"=== profile={pname}  scenario={s.name} ===")
                 tasks = [
                     run_one(
-                        v, s, profile,
+                        v,
+                        s,
+                        profile,
                         profile_name=pname,
                         num_results=args.num_results,
                         judge=not args.no_judge,
@@ -1279,22 +1583,27 @@ async def main():
                 for coro in asyncio.as_completed(tasks):
                     r = await coro
                     results.append(r)
-                    fh.write(json.dumps({
-                        "profile_name": r.profile_name,
-                        "variant": r.variant,
-                        "scenario": r.scenario,
-                        "elapsed_sec": r.elapsed_sec,
-                        "error": r.error,
-                        "n_companies": len(r.companies),
-                        "n_citations": len(r.citations),
-                        "companies": r.companies,
-                        "citations": r.citations,
-                        "usage": r.usage,
-                        "est_usd": estimate_usd(r.usage),
-                        "judge_scores": r.judge_scores,
-                        "judge_error": r.judge_error,
-                        "raw_answer": r.raw_answer,
-                    }) + "\n")
+                    fh.write(
+                        json.dumps(
+                            {
+                                "profile_name": r.profile_name,
+                                "variant": r.variant,
+                                "scenario": r.scenario,
+                                "elapsed_sec": r.elapsed_sec,
+                                "error": r.error,
+                                "n_companies": len(r.companies),
+                                "n_citations": len(r.citations),
+                                "companies": r.companies,
+                                "citations": r.citations,
+                                "usage": r.usage,
+                                "est_usd": estimate_usd(r.usage),
+                                "judge_scores": r.judge_scores,
+                                "judge_error": r.judge_error,
+                                "raw_answer": r.raw_answer,
+                            }
+                        )
+                        + "\n"
+                    )
                     fh.flush()
                     if r.error:
                         summary = f"ERR: {r.error[:40]}"
@@ -1303,7 +1612,9 @@ async def main():
                         cost = estimate_usd(r.usage)
                         cost_str = f"${cost:.3f}" if cost else "—"
                         if summ["mean"] is None:
-                            summary = f"{summ['n']:2d} co · {r.elapsed_sec:5.1f}s · {cost_str} · no judge"
+                            summary = (
+                                f"{summ['n']:2d} co · {r.elapsed_sec:5.1f}s · {cost_str} · no judge"
+                            )
                         else:
                             summary = (
                                 f"{summ['n']:2d} co · {r.elapsed_sec:5.1f}s · "
@@ -1311,10 +1622,12 @@ async def main():
                                 f"mean {summ['mean']} · {summ['pct_geq_4']}%≥4"
                             )
                     print(f"  {r.variant:36s} → {summary}")
-                print(f"  cell wall: {time.monotonic()-t0:.0f}s\n")
+                print(f"  cell wall: {time.monotonic() - t0:.0f}s\n")
 
     md = build_markdown(
-        results, selected_scenarios, selected_variants,
+        results,
+        selected_scenarios,
+        selected_variants,
         list(profiles.keys()),
     )
     md_path.write_text(md)

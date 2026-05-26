@@ -14,14 +14,12 @@ import re
 import httpx
 from sqlalchemy import select
 
-from app.config import settings
 from app.database import async_session
 from app.models.companies import Company
 from app.models.jobs import Job
 from app.models.profile import UserProfile
 from app.scrapers import SCRAPERS_BY_ATS  # noqa: F401  (re-export for callers)
 from app.services.company_discovery import (
-    _build_keyword_sets,
     _verify_ats_slug,
     score_job_relevance,  # noqa: F401  (re-exported for downstream)
 )
@@ -179,7 +177,11 @@ async def _generate_queries(
     if not not_looking_for:
         deal_breakers_legacy = prefs.get("deal_breakers", [])
         anti_patterns = prefs.get("org_anti_patterns", [])
-        not_looking_for = ", ".join(deal_breakers_legacy + anti_patterns) if (deal_breakers_legacy or anti_patterns) else ""
+        not_looking_for = (
+            ", ".join(deal_breakers_legacy + anti_patterns)
+            if (deal_breakers_legacy or anti_patterns)
+            else ""
+        )
     personal = profile_data.get("personal", {})
     remote_pref = personal.get("remote_preference", "any")
 
@@ -201,13 +203,15 @@ async def _generate_queries(
         f"HARD CONSTRAINT: every query MUST include a location term from "
         f"{{{', '.join(locations)}}} (or a clear alias). Do NOT generate queries "
         f"that would surface jobs outside these locations."
-        if locations else "(no location preference)"
+        if locations
+        else "(no location preference)"
     )
     salary_section = (
         f"HARD CONSTRAINT: target roles paying at least ${min_salary // 1000}K+. "
         f"When the ATS supports it, include a salary or seniority qualifier in the "
         f"query so we don't waste candidates on roles that can't meet the bar."
-        if min_salary else "(no salary preference)"
+        if min_salary
+        else "(no salary preference)"
     )
     reference_section = reference_context or "(no reference jobs)"
 
@@ -224,8 +228,7 @@ async def _generate_queries(
         # instead of being buried at the bottom of the prompt.
         guidance_text = (
             "Find companies with jobs SIMILAR to the reference jobs listed below. "
-            "Focus on the same role types, seniority level, and domain.\n\n"
-            + reference_context
+            "Focus on the same role types, seniority level, and domain.\n\n" + reference_context
         )
         guidance_emphasis = (
             "**Every query you generate MUST target roles similar to these reference jobs.** "
@@ -316,10 +319,9 @@ def _seed_literal_queries(
         return llm_queries
 
     # Deduplicate: drop any LLM queries that are near-identical to seeds
-    g_lower = g.lower()
+    g.lower()
     deduped = [
-        q for q in llm_queries
-        if q.lower().strip() not in {s.lower().strip() for s in seeds}
+        q for q in llm_queries if q.lower().strip() not in {s.lower().strip() for s in seeds}
     ]
     return (seeds + deduped)[:6]
 
@@ -364,7 +366,9 @@ def _fallback_queries(
 
     past_set = set(past_queries)
     queries = [q for q in queries if q not in past_set]
-    return queries or [f"emerging companies {(guidance or role_titles[0] if role_titles else '').strip() or 'research'}"]
+    return queries or [
+        f"emerging companies {(guidance or role_titles[0] if role_titles else '').strip() or 'research'}"
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -420,44 +424,71 @@ def _ats_url_has_specific_job(url: str, ats: str) -> bool:
     """
     try:
         from urllib.parse import urlparse
+
         parts = urlparse(url).path.strip("/").split("/")
         if ats == "greenhouse":
             # /{slug}/jobs/{id}
-            return (
-                len(parts) >= 3
-                and parts[1].lower() == "jobs"
-                and parts[2].isdigit()
-            )
+            return len(parts) >= 3 and parts[1].lower() == "jobs" and parts[2].isdigit()
         if ats in ("lever", "ashby"):
             # /{slug}/{uuid}
             if len(parts) < 2:
                 return False
-            return bool(re.match(
-                r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
-                parts[1],
-                re.IGNORECASE,
-            ))
+            return bool(
+                re.match(
+                    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+                    parts[1],
+                    re.IGNORECASE,
+                )
+            )
         return False
     except Exception:
         return False
 
+
 # Domains to skip — job boards, aggregators, news sites
 
 _SKIP_DOMAINS = {
-    "indeed.com", "linkedin.com", "glassdoor.com", "ziprecruiter.com",
-    "monster.com", "dice.com", "simplyhired.com", "careerbuilder.com",
-    "builtin.com", "builtinnyc.com", "builtinla.com", "builtinsf.com",
-    "builtinchicago.org", "builtinaustin.com", "builtinboston.com",
-    "builtincolorado.com", "builtinseattle.com",
-    "themuse.com", "flexjobs.com", "workatastartup.com", "remoteok.com",
-    "wellfound.com", "angel.co", "ycombinator.com",
-    "news.ycombinator.com", "reddit.com", "twitter.com", "x.com",
-    "medium.com", "wikipedia.org", "youtube.com", "github.com",
-    "crunchbase.com", "pitchbook.com", "techcrunch.com",
+    "indeed.com",
+    "linkedin.com",
+    "glassdoor.com",
+    "ziprecruiter.com",
+    "monster.com",
+    "dice.com",
+    "simplyhired.com",
+    "careerbuilder.com",
+    "builtin.com",
+    "builtinnyc.com",
+    "builtinla.com",
+    "builtinsf.com",
+    "builtinchicago.org",
+    "builtinaustin.com",
+    "builtinboston.com",
+    "builtincolorado.com",
+    "builtinseattle.com",
+    "themuse.com",
+    "flexjobs.com",
+    "workatastartup.com",
+    "remoteok.com",
+    "wellfound.com",
+    "angel.co",
+    "ycombinator.com",
+    "news.ycombinator.com",
+    "reddit.com",
+    "twitter.com",
+    "x.com",
+    "medium.com",
+    "wikipedia.org",
+    "youtube.com",
+    "github.com",
+    "crunchbase.com",
+    "pitchbook.com",
+    "techcrunch.com",
     # Video hosts — some careers pages embed Vimeo/YouTube testimonials
     # whose URL paths end with numeric IDs, which falsely match our
     # generic /\d{6,}/?$ pattern for job URLs.
-    "vimeo.com", "player.vimeo.com", "youtu.be",
+    "vimeo.com",
+    "player.vimeo.com",
+    "youtu.be",
 }
 
 
@@ -465,6 +496,7 @@ def _is_skip_domain(url: str) -> bool:
     """Check if URL is from a domain we should skip."""
     try:
         from urllib.parse import urlparse
+
         host = (urlparse(url).hostname or "").lower()
         host = re.sub(r"^www\.", "", host)
         return any(host == d or host.endswith(f".{d}") for d in _SKIP_DOMAINS)
@@ -483,12 +515,14 @@ _DIRECT_JOB_URL_PATTERNS = [
     re.compile(r"/positions?/\d{3,}(?:/[^/?]*)?$", re.IGNORECASE),
     re.compile(r"/openings?/\d{3,}(?:/[^/?]*)?$", re.IGNORECASE),
     re.compile(r"/requisition[s]?/\d{3,}", re.IGNORECASE),
-    re.compile(r"/details/\d{3,}", re.IGNORECASE),              # Apple-style
-    re.compile(r"/listing/[^/?]+/\d{3,}", re.IGNORECASE),       # Stripe-style
+    re.compile(r"/details/\d{3,}", re.IGNORECASE),  # Apple-style
+    re.compile(r"/listing/[^/?]+/\d{3,}", re.IGNORECASE),  # Stripe-style
     # Microsoft-style: /job/1234567/Senior-ML-Engineer (ID must be numeric, usually long)
     re.compile(r"/job/\d{4,}/[^/?]+", re.IGNORECASE),
     # Ashby-style UUID: /jobs/f760ffd1-3795-4fb1-bb33-8478d4bab7f6
-    re.compile(r"/jobs?/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE),
+    re.compile(
+        r"/jobs?/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE
+    ),
     # Workday-style: /job/Location/Title_R12345 or /job/Location/Title_JR12345
     # The ID is after an underscore at the end of a slug, format _R123456 or _JR123456
     re.compile(r"/job/.+?_[A-Z]?[RJ]?\d{4,}", re.IGNORECASE),
@@ -505,8 +539,11 @@ _DIRECT_JOB_URL_PATTERNS = [
 # Domains where we won't try direct-URL import (too much noise or duplicates ATS path)
 
 _DIRECT_URL_SKIP_DOMAINS = _SKIP_DOMAINS | {
-    "boards.greenhouse.io", "jobs.lever.co", "jobs.ashbyhq.com",
-    "jobs.eightfold.ai", "careers.eightfold.ai",
+    "boards.greenhouse.io",
+    "jobs.lever.co",
+    "jobs.ashbyhq.com",
+    "jobs.eightfold.ai",
+    "careers.eightfold.ai",
 }
 
 
@@ -516,6 +553,7 @@ def _looks_like_direct_job_url(url: str) -> bool:
         return False
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
         host = re.sub(r"^www\.", "", host)
@@ -559,6 +597,7 @@ def _looks_like_job_url_relaxed(url: str) -> bool:
         return False
     try:
         from urllib.parse import urlparse
+
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
         host = re.sub(r"^www\.", "", host)
@@ -575,9 +614,9 @@ async def _extract_candidates_from_results(
     results: list[dict], query: str
 ) -> list[CompanyCandidate]:
     """Three-pronged extraction:
-      1. Regex for ATS URLs (fast, reliable)
-      2. Direct job-posting URLs (fetch + LLM extract per job)
-      3. LLM company extraction from remaining results
+    1. Regex for ATS URLs (fast, reliable)
+    2. Direct job-posting URLs (fetch + LLM extract per job)
+    3. LLM company extraction from remaining results
     """
     candidates: list[CompanyCandidate] = []
     seen: set[str] = set()
@@ -605,19 +644,29 @@ async def _extract_candidates_from_results(
                     key = f"direct:{url}"
                     if key not in seen:
                         seen.add(key)
-                        candidates.append(CompanyCandidate(
-                            name=name, url=url, ats=ats, slug=slug,
-                            source=source,
-                            direct_job_url=url,
-                        ))
+                        candidates.append(
+                            CompanyCandidate(
+                                name=name,
+                                url=url,
+                                ats=ats,
+                                slug=slug,
+                                source=source,
+                                direct_job_url=url,
+                            )
+                        )
                 else:
                     key = f"{ats}:{slug}"
                     if key not in seen:
                         seen.add(key)
-                        candidates.append(CompanyCandidate(
-                            name=name, url=url, ats=ats, slug=slug,
-                            source=source,
-                        ))
+                        candidates.append(
+                            CompanyCandidate(
+                                name=name,
+                                url=url,
+                                ats=ats,
+                                slug=slug,
+                                source=source,
+                            )
+                        )
                 matched_ats = True
                 break
 
@@ -632,12 +681,14 @@ async def _extract_candidates_from_results(
                 # Use the result title as a placeholder name; actual company/title
                 # will be extracted from the page content during evaluation
                 name_guess = r.get("title", "").split(" - ")[0].split(" | ")[0].strip() or "Unknown"
-                candidates.append(CompanyCandidate(
-                    name=name_guess,
-                    url=url,
-                    source="direct_url",
-                    direct_job_url=url,
-                ))
+                candidates.append(
+                    CompanyCandidate(
+                        name=name_guess,
+                        url=url,
+                        source="direct_url",
+                        direct_job_url=url,
+                    )
+                )
             continue
 
         # Not an ATS URL and not a direct job URL — collect for LLM company extraction
@@ -649,7 +700,8 @@ async def _extract_candidates_from_results(
         llm_candidates = await _llm_extract_companies(non_ats_results, query)
         logger.info(
             "LLM extracted %d companies from %d non-ATS results: %s",
-            len(llm_candidates), len(non_ats_results),
+            len(llm_candidates),
+            len(non_ats_results),
             [c.name for c in llm_candidates],
         )
         for c in llm_candidates:
@@ -661,9 +713,7 @@ async def _extract_candidates_from_results(
     return candidates
 
 
-async def _llm_extract_companies(
-    results: list[dict], query: str
-) -> list[CompanyCandidate]:
+async def _llm_extract_companies(results: list[dict], query: str) -> list[CompanyCandidate]:
     """Use LLM to extract company names from web search results."""
     # Build a concise text representation of results
     results_text = ""
@@ -677,7 +727,8 @@ async def _llm_extract_companies(
         return []
 
     user_prompt = _EXTRACT_USER_TEMPLATE.format(
-        query=query, results_text=results_text,
+        query=query,
+        results_text=results_text,
     )
     content = await _openai_chat(_EXTRACT_SYSTEM, user_prompt, temperature=0.3)
     if not content:
@@ -698,9 +749,13 @@ async def _llm_extract_companies(
         # Skip obviously bad names
         if name.lower() in {"job", "jobs", "careers", "hiring", "company", "home"}:
             continue
-        candidates.append(CompanyCandidate(
-            name=name, url=url, source="web",
-        ))
+        candidates.append(
+            CompanyCandidate(
+                name=name,
+                url=url,
+                source="web",
+            )
+        )
 
     return candidates
 
@@ -781,14 +836,16 @@ async def _harvest_candidates_from_entries(
             if (entry.company_name or "").lower() in existing_companies_lower:
                 continue
             seen.add(key)
-            candidates.append(CompanyCandidate(
-                name=entry.company_name,
-                url=url,
-                ats=ats,
-                slug=slug,
-                source=entry.source,
-                origin="aggregator",
-            ))
+            candidates.append(
+                CompanyCandidate(
+                    name=entry.company_name,
+                    url=url,
+                    ats=ats,
+                    slug=slug,
+                    source=entry.source,
+                    origin="aggregator",
+                )
+            )
             continue
 
         # Direct-URL fallback. Lane A's verifier in _extract_direct_job_url
@@ -797,15 +854,17 @@ async def _harvest_candidates_from_entries(
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(CompanyCandidate(
-            name=entry.company_name or "Unknown",
-            url=url,
-            ats=None,
-            slug=None,
-            source=entry.source,
-            direct_job_url=url,
-            origin="aggregator",
-        ))
+        candidates.append(
+            CompanyCandidate(
+                name=entry.company_name or "Unknown",
+                url=url,
+                ats=None,
+                slug=None,
+                source=entry.source,
+                direct_job_url=url,
+                origin="aggregator",
+            )
+        )
 
     # Reorder so ATS-resolved candidates run before direct-URL fallbacks.
     # Without this, the per-run direct-URL cap fills first-come-first-served
@@ -862,9 +921,7 @@ def _slug_candidates_from_name(name: str) -> list[str]:
     return candidates
 
 
-async def _probe_name_for_ats(
-    name: str, http_client: httpx.AsyncClient
-) -> tuple[str, str] | None:
+async def _probe_name_for_ats(name: str, http_client: httpx.AsyncClient) -> tuple[str, str] | None:
     """Try slug candidates derived from company name against all 3 ATS APIs.
     Returns (ats, slug) or None."""
     slugs = _slug_candidates_from_name(name)
@@ -917,13 +974,17 @@ async def _search_careers_url(name: str) -> tuple[str, str] | None:
                 if _slug_plausible_for_name(slug, name):
                     logger.info(
                         "Careers search for '%s' found matching ATS URL: %s/%s",
-                        name, ats, slug,
+                        name,
+                        ats,
+                        slug,
                     )
                     return (ats, slug)
                 else:
                     logger.debug(
                         "Careers search for '%s' found ATS URL %s/%s but slug doesn't match, skipping",
-                        name, ats, slug,
+                        name,
+                        ats,
+                        slug,
                     )
 
     return None
@@ -932,8 +993,14 @@ async def _search_careers_url(name: str) -> tuple[str, str] | None:
 # Heuristics for picking a careers page from arbitrary URLs
 
 _CAREERS_PATH_HINTS = (
-    "/careers", "/jobs", "/join-us", "/work-with-us", "/positions",
-    "/openings", "/career", "/opportunities",
+    "/careers",
+    "/jobs",
+    "/join-us",
+    "/work-with-us",
+    "/positions",
+    "/openings",
+    "/career",
+    "/opportunities",
 )
 
 _CAREERS_DOMAIN_HINTS = ("careers.", "jobs.", "work.", "join.")
@@ -950,9 +1017,18 @@ def _looks_like_careers_url(url: str) -> bool:
             return False
     # Skip job aggregators / news sites
     skip_domains = (
-        "linkedin.com", "indeed.com", "glassdoor.com", "wellfound.com",
-        "ycombinator.com", "techcrunch.com", "bloomberg.com", "forbes.com",
-        "wikipedia.org", "crunchbase.com", "google.com/search", "reddit.com",
+        "linkedin.com",
+        "indeed.com",
+        "glassdoor.com",
+        "wellfound.com",
+        "ycombinator.com",
+        "techcrunch.com",
+        "bloomberg.com",
+        "forbes.com",
+        "wikipedia.org",
+        "crunchbase.com",
+        "google.com/search",
+        "reddit.com",
     )
     if any(d in url_lower for d in skip_domains):
         return False
@@ -973,9 +1049,15 @@ def _domain_plausible_for_company(url: str, company_name: str) -> bool:
     if not domain:
         return False
     # Slugify the company name into tokens
-    name_tokens = set(
-        re.sub(r"[^\w\s]", "", company_name.lower()).split()
-    ) - {"the", "inc", "ai", "labs", "co", "io", "com"}
+    name_tokens = set(re.sub(r"[^\w\s]", "", company_name.lower()).split()) - {
+        "the",
+        "inc",
+        "ai",
+        "labs",
+        "co",
+        "io",
+        "com",
+    }
     if not name_tokens:
         return True  # can't verify, let it pass
     # Check if any meaningful name token appears in the domain
@@ -1002,7 +1084,9 @@ async def _search_company_careers_page(name: str) -> str | None:
     if career_urls:
         logger.info(
             "Careers page search for '%s': found %d career URLs but none matched domain: %s",
-            name, len(career_urls), career_urls[:3],
+            name,
+            len(career_urls),
+            career_urls[:3],
         )
     return None
 
@@ -1011,6 +1095,7 @@ def _domain_of(url: str) -> str | None:
     """Return the bare hostname of a URL with leading 'www.' stripped, or None."""
     try:
         from urllib.parse import urlparse
+
         host = (urlparse(url).hostname or "").lower()
         return re.sub(r"^www\.", "", host) or None
     except Exception:
@@ -1037,8 +1122,8 @@ async def _load_reference_jobs(job_ids: list[str]) -> list[dict]:
     if not job_ids:
         return []
     async with async_session() as session:
-        from sqlalchemy.dialects.postgresql import UUID as PG_UUID
         import uuid as _uuid
+
         uuids = []
         for jid in job_ids:
             try:
@@ -1047,21 +1132,21 @@ async def _load_reference_jobs(job_ids: list[str]) -> list[dict]:
                 continue
         if not uuids:
             return []
-        result = await session.execute(
-            select(Job).where(Job.id.in_(uuids))
-        )
+        result = await session.execute(select(Job).where(Job.id.in_(uuids)))
         jobs = result.scalars().all()
         refs = []
         for j in jobs:
-            refs.append({
-                "title": j.display_title,
-                "company": j.display_company,
-                "location": j.location,
-                "salary_min": j.salary_min,
-                "salary_max": j.salary_max,
-                "description_snippet": (j.description or "")[:300],
-                "work_model": j.work_model,
-            })
+            refs.append(
+                {
+                    "title": j.display_title,
+                    "company": j.display_company,
+                    "location": j.location,
+                    "salary_min": j.salary_min,
+                    "salary_max": j.salary_max,
+                    "description_snippet": (j.description or "")[:300],
+                    "work_model": j.work_model,
+                }
+            )
         return refs
 
 
@@ -1088,9 +1173,7 @@ def _build_reference_context(reference_jobs: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _enrich_keywords_from_references(
-    profile_keywords: dict, reference_jobs: list[dict]
-) -> dict:
+def _enrich_keywords_from_references(profile_keywords: dict, reference_jobs: list[dict]) -> dict:
     """Temporarily enrich profile keywords with data from reference jobs."""
     if not reference_jobs:
         return profile_keywords
@@ -1104,16 +1187,53 @@ def _enrich_keywords_from_references(
                 enriched.setdefault("role_titles", set()).add(ref["title"].lower())
         # Add keywords from description snippet
         snippet = ref.get("description_snippet", "").lower()
-        for skill in enriched.get("technical_skills", set()):
+        for _skill in enriched.get("technical_skills", set()):
             pass  # already there
         # Extract potential tech keywords from snippet
-        tech_words = re.findall(r'\b[a-z][a-z+#.]{2,}\b', snippet)
-        common_words = {"the", "and", "for", "with", "this", "that", "from", "will",
-                       "have", "are", "been", "our", "you", "your", "can", "not",
-                       "all", "may", "about", "more", "than", "other", "into",
-                       "has", "was", "who", "what", "how", "but", "also", "some",
-                       "any", "work", "team", "role", "experience", "ability",
-                       "strong", "including", "across", "within"}
+        tech_words = re.findall(r"\b[a-z][a-z+#.]{2,}\b", snippet)
+        common_words = {
+            "the",
+            "and",
+            "for",
+            "with",
+            "this",
+            "that",
+            "from",
+            "will",
+            "have",
+            "are",
+            "been",
+            "our",
+            "you",
+            "your",
+            "can",
+            "not",
+            "all",
+            "may",
+            "about",
+            "more",
+            "than",
+            "other",
+            "into",
+            "has",
+            "was",
+            "who",
+            "what",
+            "how",
+            "but",
+            "also",
+            "some",
+            "any",
+            "work",
+            "team",
+            "role",
+            "experience",
+            "ability",
+            "strong",
+            "including",
+            "across",
+            "within",
+        }
         for w in tech_words:
             if w not in common_words:
                 enriched.setdefault("technical_skills", set()).add(w)

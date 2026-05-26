@@ -5,7 +5,7 @@ No authentication required. Returns all active postings with descriptions.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -24,8 +24,11 @@ class LeverScraper:
         return bool(company.lever_slug)
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient,
-        *, known_urls: set[str] | None = None,
+        self,
+        company: Company,
+        http_client: httpx.AsyncClient,
+        *,
+        known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]:
         url = LEVER_API.format(slug=company.lever_slug)
         logger.info("Fetching Lever jobs for %s (%s)", company.name, url)
@@ -40,6 +43,7 @@ class LeverScraper:
             return []
 
         from app.services.scrape_progress import progress
+
         progress.fetching(len(data))
 
         jobs: list[ScrapedJob] = []
@@ -93,7 +97,7 @@ class LeverScraper:
         created_ms = entry.get("createdAt")
         if created_ms:
             try:
-                posted_at = datetime.fromtimestamp(created_ms / 1000, tz=timezone.utc)
+                posted_at = datetime.fromtimestamp(created_ms / 1000, tz=UTC)
             except (ValueError, OSError):
                 pass
 

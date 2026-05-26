@@ -8,7 +8,7 @@ Endpoints:
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 
@@ -70,9 +70,14 @@ async def _post_with_429_retry(
         resp = await http_client.post(ASHBY_GQL, json=payload)
         if resp.status_code != 429:
             return resp
-        backoff = 2 ** attempt
-        logger.debug("Ashby 429 for %s, backing off %ds (attempt %d/%d)",
-                     label, backoff, attempt + 1, max_attempts)
+        backoff = 2**attempt
+        logger.debug(
+            "Ashby 429 for %s, backing off %ds (attempt %d/%d)",
+            label,
+            backoff,
+            attempt + 1,
+            max_attempts,
+        )
         await asyncio.sleep(backoff)
     # Final failure; let the caller handle the raise_for_status
     return resp
@@ -85,8 +90,11 @@ class AshbyScraper:
         return bool(company.ashby_slug)
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient,
-        *, known_urls: set[str] | None = None,
+        self,
+        company: Company,
+        http_client: httpx.AsyncClient,
+        *,
+        known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]:
         slug = company.ashby_slug
         logger.info("Fetching Ashby jobs for %s (slug=%s)", company.name, slug)
@@ -124,23 +132,26 @@ class AshbyScraper:
             if known_urls and url in known_urls:
                 # Return a minimal ScrapedJob from listing data (no API call)
                 location = posting.get("locationName") or ""
-                known_jobs.append(ScrapedJob(
-                    title=posting.get("title", ""),
-                    company_name=company.name,
-                    url=url,
-                    description="",  # already in DB
-                    location=location or None,
-                    remote="remote" in location.lower() if location else False,
-                    source="ashby",
-                    metadata={"ashby_posting_id": posting["id"]},
-                ))
+                known_jobs.append(
+                    ScrapedJob(
+                        title=posting.get("title", ""),
+                        company_name=company.name,
+                        url=url,
+                        description="",  # already in DB
+                        location=location or None,
+                        remote="remote" in location.lower() if location else False,
+                        source="ashby",
+                        metadata={"ashby_posting_id": posting["id"]},
+                    )
+                )
             else:
                 new_postings.append(posting)
 
         if known_urls:
             logger.info(
                 "Skipping detail fetch for %d known jobs, fetching %d new",
-                len(known_jobs), len(new_postings),
+                len(known_jobs),
+                len(new_postings),
             )
 
         progress.fetching(len(new_postings))
@@ -148,16 +159,15 @@ class AshbyScraper:
         jobs: list[ScrapedJob] = list(known_jobs)
         for posting in new_postings:
             try:
-                job = await self._fetch_detail(
-                    http_client, slug, posting, teams, company
-                )
+                job = await self._fetch_detail(http_client, slug, posting, teams, company)
                 if job:
                     jobs.append(job)
                 progress.increment()
             except Exception:
                 logger.warning(
                     "Failed to fetch detail for %s at %s",
-                    posting.get("title"), company.name,
+                    posting.get("title"),
+                    company.name,
                     exc_info=True,
                 )
             # Rate limit: 0.5s between detail requests
@@ -211,7 +221,7 @@ class AshbyScraper:
         pub_date = detail.get("publishedDate")
         if pub_date:
             try:
-                posted_at = datetime.fromisoformat(pub_date).replace(tzinfo=timezone.utc)
+                posted_at = datetime.fromisoformat(pub_date).replace(tzinfo=UTC)
             except (ValueError, AttributeError):
                 pass
 

@@ -34,14 +34,32 @@ async def seed():
         logger.info("Seeding companies...")
         # Shared keyword filters for research/technical roles
         RESEARCH_INCLUDE = [
-            "research", "scientist", "engineer", "machine learning",
-            "ML", "data science", "AI", "NLP", "policy",
-            "technical staff", "applied science", "information scientist",
+            "research",
+            "scientist",
+            "engineer",
+            "machine learning",
+            "ML",
+            "data science",
+            "AI",
+            "NLP",
+            "policy",
+            "technical staff",
+            "applied science",
+            "information scientist",
         ]
         GENERIC_EXCLUDE = [
-            "intern", "marketing", "sales", "recruiting", "recruiter",
-            "facilities", "office manager", "executive assistant",
-            "accounts", "accounting", "payroll", "receptionist",
+            "intern",
+            "marketing",
+            "sales",
+            "recruiting",
+            "recruiter",
+            "facilities",
+            "office manager",
+            "executive assistant",
+            "accounts",
+            "accounting",
+            "payroll",
+            "receptionist",
         ]
 
         companies_data = [
@@ -179,7 +197,6 @@ async def seed():
         # --- Tags ---
         # Tags are now user-created. Skip seeding default tags to keep the
         # open-source defaults neutral. Users create their own via the UI.
-        tags = {}
 
         # --- Search Profiles ---
         logger.info("Seeding search profiles...")

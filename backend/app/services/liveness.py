@@ -1,10 +1,10 @@
 """Job liveness: expiration stats, URL checks, garbage collection."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Job, JobStatus
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 async def get_liveness_stats(session: AsyncSession) -> dict:
     """Get expiration statistics."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     total_expired = await session.execute(
         select(func.count(Job.id)).where(Job.expired_at.isnot(None))
@@ -31,9 +31,7 @@ async def get_liveness_stats(session: AsyncSession) -> dict:
             Job.expired_at >= now - timedelta(days=30),
         )
     )
-    total_active = await session.execute(
-        select(func.count(Job.id)).where(Job.expired_at.is_(None))
-    )
+    total_active = await session.execute(select(func.count(Job.id)).where(Job.expired_at.is_(None)))
 
     return {
         "total_expired": total_expired.scalar() or 0,
@@ -48,7 +46,7 @@ async def check_urls_batch(session: AsyncSession, max_jobs: int = 500) -> dict:
 
     Targets jobs with no last_seen_at or last_seen_at > 7 days ago.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=7)
 
     result = await session.execute(
         select(Job)
@@ -86,10 +84,10 @@ async def check_urls_batch(session: AsyncSession, max_jobs: int = 500) -> dict:
                         is_dead = True
 
                 if is_dead:
-                    job.expired_at = datetime.now(timezone.utc)
+                    job.expired_at = datetime.now(UTC)
                     stats["dead"] += 1
                 else:
-                    job.last_seen_at = datetime.now(timezone.utc)
+                    job.last_seen_at = datetime.now(UTC)
                     stats["alive"] += 1
             except Exception:
                 stats["errors"] += 1
@@ -97,7 +95,10 @@ async def check_urls_batch(session: AsyncSession, max_jobs: int = 500) -> dict:
     await session.commit()
     logger.info(
         "URL check: %d checked, %d alive, %d dead, %d errors",
-        stats["checked"], stats["alive"], stats["dead"], stats["errors"],
+        stats["checked"],
+        stats["alive"],
+        stats["dead"],
+        stats["errors"],
     )
     return stats
 
@@ -118,7 +119,7 @@ async def recheck_expired(session: AsyncSession, batch_size: int = 100) -> dict:
     jobs = list(result.scalars().all())
 
     stats = {"checked": 0, "revived": 0, "confirmed_dead": 0, "errors": 0}
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
         for job in jobs:
@@ -138,14 +139,17 @@ async def recheck_expired(session: AsyncSession, batch_size: int = 100) -> dict:
     await session.commit()
     logger.info(
         "Recheck expired: %d checked, %d revived, %d confirmed dead, %d errors",
-        stats["checked"], stats["revived"], stats["confirmed_dead"], stats["errors"],
+        stats["checked"],
+        stats["revived"],
+        stats["confirmed_dead"],
+        stats["errors"],
     )
     return stats
 
 
 async def garbage_collect(session: AsyncSession, expired_days: int = 90) -> dict:
     """Archive jobs expired > N days with status='new' (never interacted with)."""
-    cutoff = datetime.now(timezone.utc) - timedelta(days=expired_days)
+    cutoff = datetime.now(UTC) - timedelta(days=expired_days)
 
     result = await session.execute(
         select(Job).where(

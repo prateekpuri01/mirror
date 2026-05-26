@@ -1,6 +1,6 @@
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session, get_session
-from app.schemas.application_requirements import AppReqCreate, AppReqRead, ExtractionStatusRead
+from app.schemas.application_requirements import AppReqCreate, AppReqRead
 from app.services import app_req_service
 from app.services.app_req_extraction_service import (
     extract_application_requirements,
@@ -34,13 +34,17 @@ async def _learn_from_answer_edit(
     """
     try:
         from app.ai.writing_memory import extract_and_learn
+
         async with async_session() as bg_session:
             await extract_and_learn(
                 bg_session,
-                old_value, new_value,
-                f"answer.{field_label}", job_id,
+                old_value,
+                new_value,
+                f"answer.{field_label}",
+                job_id,
                 domain="answer",
-                job_title=job_title, company=company,
+                job_title=job_title,
+                company=company,
             )
             await bg_session.commit()
     except Exception:
@@ -58,9 +62,7 @@ class UpdateDraftRequest(BaseModel):
 
 
 @router.get("/jobs/{job_id}/requirements", response_model=AppReqRead)
-async def get_requirements(
-    job_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def get_requirements(job_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     req = await app_req_service.get_for_job(session, job_id)
     if req is None:
         raise HTTPException(status_code=404, detail="No requirements found for this job")
@@ -87,8 +89,9 @@ async def trigger_extraction(
     session: AsyncSession = Depends(get_session),
 ):
     # Verify job exists
-    from app.models.jobs import Job
     from sqlalchemy import select
+
+    from app.models.jobs import Job
 
     result = await session.execute(select(Job.id).where(Job.id == job_id))
     if result.scalar_one_or_none() is None:
@@ -162,9 +165,7 @@ async def draft_answers(
     # 4. Load company notes + research
     company_notes = None
     if job.company_id:
-        result = await session.execute(
-            select(Company).where(Company.id == job.company_id)
-        )
+        result = await session.execute(select(Company).where(Company.id == job.company_id))
         company = result.scalar_one_or_none()
         if company and company.notes:
             company_notes = company.notes
@@ -172,14 +173,12 @@ async def draft_answers(
 
     # 4b. Load writing memory for answer drafting
     from app.ai.writing_memory import format_writing_memory
+
     answer_memory_text = await format_writing_memory(session, "answer")
 
     # 5. Get short answer fields
     fields = app_req.application_fields
-    short_answers = [
-        f for f in fields
-        if f.get("response_type") in ("short_answer", "free_text")
-    ]
+    short_answers = [f for f in fields if f.get("response_type") in ("short_answer", "free_text")]
     if not short_answers:
         raise HTTPException(status_code=400, detail="No short answer fields found")
 
@@ -187,24 +186,20 @@ async def draft_answers(
         # --- Single field draft ---
         from app.ai.answer_drafter import _prune_history
 
-        field = next(
-            (f for f in short_answers if f["label"] == body.field_label), None
-        )
+        field = next((f for f in short_answers if f["label"] == body.field_label), None)
         if field is None:
             raise HTTPException(
                 status_code=404,
                 detail=f"Field '{body.field_label}' not found",
             )
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         history = field.get("draft_history") or []
 
         # Detect manual edit: if draft_response differs from last ai_draft in history
         current_draft = field.get("draft_response")
         if current_draft and history:
-            last_ai = next(
-                (e for e in reversed(history) if e["type"] == "ai_draft"), None
-            )
+            last_ai = next((e for e in reversed(history) if e["type"] == "ai_draft"), None)
             if last_ai and last_ai["content"] != current_draft:
                 history.append({"type": "manual_edit", "content": current_draft, "timestamp": now})
 
@@ -214,9 +209,12 @@ async def draft_answers(
                 # response goes out as soon as the new draft is saved.
                 background_tasks.add_task(
                     _learn_from_answer_edit,
-                    last_ai["content"], current_draft,
-                    body.field_label, job_id,
-                    job.title or "", job.company or "",
+                    last_ai["content"],
+                    current_draft,
+                    body.field_label,
+                    job_id,
+                    job.title or "",
+                    job.company or "",
                 )
 
         # Append instruction if provided
@@ -248,6 +246,7 @@ async def draft_answers(
 
         app_req.application_fields = fields
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(app_req, "application_fields")
         await session.commit()
 
@@ -265,7 +264,7 @@ async def draft_answers(
             memory_text=answer_memory_text,
         )
 
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
 
         # Update each field's draft_response and reset draft_history
         for f in fields:
@@ -277,6 +276,7 @@ async def draft_answers(
 
         app_req.application_fields = fields
         from sqlalchemy.orm.attributes import flag_modified
+
         flag_modified(app_req, "application_fields")
         await session.commit()
 
@@ -290,8 +290,9 @@ async def update_draft(
     session: AsyncSession = Depends(get_session),
 ):
     """Save a manual edit to a draft response."""
-    from app.models.documents import ApplicationRequirements
     from sqlalchemy.orm.attributes import flag_modified
+
+    from app.models.documents import ApplicationRequirements
 
     result = await session.execute(
         select(ApplicationRequirements).where(ApplicationRequirements.job_id == job_id)

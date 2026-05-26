@@ -46,7 +46,7 @@ class CompanyHit:
     # detailed reason so the activity log shows what was considered and why.
     kind: str = "ats"
     careers_url: str | None = None  # Set for "lead" kind
-    company_id: str | None = None   # Set for "tracked" kind
+    company_id: str | None = None  # Set for "tracked" kind
     # Two-tier matching: a hit is "tentative" when its best job's
     # profile-fit score landed below the strict threshold but above the
     # loose one. We emit a capped number of tentative hits so exploratory

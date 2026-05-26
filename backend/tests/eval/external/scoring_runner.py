@@ -52,12 +52,12 @@ async def score_pair(
 
     No DB access, no persistence. Returns a ScoredPair with sub-score details.
     """
-    from app.ai.client import get_openai_client, RESUME_MODEL
+    from app.ai.client import RESUME_MODEL, get_openai_client
     from app.ai.prompts import (
-        build_role_fit_system,
+        build_interest_fit_prompt,
         build_interest_fit_system,
         build_role_fit_prompt,
-        build_interest_fit_prompt,
+        build_role_fit_system,
         format_job_for_scoring,
     )
     from app.ai.scoring import _build_compact_profile, _parse_json_response

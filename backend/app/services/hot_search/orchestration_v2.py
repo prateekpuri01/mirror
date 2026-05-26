@@ -37,11 +37,12 @@ import json
 import logging
 import time
 from collections import Counter
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
 
 from app.ai.client import EXTRACTION_MODEL, get_openai_client
+from app.scrapers import SCRAPERS_BY_ATS, make_temp_company
 from app.scrapers.discovery_adapters import DISCOVERY_ADAPTERS
 from app.services.company_discovery import _build_keyword_sets
 from app.services.hot_search.discovery import (
@@ -52,12 +53,10 @@ from app.services.hot_search.discovery import (
     _load_profile_data,
     _load_reference_jobs,
     _probe_name_for_ats,
-    _search_careers_url,
     _search_company_careers_page,
 )
 from app.services.hot_search.discovery_cache import (
     mark_outcome,
-    normalize_name,
     recall_relevant,
     upsert_many,
 )
@@ -71,10 +70,8 @@ from app.services.hot_search.evaluation import (
     _get_verify_semaphore,
     _job_passes_location_filter,
     _job_passes_salary_filter,
-    _verify_jobs_with_extraction,
 )
 from app.services.hot_search.ranking import (
-    build_job_doc,
     build_query_doc,
     embed_batch,
     rank_jobs,
@@ -84,12 +81,11 @@ from app.services.hot_search.types import (
     CompanyHit,
     SearchEvent,
 )
-from app.scrapers import SCRAPERS_BY_ATS, make_temp_company
 
 logger = logging.getLogger(__name__)
 
 
-_GLOBAL_BUDGET_S = 4 * 60   # 4-minute hard cap; v1 was 8
+_GLOBAL_BUDGET_S = 4 * 60  # 4-minute hard cap; v1 was 8
 _PER_CANDIDATE_RESOLUTION_S = 30
 _PER_CANDIDATE_FETCH_S = 45
 _CACHE_RECALL_K = 30
@@ -155,14 +151,17 @@ async def _prefilter_aggregator_entries(
         response = await client.chat.completions.create(
             model=EXTRACTION_MODEL,
             messages=[
-                {"role": "system", "content": (
-                    "You filter aggregator job listings by relevance to a "
-                    "user's search guidance. Be SELECTIVE — when guidance "
-                    "names a clear domain, keep only entries plausibly in "
-                    "that domain. Better to lose a borderline match than "
-                    "flood the result list with off-topic noise. Return "
-                    "ONLY JSON."
-                )},
+                {
+                    "role": "system",
+                    "content": (
+                        "You filter aggregator job listings by relevance to a "
+                        "user's search guidance. Be SELECTIVE — when guidance "
+                        "names a clear domain, keep only entries plausibly in "
+                        "that domain. Better to lose a borderline match than "
+                        "flood the result list with off-topic noise. Return "
+                        "ONLY JSON."
+                    ),
+                },
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
@@ -191,7 +190,8 @@ async def _prefilter_aggregator_entries(
             return entries
         logger.info(
             "Aggregator pre-filter: %d → %d entries (%.0f%% dropped)",
-            len(sample), len(filtered),
+            len(sample),
+            len(filtered),
             (1 - len(filtered) / max(1, len(sample))) * 100,
         )
         return filtered
@@ -253,10 +253,7 @@ async def _verify_jobs_v2_loose(
                 # this is a confirmed miss, drop.
                 return None
         if min_salary:
-            if (
-                job.get("salary_max") is not None
-                and job["salary_max"] < min_salary
-            ):
+            if job.get("salary_max") is not None and job["salary_max"] < min_salary:
                 return None  # scraper-confirmed below threshold
 
         # LLM extraction pass (only when we have enough description text)
@@ -303,7 +300,10 @@ async def _verify_jobs_v2_loose(
     kept = [r for r in results if r is not None]
     logger.info(
         "_verify_jobs_v2_loose: kept %d/%d (locations=%s, min_salary=%s)",
-        len(kept), len(jobs), locations, min_salary,
+        len(kept),
+        len(jobs),
+        locations,
+        min_salary,
     )
     return kept
 
@@ -364,17 +364,28 @@ async def run_hot_company_search_v2(
                 continue
             terminal_names_emitted.add(key)
             funnel["safety_net_skip"] += 1
-            out.append(SearchEvent("skip", {
-                "name": c.name, "source": c.source,
-                "reason": "Reviewed but didn't make the top results",
-            }))
+            out.append(
+                SearchEvent(
+                    "skip",
+                    {
+                        "name": c.name,
+                        "source": c.source,
+                        "reason": "Reviewed but didn't make the top results",
+                    },
+                )
+            )
         return out
 
-    yield SearchEvent("status", {
-        "message": "Loading profile and existing companies...",
-        "phase": "init", "iteration": 0,
-        "total_queries": 0, "hits_so_far": 0,
-    })
+    yield SearchEvent(
+        "status",
+        {
+            "message": "Loading profile and existing companies...",
+            "phase": "init",
+            "iteration": 0,
+            "total_queries": 0,
+            "hits_so_far": 0,
+        },
+    )
 
     # Load context (profile, tracked companies, reference jobs) in
     # parallel — these are independent DB reads.
@@ -405,11 +416,16 @@ async def run_hot_company_search_v2(
         # -------------------------------------------------------------
         # Phase A — three discovery streams in parallel
         # -------------------------------------------------------------
-        yield SearchEvent("status", {
-            "message": "Discovering companies (aggregators + LLM-web + cache)...",
-            "phase": "discovery", "iteration": 1,
-            "total_queries": 0, "hits_so_far": 0,
-        })
+        yield SearchEvent(
+            "status",
+            {
+                "message": "Discovering companies (aggregators + LLM-web + cache)...",
+                "phase": "discovery",
+                "iteration": 1,
+                "total_queries": 0,
+                "hits_so_far": 0,
+            },
+        )
 
         # A1: aggregator harvest
         async def _phase_a1() -> list[CompanyCandidate]:
@@ -420,7 +436,7 @@ async def run_hot_company_search_v2(
                 ]
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 entries = []
-                for adapter, res in zip(DISCOVERY_ADAPTERS, results):
+                for adapter, res in zip(DISCOVERY_ADAPTERS, results, strict=False):
                     if isinstance(res, Exception):
                         logger.warning("Adapter %s raised: %s", adapter.source_name, res)
                         continue
@@ -429,8 +445,10 @@ async def run_hot_company_search_v2(
                     entries = await _prefilter_aggregator_entries(entries, guidance)
                 seen_keys: set[str] = set()
                 candidates = await _harvest_candidates_from_entries(
-                    entries, http_client,
-                    seen=seen_keys, existing_companies_lower=existing_lower,
+                    entries,
+                    http_client,
+                    seen=seen_keys,
+                    existing_companies_lower=existing_lower,
                 )
                 funnel["a1_aggregator_entries"] = len(entries)
                 funnel["a1_aggregator_candidates"] = len(candidates)
@@ -500,7 +518,9 @@ async def run_hot_company_search_v2(
                 return []
 
         a1_candidates, a2_candidates, a3_candidates = await asyncio.gather(
-            _phase_a1(), _phase_a2(), _phase_a3(),
+            _phase_a1(),
+            _phase_a2(),
+            _phase_a3(),
         )
 
         # Union — cache rows go LAST so query-driven candidates win the
@@ -524,16 +544,21 @@ async def run_hot_company_search_v2(
             seen_internal.add(key)
             unique_candidates.append(c)
 
-        yield SearchEvent("status", {
-            "message": (
-                f"Found {len(unique_candidates)} candidates "
-                f"(A1={len(a1_candidates)} aggregator, "
-                f"A2={len(a2_candidates)} llm-web, "
-                f"A3={len(a3_candidates)} cached)"
-            ),
-            "phase": "candidates_found", "iteration": 1,
-            "total_queries": 3, "hits_so_far": 0,
-        })
+        yield SearchEvent(
+            "status",
+            {
+                "message": (
+                    f"Found {len(unique_candidates)} candidates "
+                    f"(A1={len(a1_candidates)} aggregator, "
+                    f"A2={len(a2_candidates)} llm-web, "
+                    f"A3={len(a3_candidates)} cached)"
+                ),
+                "phase": "candidates_found",
+                "iteration": 1,
+                "total_queries": 3,
+                "hits_so_far": 0,
+            },
+        )
 
         for c in unique_candidates:
             yield SearchEvent("candidate", {"name": c.name, "source": c.source})
@@ -557,8 +582,10 @@ async def run_hot_company_search_v2(
             if c.name.lower() in existing_lower or (dup_of and dup_of.lower() in existing_lower):
                 try:
                     th, _ = await _evaluate_tracked_company(
-                        c.name, profile_keywords,
-                        locations=locations, min_salary=min_salary,
+                        c.name,
+                        profile_keywords,
+                        locations=locations,
+                        min_salary=min_salary,
                         guidance=guidance,
                     )
                 except Exception:
@@ -572,18 +599,26 @@ async def run_hot_company_search_v2(
                 else:
                     funnel["b_tracked_no_match"] += 1
                     _mark_terminal(c.name)
-                    yield SearchEvent("skip", {
-                        "name": c.name, "source": c.source,
-                        "reason": "Already tracked, no matching jobs right now",
-                    })
+                    yield SearchEvent(
+                        "skip",
+                        {
+                            "name": c.name,
+                            "source": c.source,
+                            "reason": "Already tracked, no matching jobs right now",
+                        },
+                    )
                 continue
             if dup_of:
                 funnel["b_dedup_dropped"] += 1
                 _mark_terminal(c.name)
-                yield SearchEvent("skip", {
-                    "name": c.name, "source": c.source,
-                    "reason": f"Duplicate of '{dup_of}'",
-                })
+                yield SearchEvent(
+                    "skip",
+                    {
+                        "name": c.name,
+                        "source": c.source,
+                        "reason": f"Duplicate of '{dup_of}'",
+                    },
+                )
                 continue
             post_dedup.append(c)
 
@@ -591,9 +626,15 @@ async def run_hot_company_search_v2(
         if len(tracked_hits) >= max_hits:
             for _sn_ev in _safety_net_events():
                 yield _sn_ev
-            yield SearchEvent("done", _done_event_data(
-                len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
-            ))
+            yield SearchEvent(
+                "done",
+                _done_event_data(
+                    len(tracked_hits),
+                    len(unique_candidates),
+                    funnel,
+                    skip_reasons,
+                ),
+            )
             return
 
         # -------------------------------------------------------------
@@ -602,9 +643,15 @@ async def run_hot_company_search_v2(
         if _budget_left() <= 0:
             for _sn_ev in _safety_net_events():
                 yield _sn_ev
-            yield SearchEvent("done", _done_event_data(
-                len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
-            ))
+            yield SearchEvent(
+                "done",
+                _done_event_data(
+                    len(tracked_hits),
+                    len(unique_candidates),
+                    funnel,
+                    skip_reasons,
+                ),
+            )
             return
 
         sem_resolve = asyncio.Semaphore(candidate_concurrency)
@@ -621,7 +668,7 @@ async def run_hot_company_search_v2(
                         _probe_name_for_ats(c.name, http_client),
                         timeout=_PER_CANDIDATE_RESOLUTION_S,
                     )
-                except (asyncio.TimeoutError, Exception):
+                except (TimeoutError, Exception):
                     probed = None
                 if probed:
                     c.ats, c.slug = probed
@@ -635,19 +682,17 @@ async def run_hot_company_search_v2(
                         _search_company_careers_page(c.name),
                         timeout=_PER_CANDIDATE_RESOLUTION_S,
                     )
-                except (asyncio.TimeoutError, Exception):
+                except (TimeoutError, Exception):
                     careers_url = None
                 if careers_url:
                     c.url = careers_url
                     return c
                 return None
 
-        resolve_tasks = [
-            asyncio.create_task(_resolve(c)) for c in post_dedup
-        ]
+        resolve_tasks = [asyncio.create_task(_resolve(c)) for c in post_dedup]
         resolved_raw: list[CompanyCandidate] = []
         unresolvable: list[CompanyCandidate] = []
-        for task, candidate in zip(resolve_tasks, post_dedup):
+        for task, candidate in zip(resolve_tasks, post_dedup, strict=False):
             try:
                 r = await task
             except Exception:
@@ -656,10 +701,14 @@ async def run_hot_company_search_v2(
                 unresolvable.append(candidate)
                 funnel["c_unresolvable"] += 1
                 _mark_terminal(candidate.name)
-                yield SearchEvent("skip", {
-                    "name": candidate.name, "source": candidate.source,
-                    "reason": "Couldn't find ATS slug or careers page",
-                })
+                yield SearchEvent(
+                    "skip",
+                    {
+                        "name": candidate.name,
+                        "source": candidate.source,
+                        "reason": "Couldn't find ATS slug or careers page",
+                    },
+                )
                 continue
             resolved_raw.append(r)
 
@@ -681,6 +730,7 @@ async def run_hot_company_search_v2(
             return (len(n.split()), len(n))
 
         from app.services.hot_search.discovery_cache import normalize_name
+
         resolved_by_key: dict[str, CompanyCandidate] = {}
         # Track (loser_name, winner_name) pairs so we can emit informative
         # skip events after dedup. The UI shows a spinner for every
@@ -716,10 +766,14 @@ async def run_hot_company_search_v2(
             if loser.name.lower().strip() in terminal_names_emitted:
                 continue
             _mark_terminal(loser.name)
-            yield SearchEvent("skip", {
-                "name": loser.name, "source": loser.source,
-                "reason": f"Same company as '{winner.name}' (collapsed after ATS lookup)",
-            })
+            yield SearchEvent(
+                "skip",
+                {
+                    "name": loser.name,
+                    "source": loser.source,
+                    "reason": f"Same company as '{winner.name}' (collapsed after ATS lookup)",
+                },
+            )
 
         # -------------------------------------------------------------
         # Phase D — job fetching per candidate (parallel)
@@ -728,16 +782,27 @@ async def run_hot_company_search_v2(
             # We may still have tracked hits; emit done.
             for _sn_ev in _safety_net_events():
                 yield _sn_ev
-            yield SearchEvent("done", _done_event_data(
-                len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
-            ))
+            yield SearchEvent(
+                "done",
+                _done_event_data(
+                    len(tracked_hits),
+                    len(unique_candidates),
+                    funnel,
+                    skip_reasons,
+                ),
+            )
             return
 
-        yield SearchEvent("status", {
-            "message": f"Fetching jobs from {len(resolved)} companies...",
-            "phase": "fetching", "iteration": 1,
-            "total_queries": 3, "hits_so_far": len(tracked_hits),
-        })
+        yield SearchEvent(
+            "status",
+            {
+                "message": f"Fetching jobs from {len(resolved)} companies...",
+                "phase": "fetching",
+                "iteration": 1,
+                "total_queries": 3,
+                "hits_so_far": len(tracked_hits),
+            },
+        )
 
         sem_fetch = asyncio.Semaphore(candidate_concurrency)
 
@@ -748,7 +813,7 @@ async def run_hot_company_search_v2(
                         _fetch_jobs_for_candidate(c, http_client),
                         timeout=_PER_CANDIDATE_FETCH_S,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     funnel["d_fetch_timeout"] += 1
                     return c, []
                 except Exception:
@@ -766,10 +831,14 @@ async def run_hot_company_search_v2(
             if not jobs:
                 funnel["d_no_jobs"] += 1
                 _mark_terminal(c.name)
-                yield SearchEvent("skip", {
-                    "name": c.name, "source": c.source,
-                    "reason": "No jobs found at this company",
-                })
+                yield SearchEvent(
+                    "skip",
+                    {
+                        "name": c.name,
+                        "source": c.source,
+                        "reason": "No jobs found at this company",
+                    },
+                )
                 continue
             # Cheap pre-filter for location/salary using whatever the
             # scraper provided. Saves rerank cost on jobs that obviously
@@ -779,10 +848,14 @@ async def run_hot_company_search_v2(
             if not jobs:
                 funnel["d_cheap_filtered_to_zero"] += 1
                 _mark_terminal(c.name)
-                yield SearchEvent("skip", {
-                    "name": c.name, "source": c.source,
-                    "reason": "All jobs failed cheap location/salary filter",
-                })
+                yield SearchEvent(
+                    "skip",
+                    {
+                        "name": c.name,
+                        "source": c.source,
+                        "reason": "All jobs failed cheap location/salary filter",
+                    },
+                )
                 continue
             # Stamp company name on each job for grouping later
             for j in jobs:
@@ -797,19 +870,30 @@ async def run_hot_company_search_v2(
         if not all_jobs:
             for _sn_ev in _safety_net_events():
                 yield _sn_ev
-            yield SearchEvent("done", _done_event_data(
-                len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
-            ))
+            yield SearchEvent(
+                "done",
+                _done_event_data(
+                    len(tracked_hits),
+                    len(unique_candidates),
+                    funnel,
+                    skip_reasons,
+                ),
+            )
             return
 
         # -------------------------------------------------------------
         # Phase E — scoring (cosine + LLM rerank)
         # -------------------------------------------------------------
-        yield SearchEvent("status", {
-            "message": f"Scoring {len(all_jobs)} jobs across {len(per_company_jobs)} companies...",
-            "phase": "scoring", "iteration": 1,
-            "total_queries": 3, "hits_so_far": len(tracked_hits),
-        })
+        yield SearchEvent(
+            "status",
+            {
+                "message": f"Scoring {len(all_jobs)} jobs across {len(per_company_jobs)} companies...",
+                "phase": "scoring",
+                "iteration": 1,
+                "total_queries": 3,
+                "hits_so_far": len(tracked_hits),
+            },
+        )
 
         # rank_jobs handles embed_batch + cosine top-K + LLM rerank in one
         # convenience call. We pass profile + guidance directly because
@@ -824,16 +908,22 @@ async def run_hot_company_search_v2(
                 reference_context=reference_context,
                 locations=locations,
                 min_salary=min_salary,
-                top_k=max_hits * 4,            # accept up to 4x max_hits before regrouping
+                top_k=max_hits * 4,  # accept up to 4x max_hits before regrouping
                 cosine_pool_size=_COSINE_POOL_SIZE,
             )
         except Exception:
             logger.exception("ranking failed; emitting done with no hits")
             for _sn_ev in _safety_net_events():
                 yield _sn_ev
-            yield SearchEvent("done", _done_event_data(
-                len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
-            ))
+            yield SearchEvent(
+                "done",
+                _done_event_data(
+                    len(tracked_hits),
+                    len(unique_candidates),
+                    funnel,
+                    skip_reasons,
+                ),
+            )
             return
 
         funnel["e_ranked_jobs"] = len(ranked)
@@ -841,9 +931,15 @@ async def run_hot_company_search_v2(
         if not ranked:
             for _sn_ev in _safety_net_events():
                 yield _sn_ev
-            yield SearchEvent("done", _done_event_data(
-                len(tracked_hits), len(unique_candidates), funnel, skip_reasons,
-            ))
+            yield SearchEvent(
+                "done",
+                _done_event_data(
+                    len(tracked_hits),
+                    len(unique_candidates),
+                    funnel,
+                    skip_reasons,
+                ),
+            )
             return
 
         # -------------------------------------------------------------
@@ -860,7 +956,9 @@ async def run_hot_company_search_v2(
             top_job_dicts = [j for j, _r in ranked]
             try:
                 verified_list = await _verify_jobs_v2_loose(
-                    top_job_dicts, locations, min_salary,
+                    top_job_dicts,
+                    locations,
+                    min_salary,
                 )
             except Exception:
                 logger.exception("v2 verifier failed; passing rerank through unchanged")
@@ -924,7 +1022,10 @@ async def run_hot_company_search_v2(
             # company call; if we ever want to defer, this is the lever.
             try:
                 rejected, desc, reason, reject_reason = await _generate_hit_summary(
-                    cand.name, jobs[:5], profile_data, guidance=guidance or "",
+                    cand.name,
+                    jobs[:5],
+                    profile_data,
+                    guidance=guidance or "",
                 )
             except Exception:
                 rejected, desc, reason, reject_reason = False, "", "", ""
@@ -933,10 +1034,14 @@ async def run_hot_company_search_v2(
                 funnel["e_summary_rejected"] += 1
                 outcome_no_match.append(normalize_name(cand.name))
                 _mark_terminal(cand.name)
-                yield SearchEvent("skip", {
-                    "name": cand.name, "source": cand.source,
-                    "reason": f"Dropped: {reject_reason}",
-                })
+                yield SearchEvent(
+                    "skip",
+                    {
+                        "name": cand.name,
+                        "source": cand.source,
+                        "reason": f"Dropped: {reject_reason}",
+                    },
+                )
                 continue
 
             best_rel = company_scores.get(cname, 0)
@@ -956,7 +1061,7 @@ async def run_hot_company_search_v2(
                 kind="ats" if (cand.ats and cand.slug) else "lead",
                 careers_url=cand.url if not cand.ats else None,
                 is_tentative=is_tentative,
-                match_score=best_rel * 20,        # 1-5 → 20/40/60/80/100
+                match_score=best_rel * 20,  # 1-5 → 20/40/60/80/100
             )
             emitted.append(hit)
             outcome_hits.append(normalize_name(cand.name))
@@ -965,17 +1070,19 @@ async def run_hot_company_search_v2(
 
             # Defer cache upsert; collect for one bulk write at the end
             # so we don't pay round-trip cost per hit.
-            upsert_rows.append({
-                "name": cand.name,
-                "ats": cand.ats,
-                "slug": cand.slug,
-                "careers_url": cand.url,
-                "description": desc or None,
-                "description_embedding": None,    # filled below
-                "source": cand.source or "unknown",
-                "last_query": guidance or "(profile-driven)",
-                "last_status": "hit",
-            })
+            upsert_rows.append(
+                {
+                    "name": cand.name,
+                    "ats": cand.ats,
+                    "slug": cand.slug,
+                    "careers_url": cand.url,
+                    "description": desc or None,
+                    "description_embedding": None,  # filled below
+                    "source": cand.source or "unknown",
+                    "last_query": guidance or "(profile-driven)",
+                    "last_status": "hit",
+                }
+            )
 
         # Cache misses too — embed and store their descriptions so they
         # become recallable for similar future queries.
@@ -987,17 +1094,19 @@ async def run_hot_company_search_v2(
             if not cand:
                 continue
             upserted_names.add(cname)
-            upsert_rows.append({
-                "name": cand.name,
-                "ats": cand.ats,
-                "slug": cand.slug,
-                "careers_url": cand.url,
-                "description": None,
-                "description_embedding": None,
-                "source": cand.source or "unknown",
-                "last_query": guidance or "(profile-driven)",
-                "last_status": "no_match",
-            })
+            upsert_rows.append(
+                {
+                    "name": cand.name,
+                    "ats": cand.ats,
+                    "slug": cand.slug,
+                    "careers_url": cand.url,
+                    "description": None,
+                    "description_embedding": None,
+                    "source": cand.source or "unknown",
+                    "last_query": guidance or "(profile-driven)",
+                    "last_status": "no_match",
+                }
+            )
             outcome_no_match.append(normalize_name(cand.name))
 
         # Resolved companies that had NO jobs at all — still cache them
@@ -1009,17 +1118,19 @@ async def run_hot_company_search_v2(
         for cand in resolved:
             if cand.name in upserted_names:
                 continue
-            upsert_rows.append({
-                "name": cand.name,
-                "ats": cand.ats,
-                "slug": cand.slug,
-                "careers_url": cand.url,
-                "description": None,
-                "description_embedding": None,
-                "source": cand.source or "unknown",
-                "last_query": guidance or "(profile-driven)",
-                "last_status": "no_jobs",
-            })
+            upsert_rows.append(
+                {
+                    "name": cand.name,
+                    "ats": cand.ats,
+                    "slug": cand.slug,
+                    "careers_url": cand.url,
+                    "description": None,
+                    "description_embedding": None,
+                    "source": cand.source or "unknown",
+                    "last_query": guidance or "(profile-driven)",
+                    "last_status": "no_jobs",
+                }
+            )
             upserted_names.add(cand.name)
 
         # Compute description embeddings in one batched call so future
@@ -1043,7 +1154,7 @@ async def run_hot_company_search_v2(
                         )
                         texts.append(title_list or row["name"])
                 embs = await embed_batch(texts)
-                for row, emb in zip(upsert_rows, embs):
+                for row, emb in zip(upsert_rows, embs, strict=False):
                     row["description_embedding"] = emb
             except Exception:
                 logger.exception("upsert embedding failed; storing without vectors")
@@ -1064,9 +1175,15 @@ async def run_hot_company_search_v2(
 
         for _sn_ev in _safety_net_events():
             yield _sn_ev
-        yield SearchEvent("done", _done_event_data(
-            len(emitted), len(unique_candidates), funnel, skip_reasons,
-        ))
+        yield SearchEvent(
+            "done",
+            _done_event_data(
+                len(emitted),
+                len(unique_candidates),
+                funnel,
+                skip_reasons,
+            ),
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1096,18 +1213,20 @@ async def _fetch_jobs_for_candidate(
             scraped = await scraper.scrape_company(company, http_client=http_client)
             jobs: list[dict] = []
             for sj in scraped:
-                jobs.append({
-                    "title": sj.title or "",
-                    "company": c.name,
-                    "url": sj.url or "",
-                    "location": sj.location,
-                    "remote": getattr(sj, "remote", False),
-                    "salary_min": getattr(sj, "salary_min", None),
-                    "salary_max": getattr(sj, "salary_max", None),
-                    "department": getattr(sj, "department", None),
-                    "description": getattr(sj, "description", None) or "",
-                    "description_html": getattr(sj, "description_html", None) or "",
-                })
+                jobs.append(
+                    {
+                        "title": sj.title or "",
+                        "company": c.name,
+                        "url": sj.url or "",
+                        "location": sj.location,
+                        "remote": getattr(sj, "remote", False),
+                        "salary_min": getattr(sj, "salary_min", None),
+                        "salary_max": getattr(sj, "salary_max", None),
+                        "department": getattr(sj, "department", None),
+                        "description": getattr(sj, "description", None) or "",
+                        "description_html": getattr(sj, "description_html", None) or "",
+                    }
+                )
             return jobs
         except Exception:
             logger.warning("ATS scrape failed for %s/%s", c.ats, c.slug, exc_info=True)
@@ -1117,8 +1236,10 @@ async def _fetch_jobs_for_candidate(
     if c.direct_job_url:
         try:
             hit, _ = await _extract_direct_job_url(
-                c.direct_job_url, {},  # profile_keywords unused for fetching
-                locations=None, min_salary=None,
+                c.direct_job_url,
+                {},  # profile_keywords unused for fetching
+                locations=None,
+                min_salary=None,
             )
             if not hit:
                 return []
@@ -1136,6 +1257,7 @@ async def _fetch_jobs_for_candidate(
     # Branch 3: careers URL — title-only scraper
     if c.url:
         from app.services.hot_search.careers_titles import list_job_titles
+
         try:
             entries = await list_job_titles(c.url, max_titles=40, timeout_s=25)
         except Exception:
@@ -1165,6 +1287,7 @@ def _cheap_filter(
     leaves unknown-salary / unknown-location jobs through so the LLM
     verifier (Phase F) can take a second look."""
     from types import SimpleNamespace
+
     out: list[dict] = []
     for j in jobs:
         fake = SimpleNamespace(

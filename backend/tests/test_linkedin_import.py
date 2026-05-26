@@ -106,8 +106,20 @@ async def test_generate_accomplishments_returns_tagged_list():
         "target_roles": [{"title": "Data Scientist"}],
         "domains": ["AI"],
         "work_history": [
-            {"key": "acme_ai", "employer": "Acme AI", "title": "Research Scientist", "start": "2022", "end": ""},
-            {"key": "widgetco", "employer": "WidgetCo", "title": "Senior Data Scientist", "start": "2019", "end": "2022"},
+            {
+                "key": "acme_ai",
+                "employer": "Acme AI",
+                "title": "Research Scientist",
+                "start": "2022",
+                "end": "",
+            },
+            {
+                "key": "widgetco",
+                "employer": "WidgetCo",
+                "title": "Senior Data Scientist",
+                "start": "2019",
+                "end": "2022",
+            },
         ],
         "complete_profile": {
             "accomplishments": [
@@ -145,14 +157,14 @@ async def test_generate_accomplishments_returns_tagged_list():
 async def test_generate_accomplishments_handles_bad_json():
     """generate_accomplishments_from_linkedin handles malformed LLM response."""
     mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(message=MagicMock(content="This is not valid JSON"))
-    ]
+    mock_response.choices = [MagicMock(message=MagicMock(content="This is not valid JSON"))]
 
     mock_client = AsyncMock()
     mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
     with patch("app.ai.linkedin_enricher.get_openai_client", return_value=mock_client):
-        result = await generate_accomplishments_from_linkedin("Some text", {"skills": {}, "work_history": []})
+        result = await generate_accomplishments_from_linkedin(
+            "Some text", {"skills": {}, "work_history": []}
+        )
 
     assert result == []

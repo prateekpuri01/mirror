@@ -25,7 +25,6 @@ from tests.eval.external.metrics_external import (
     top_k_precision,
 )
 
-
 # ---------------------------------------------------------------------------
 # Spearman ρ
 # ---------------------------------------------------------------------------
@@ -186,21 +185,21 @@ class TestPairwiseAccuracyByClass:
 
 class TestPairwiseAccuracyFromRanking:
     def test_perfect_match(self):
-        assert pairwise_accuracy_from_ranking(
-            ["a", "b", "c", "d", "e"], ["a", "b", "c", "d", "e"]
-        ) == 1.0
+        assert (
+            pairwise_accuracy_from_ranking(["a", "b", "c", "d", "e"], ["a", "b", "c", "d", "e"])
+            == 1.0
+        )
 
     def test_one_swap(self):
         # 1 inverted pair out of 10 total
-        acc = pairwise_accuracy_from_ranking(
-            ["a", "c", "b", "d", "e"], ["a", "b", "c", "d", "e"]
-        )
+        acc = pairwise_accuracy_from_ranking(["a", "c", "b", "d", "e"], ["a", "b", "c", "d", "e"])
         assert acc == pytest.approx(0.9)
 
     def test_fully_reversed(self):
-        assert pairwise_accuracy_from_ranking(
-            ["e", "d", "c", "b", "a"], ["a", "b", "c", "d", "e"]
-        ) == 0.0
+        assert (
+            pairwise_accuracy_from_ranking(["e", "d", "c", "b", "a"], ["a", "b", "c", "d", "e"])
+            == 0.0
+        )
 
     def test_three_items(self):
         # 3 items = 3 pairs
@@ -222,8 +221,10 @@ class TestPairwiseAccuracyFromRanking:
 class TestMeanScoreByClass:
     def test_basic(self):
         scored = [
-            (10.0, "No Fit"), (20.0, "No Fit"),
-            (50.0, "Good Fit"), (60.0, "Good Fit"),
+            (10.0, "No Fit"),
+            (20.0, "No Fit"),
+            (50.0, "Good Fit"),
+            (60.0, "Good Fit"),
         ]
         result = mean_score_by_class(scored)
         assert result["No Fit"] == {"n": 2, "mean": 15.0, "min": 10.0, "max": 20.0}

@@ -135,7 +135,8 @@ async def set_aggregator_pull(name: str, scope: str, items: list) -> None:
     try:
         r = _get_redis()
         await r.set(
-            _aggregator_key(name, scope), json.dumps(items),
+            _aggregator_key(name, scope),
+            json.dumps(items),
             ex=_AGGREGATOR_TTL_SECONDS,
         )
     except Exception:
@@ -170,7 +171,8 @@ async def mark_slug_dead(ats: str, slug: str, reason: str = "") -> None:
     try:
         r = _get_redis()
         await r.set(
-            _dead_slug_key(ats, slug), reason[:120],
+            _dead_slug_key(ats, slug),
+            reason[:120],
             ex=_DEAD_SLUG_TTL_SECONDS,
         )
     except Exception:

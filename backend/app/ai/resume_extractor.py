@@ -266,6 +266,7 @@ async def extract_complete_profile_from_resume(
     )
 
     from app.ai.skill_utils import flatten_skills
+
     all_skills = flatten_skills(extracted_profile.get("skills", {}))
     target_roles = [r.get("title", "") for r in extracted_profile.get("target_roles", [])]
 
@@ -282,10 +283,10 @@ async def extract_complete_profile_from_resume(
 Work history (use these keys for work_history_key):
 {wh_context}
 
-Skills: {', '.join(all_skills[:40])}
-Target roles: {', '.join(target_roles)}
+Skills: {", ".join(all_skills[:40])}
+Target roles: {", ".join(target_roles)}
 
-Extract all accomplishments{'' if has_scholar_url else ' and publications'} from this resume."""
+Extract all accomplishments{"" if has_scholar_url else " and publications"} from this resume."""
 
     client = get_openai_client()
     response = await client.chat.completions.create(
@@ -365,15 +366,16 @@ async def assemble_profile_from_sources(
 
     # Check if we have a meaningful resume extraction already
     has_resume = bool(
-        resume_extracted.get("work_history")
-        or resume_extracted.get("personal", {}).get("name")
+        resume_extracted.get("work_history") or resume_extracted.get("personal", {}).get("name")
     )
 
     if not has_resume:
         # No resume — use the longest URL text as a pseudo-resume
         best_url = max(url_texts, key=lambda u: len(url_texts[u]))
         best_text = url_texts[best_url]
-        logger.info("No resume provided; using %s (%d chars) as primary source", best_url, len(best_text))
+        logger.info(
+            "No resume provided; using %s (%d chars) as primary source", best_url, len(best_text)
+        )
 
         profile = await extract_profile_from_resume(best_text)
         has_scholar = bool((profile.get("personal") or {}).get("google_scholar"))
@@ -384,9 +386,7 @@ async def assemble_profile_from_sources(
 
     # Resume exists — do additive-only patching with URL data
     url_context = "\n\n".join(
-        f"--- Source: {url} ---\n{text[:5000]}"
-        for url, text in url_texts.items()
-        if text
+        f"--- Source: {url} ---\n{text[:5000]}" for url, text in url_texts.items() if text
     )
 
     user_content = f"""Current profile (already extracted from resume):
@@ -461,13 +461,13 @@ output ONLY the patches needed. If nothing needs updating, output {{}}."""
                         ex_emp = (ew.get("employer") or "").lower()
                         ex_title = (ew.get("title") or "").lower()
                         emp_match = (
-                            (new_emp and ex_emp and (new_emp in ex_emp or ex_emp in new_emp))
-                            or new_emp == ex_emp
-                        )
+                            new_emp and ex_emp and (new_emp in ex_emp or ex_emp in new_emp)
+                        ) or new_emp == ex_emp
                         title_match = (
-                            (new_title and ex_title and (new_title in ex_title or ex_title in new_title))
-                            or new_title == ex_title
-                        )
+                            new_title
+                            and ex_title
+                            and (new_title in ex_title or ex_title in new_title)
+                        ) or new_title == ex_title
                         if emp_match or (title_match and new_title):
                             # Fill missing fields on existing entry
                             for field in ("start", "end", "location", "title"):
@@ -479,7 +479,9 @@ output ONLY the patches needed. If nothing needs updating, output {{}}."""
                     if not matched and new_emp:
                         # Genuinely new position — add it
                         if "key" not in wh:
-                            wh["key"] = new_emp.replace(" ", "_").replace("—", "_").replace("-", "_")
+                            wh["key"] = (
+                                new_emp.replace(" ", "_").replace("—", "_").replace("-", "_")
+                            )
                         existing.append(wh)
                 patched[key] = existing
             elif key in ("domains", "awards"):
@@ -502,8 +504,14 @@ output ONLY the patches needed. If nothing needs updating, output {{}}."""
                         ex_field = (ee.get("field") or "").lower()
                         ex_inst = (ee.get("institution") or "").lower()
                         deg_match = new_deg and ex_deg and (new_deg in ex_deg or ex_deg in new_deg)
-                        field_match = new_field and ex_field and (new_field in ex_field or ex_field in new_field)
-                        inst_match = new_inst and ex_inst and (new_inst in ex_inst or ex_inst in new_inst)
+                        field_match = (
+                            new_field
+                            and ex_field
+                            and (new_field in ex_field or ex_field in new_field)
+                        )
+                        inst_match = (
+                            new_inst and ex_inst and (new_inst in ex_inst or ex_inst in new_inst)
+                        )
                         if deg_match and (field_match or inst_match or not new_field):
                             for field in ("institution", "year", "honors", "field"):
                                 if not ee.get(field) and ed.get(field):

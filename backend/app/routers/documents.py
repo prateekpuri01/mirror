@@ -6,7 +6,14 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_session, async_session
+from app.ai.resume_builder import (
+    generate_research_entry,
+    generate_resume,
+    generate_single_bullet,
+    get_resume_status,
+    revise_resume,
+)
+from app.database import async_session, get_session
 from app.schemas.documents import (
     BulletGenerationRequest,
     DocumentRead,
@@ -18,13 +25,6 @@ from app.schemas.documents import (
     SectionUpdate,
 )
 from app.services import document_service
-from app.ai.resume_builder import (
-    generate_resume,
-    generate_research_entry,
-    generate_single_bullet,
-    get_resume_status,
-    revise_resume,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -32,9 +32,7 @@ router = APIRouter(prefix="/api", tags=["documents"])
 
 
 @router.get("/jobs/{job_id}/documents", response_model=list[DocumentRead])
-async def list_job_documents(
-    job_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def list_job_documents(job_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     return await document_service.list_documents_for_job(session, job_id)
 
 
@@ -78,6 +76,7 @@ async def get_document_json(doc_id: uuid.UUID, session: AsyncSession = Depends(g
         raise HTTPException(status_code=404, detail="No JSON content available")
     # Lazy-migrate old bullet format to per-bullet objects
     from app.services.document_service import migrate_resume_json
+
     return migrate_resume_json(doc.content_json)
 
 
@@ -91,6 +90,7 @@ async def update_document_section(
     """Update a single section in the resume JSON and regenerate markdown + docx."""
     # Capture old value before update for writing memory extraction
     from app.services.document_service import _get_nested
+
     doc_pre = await document_service.get_document(session, doc_id)
     old_value = None
     pre_job_id = None
@@ -107,6 +107,7 @@ async def update_document_section(
 
     # Regenerate markdown from updated JSON
     from app.ai.resume_builder import _build_markdown
+
     doc.content_markdown = _build_markdown(doc.content_json)
     await session.commit()
     await session.refresh(doc)
@@ -118,7 +119,11 @@ async def update_document_section(
     if old_value is not None and old_value != body.value:
         background_tasks.add_task(
             _learn_from_inline_edit,
-            old_value, body.value, body.path, pre_job_id, doc_id,
+            old_value,
+            body.value,
+            body.path,
+            pre_job_id,
+            doc_id,
         )
 
     return doc
@@ -136,16 +141,23 @@ _WRITING_MEMORY_PATH_PREFIXES = (
 
 
 def _path_feeds_writing_memory(section_path: str) -> bool:
-    return section_path == "summary" or section_path == "tagline" or any(
-        section_path.startswith(p) for p in _WRITING_MEMORY_PATH_PREFIXES
+    return (
+        section_path == "summary"
+        or section_path == "tagline"
+        or any(section_path.startswith(p) for p in _WRITING_MEMORY_PATH_PREFIXES)
     )
 
 
 async def _learn_from_inline_edit(
-    old_value, new_value, section_path: str, job_id, doc_id: uuid.UUID,
+    old_value,
+    new_value,
+    section_path: str,
+    job_id,
+    doc_id: uuid.UUID,
 ):
     """Background task: persist content_memory + (selectively) writing_memory."""
     from sqlalchemy import select
+
     from app.ai.writing_memory import extract_and_learn
     from app.models import Job, UserProfile
     from app.services import content_memory_service, document_service
@@ -172,7 +184,8 @@ async def _learn_from_inline_edit(
                 except Exception:
                     logger.exception(
                         "content_memory upsert failed for doc=%s path=%s",
-                        doc_id, section_path,
+                        doc_id,
+                        section_path,
                     )
 
             # 2. Writing memory — only for paths that surface abstract style
@@ -188,19 +201,27 @@ async def _learn_from_inline_edit(
                         company = job.company or ""
                 try:
                     await extract_and_learn(
-                        session, old_value, new_value, section_path, job_id,
-                        domain="resume", job_title=job_title, company=company,
+                        session,
+                        old_value,
+                        new_value,
+                        section_path,
+                        job_id,
+                        domain="resume",
+                        job_title=job_title,
+                        company=company,
                     )
                 except Exception:
                     logger.exception(
                         "writing_memory extraction failed for doc=%s path=%s",
-                        doc_id, section_path,
+                        doc_id,
+                        section_path,
                     )
 
             await session.commit()
     except Exception:
-        logger.exception("inline-edit memory persistence failed (doc=%s, path=%s)",
-                         doc_id, section_path)
+        logger.exception(
+            "inline-edit memory persistence failed (doc=%s, path=%s)", doc_id, section_path
+        )
 
 
 @router.get("/documents/{doc_id}/section-history", response_model=SectionHistoryResponse)
@@ -242,15 +263,17 @@ async def get_section_history(
             preview = f"{n} bullet{'s' if n != 1 else ''}: {first_text[:160]}"
         else:
             preview = ""
-        items.append(SectionHistoryItem(
-            id=row.id,
-            job_title=ctx.get("job_title") or None,
-            company_name=ctx.get("company_name") or None,
-            updated_at=row.updated_at,
-            preview=preview,
-            user_text=row.user_text,
-            user_payload_json=row.user_payload_json,
-        ))
+        items.append(
+            SectionHistoryItem(
+                id=row.id,
+                job_title=ctx.get("job_title") or None,
+                company_name=ctx.get("company_name") or None,
+                updated_at=row.updated_at,
+                preview=preview,
+                user_text=row.user_text,
+                user_payload_json=row.user_payload_json,
+            )
+        )
 
     return SectionHistoryResponse(
         entity_type=entity_type,
@@ -266,9 +289,8 @@ async def get_company_research(
 ):
     """Return cached company research for a job, if available."""
     from app.models import Job
-    result = await session.execute(
-        __import__("sqlalchemy").select(Job).where(Job.id == job_id)
-    )
+
+    result = await session.execute(__import__("sqlalchemy").select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -285,9 +307,10 @@ async def run_company_research(
     session: AsyncSession = Depends(get_session),
 ):
     """Run or refresh Perplexity-powered company/team research for a job."""
-    from app.models import Company, Job
-    from app.ai.company_research import research_company_for_job
     from sqlalchemy import select
+
+    from app.ai.company_research import research_company_for_job
+    from app.models import Company, Job
 
     result = await session.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
@@ -296,9 +319,7 @@ async def run_company_research(
 
     company = None
     if job.company_id:
-        company_result = await session.execute(
-            select(Company).where(Company.id == job.company_id)
-        )
+        company_result = await session.execute(select(Company).where(Company.id == job.company_id))
         company = company_result.scalar_one_or_none()
 
     research = await research_company_for_job(session, job, company, force=force)
@@ -342,6 +363,7 @@ async def generate_research_entry_endpoint(
 
     # Regenerate markdown
     from app.ai.resume_builder import _build_markdown
+
     updated_doc.content_markdown = _build_markdown(updated_doc.content_json)
     await session.commit()
     await session.refresh(updated_doc)
@@ -390,8 +412,12 @@ async def generate_bullet_endpoint(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
-        logger.exception("Bullet generation failed (doc=%s, emp=%s, acc=%s)",
-                         doc_id, body.employer_key, body.accomplishment_id)
+        logger.exception(
+            "Bullet generation failed (doc=%s, emp=%s, acc=%s)",
+            doc_id,
+            body.employer_key,
+            body.accomplishment_id,
+        )
         raise HTTPException(status_code=500, detail="Bullet generation failed")
 
     bullets = list(emp_block.get("bullets") or [])
@@ -400,12 +426,16 @@ async def generate_bullet_endpoint(
     bullets.insert(insert_at, new_bullet)
 
     updated_doc = await document_service.update_resume_section(
-        session, doc_id, f"experience.{body.employer_key}.bullets", bullets,
+        session,
+        doc_id,
+        f"experience.{body.employer_key}.bullets",
+        bullets,
     )
     if updated_doc is None:
         raise HTTPException(status_code=500, detail="Failed to persist new bullet")
 
     from app.ai.resume_builder import _build_markdown
+
     updated_doc.content_markdown = _build_markdown(updated_doc.content_json)
     await session.commit()
     await session.refresh(updated_doc)
@@ -430,9 +460,8 @@ async def _regenerate_docx(doc_id: uuid.UUID):
             if doc is None or doc.content_json is None:
                 return
             from sqlalchemy import select
-            result = await session.execute(
-                select(UserProfile).limit(1)
-            )
+
+            result = await session.execute(select(UserProfile).limit(1))
             profile = result.scalar_one_or_none()
             if profile is None:
                 return
@@ -441,16 +470,17 @@ async def _regenerate_docx(doc_id: uuid.UUID):
             company = None
             title = None
             if doc.job_id:
-                job_result = await session.execute(
-                    select(Job).where(Job.id == doc.job_id)
-                )
+                job_result = await session.execute(select(Job).where(Job.id == doc.job_id))
                 job = job_result.scalar_one_or_none()
                 if job:
                     company = job.company
                     title = job.title
             docx_path = build_docx(
-                doc.content_json, profile.data, job_id_str,
-                company=company, title=title,
+                doc.content_json,
+                profile.data,
+                job_id_str,
+                company=company,
+                title=title,
             )
             doc.content_docx_path = docx_path
             await session.commit()
@@ -540,6 +570,7 @@ async def download_document(doc_id: uuid.UUID, session: AsyncSession = Depends(g
     to rebuild from (legacy docs predating the JSON storage).
     """
     from sqlalchemy import select
+
     from app.ai.docx_builder import build_docx
     from app.models import Job, UserProfile
 

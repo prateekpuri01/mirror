@@ -25,6 +25,7 @@ def _format_research_context(state: dict) -> str:
     if not research:
         return ""
     from app.ai.company_research import format_research_for_chat
+
     text = format_research_for_chat(research)
     return f"\n## Company Research\n{text}\n" if text else ""
 
@@ -61,7 +62,9 @@ def build_section_labels(resume_json: dict) -> dict[str, str]:
     return labels
 
 
-async def _call_openai(system: str, user_content: str, max_tokens: int = 2000, temperature: float = 0.3) -> str:
+async def _call_openai(
+    system: str, user_content: str, max_tokens: int = 2000, temperature: float = 0.3
+) -> str:
     """Call OpenAI and return the raw text response."""
     client = get_openai_client()
     response = await client.chat.completions.create(
@@ -115,7 +118,14 @@ async def route_intent(state: AgentState) -> dict:
     deterministic UI buttons (e.g. the Proofread button) that pre-set the
     intent so the classifier is skipped entirely.
     """
-    valid = {"make_edit", "ask_question", "broad_rewrite", "multiple_changes", "remember_preference", "proofread"}
+    valid = {
+        "make_edit",
+        "ask_question",
+        "broad_rewrite",
+        "multiple_changes",
+        "remember_preference",
+        "proofread",
+    }
     preset = state.get("intent")
     if preset in valid:
         logger.info("route_intent: using preset intent %r (skipping classifier)", preset)
@@ -143,7 +153,7 @@ Output only the classification word, nothing else."""
     user_content = f"""Chat history:
 {history_text}
 
-Latest message: {state['user_message']}
+Latest message: {state["user_message"]}
 
 Classification:"""
 
@@ -173,9 +183,9 @@ Output ONLY the section path from the list above. If unsure, pick the closest ma
 
     # Provide resume structure overview
     resume_keys = list(state["resume_json"].keys())
-    user_content = f"""Resume sections present: {', '.join(resume_keys)}
+    user_content = f"""Resume sections present: {", ".join(resume_keys)}
 
-User message: {state['user_message']}
+User message: {state["user_message"]}
 
 Section path:"""
 
@@ -473,7 +483,9 @@ async def _grounding_for_edit_path(
 
         async with session_factory() as session:
             grouped = await content_memory_service.fetch_grounding(
-                session, entity_type=entity_type, entity_keys=[entity_key],
+                session,
+                entity_type=entity_type,
+                entity_keys=[entity_key],
             )
         rows = grouped.get(entity_key, [])
         if not rows:
@@ -500,10 +512,12 @@ def _other_sections_excerpt(resume_json: dict, path: str) -> str:
     for ri, r in enumerate(rj.get("selected_research") or []):
         rp = f"selected_research.{ri}"
         if not path.startswith(rp):
-            items.append((
-                f"Research [{r.get('category_label', '')}]",
-                str(r.get("description", "")),
-            ))
+            items.append(
+                (
+                    f"Research [{r.get('category_label', '')}]",
+                    str(r.get("description", "")),
+                )
+            )
     for emp, edata in (rj.get("experience") or {}).items():
         for bi, b in enumerate(edata.get("bullets") or []):
             bp = f"experience.{emp}.bullets.{bi}"
@@ -612,8 +626,7 @@ async def edit_section(state: AgentState) -> dict:
         system += f"\n\n{wm}"
 
     section_text = (
-        current_value if isinstance(current_value, str)
-        else json.dumps(current_value, indent=2)
+        current_value if isinstance(current_value, str) else json.dumps(current_value, indent=2)
     )
 
     # Section-specific constraint reminder (kept tight).
@@ -691,7 +704,7 @@ async def edit_section(state: AgentState) -> dict:
         focused_profile = state.get("profile_text", "")
 
     # Content memory grounding for this entity (huge for voice consistency)
-    grounding = await _grounding_for_edit_path(
+    await _grounding_for_edit_path(
         state.get("_session_factory"),
         path,
         state["resume_json"],
@@ -724,7 +737,10 @@ async def edit_section(state: AgentState) -> dict:
 
     logger.info(
         "edit_section: path=%s prompt_chars=%d (system=%d, user=%d)",
-        path, len(system) + len(user_content), len(system), len(user_content),
+        path,
+        len(system) + len(user_content),
+        len(system),
+        len(user_content),
     )
 
     result_text = await _call_openai(system, user_content, max_tokens=1500, temperature=0.5)
@@ -789,16 +805,16 @@ Be concise and specific. Reference specific accomplishments by name when relevan
 {resume_text}
 
 ## Full Profile & Accomplishments
-{state['profile_text']}
+{state["profile_text"]}
 
 ## Target Job Posting
-{state['job_context']}
+{state["job_context"]}
 {plan_ctx}
 ## Conversation History
 {history_text}
 
 ## Current Question
-{state['user_message']}"""
+{state["user_message"]}"""
 
     logger.info("answer_question: calling LLM with %d char prompt", len(user_content))
     response = await _call_openai(system, user_content, max_tokens=800, temperature=0.5)
@@ -941,17 +957,17 @@ async def broad_rewrite(state: AgentState) -> dict:
 {history_text}
 
 ## Revision Instruction
-{state['user_message']}
+{state["user_message"]}
 
 ---
 
 ## Full Profile & Accomplishments
-{state['profile_text']}
+{state["profile_text"]}
 
 ---
 
 ## Target Job Posting
-{state['job_context']}
+{state["job_context"]}
 {plan_ctx}{memory_section}
 ---
 
@@ -988,7 +1004,7 @@ Output ONLY valid JSON (no fences):
     # Persist the rule — will be done in the chat router after agent completes
     # Store in state so the router can persist it
     return {
-        "response_text": f"Got it — I'll remember this preference for all future resumes: \"{rule_text}\"",
+        "response_text": f'Got it — I\'ll remember this preference for all future resumes: "{rule_text}"',
         "updated_json": None,
         "updated_section_path": None,
         "_new_preference": {"rule_text": rule_text, "category": category},

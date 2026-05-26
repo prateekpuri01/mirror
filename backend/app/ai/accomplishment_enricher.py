@@ -41,21 +41,22 @@ async def enrich_accomplishment(accomplishment: dict, profile_data: dict) -> dic
         Dict with so_what, skills_demonstrated, relevance_weight, tags.
     """
     from app.ai.skill_utils import flatten_skills
+
     all_skills = flatten_skills(profile_data.get("skills", {}))
     target_roles = [r.get("title", "") for r in profile_data.get("target_roles", [])]
     domains = profile_data.get("domains", [])
 
     user_content = f"""Accomplishment:
-Title: {accomplishment.get('title', '')}
-Employer: {accomplishment.get('employer', '')}
-Date: {accomplishment.get('date_range', '')}
-Impact: {accomplishment.get('impact_summary', '')}
-Metrics: {'; '.join(accomplishment.get('quantitative_specifics', []))}
+Title: {accomplishment.get("title", "")}
+Employer: {accomplishment.get("employer", "")}
+Date: {accomplishment.get("date_range", "")}
+Impact: {accomplishment.get("impact_summary", "")}
+Metrics: {"; ".join(accomplishment.get("quantitative_specifics", []))}
 
 User context:
-Skills: {', '.join(all_skills[:30])}
-Target roles: {', '.join(target_roles)}
-Domains: {', '.join(domains)}
+Skills: {", ".join(all_skills[:30])}
+Target roles: {", ".join(target_roles)}
+Domains: {", ".join(domains)}
 
 Generate the derived fields."""
 

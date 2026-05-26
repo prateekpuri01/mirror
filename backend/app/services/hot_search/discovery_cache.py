@@ -27,8 +27,8 @@ from __future__ import annotations
 import logging
 import math
 import re
-from datetime import datetime, timezone
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -46,9 +46,27 @@ logger = logging.getLogger(__name__)
 
 
 _NORM_SUFFIXES = {
-    "inc", "inc.", "incorporated", "llc", "l.l.c.", "ltd", "ltd.",
-    "limited", "corp", "corp.", "corporation", "co", "co.", "company",
-    "ag", "gmbh", "sa", "s.a.", "pte", "plc", "pbc",
+    "inc",
+    "inc.",
+    "incorporated",
+    "llc",
+    "l.l.c.",
+    "ltd",
+    "ltd.",
+    "limited",
+    "corp",
+    "corp.",
+    "corporation",
+    "co",
+    "co.",
+    "company",
+    "ag",
+    "gmbh",
+    "sa",
+    "s.a.",
+    "pte",
+    "plc",
+    "pbc",
 }
 
 
@@ -85,7 +103,7 @@ def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     nb = math.sqrt(sum(x * x for x in b))
     if na == 0.0 or nb == 0.0:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     return dot / (na * nb)
 
 
@@ -143,8 +161,8 @@ async def upsert_company(
             times_seen=1,
             times_matched=0,
             times_no_jobs=0,
-            first_seen_at=datetime.now(timezone.utc),
-            last_seen_at=datetime.now(timezone.utc),
+            first_seen_at=datetime.now(UTC),
+            last_seen_at=datetime.now(UTC),
         )
         stmt = stmt.on_conflict_do_update(
             index_elements=["normalized_name"],
@@ -155,9 +173,7 @@ async def upsert_company(
                 "careers_url": func.coalesce(
                     DiscoveredCompany.careers_url, stmt.excluded.careers_url
                 ),
-                "website": func.coalesce(
-                    DiscoveredCompany.website, stmt.excluded.website
-                ),
+                "website": func.coalesce(DiscoveredCompany.website, stmt.excluded.website),
                 "description": func.coalesce(
                     DiscoveredCompany.description, stmt.excluded.description
                 ),
@@ -227,7 +243,7 @@ async def mark_outcome(
     async def _do(s: AsyncSession) -> None:
         values: dict = {
             "last_status": outcome,
-            "last_seen_at": datetime.now(timezone.utc),
+            "last_seen_at": datetime.now(UTC),
         }
         # Counter bump piggybacks on the same UPDATE so we don't need
         # a second roundtrip.
@@ -281,17 +297,14 @@ async def recall_relevant(
         return []
 
     async def _do(s: AsyncSession) -> list[DiscoveredCompany]:
-        stmt = select(DiscoveredCompany).where(
-            DiscoveredCompany.description_embedding.is_not(None)
-        )
+        stmt = select(DiscoveredCompany).where(DiscoveredCompany.description_embedding.is_not(None))
         if only_resolved:
             stmt = stmt.where(
                 and_(
                     DiscoveredCompany.description_embedding.is_not(None),
                     # Either an ATS+slug or a careers URL.
                     (
-                        (DiscoveredCompany.ats.is_not(None)
-                         & DiscoveredCompany.slug.is_not(None))
+                        (DiscoveredCompany.ats.is_not(None) & DiscoveredCompany.slug.is_not(None))
                         | DiscoveredCompany.careers_url.is_not(None)
                     ),
                 )

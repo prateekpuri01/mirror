@@ -107,9 +107,7 @@ def fetch_examples(
     collected: list[dict] = []
     offset = 0
     while len(collected) < target_pool:
-        page = _fetch_page(
-            split=split, offset=offset, length=PAGE_SIZE, cache_dir=cache_dir
-        )
+        page = _fetch_page(split=split, offset=offset, length=PAGE_SIZE, cache_dir=cache_dir)
         if not page:
             break
         collected.extend(page)
@@ -142,7 +140,7 @@ def fetch_examples(
         for ex in candidates:
             bucketed[ex.label].append(ex)
         examples: list[HFExample] = []
-        for label, bucket in bucketed.items():
+        for _label, bucket in bucketed.items():
             examples.extend(bucket[:per_label])
         # Top off if any bucket was short
         if len(examples) < n:

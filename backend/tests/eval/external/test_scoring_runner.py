@@ -11,7 +11,6 @@ import pytest
 
 from tests.eval.external.scoring_runner import ScoredPair, _make_fake_job
 
-
 # ---------------------------------------------------------------------------
 # _make_fake_job — adapter from a plain dict to the Job ORM interface
 # ---------------------------------------------------------------------------
@@ -55,7 +54,9 @@ class TestMakeFakeJob:
         assert fake.extra_metadata == meta
 
     def test_user_notes_passthrough(self):
-        fake = _make_fake_job({"title": "X", "company": "Y", "user_notes": "I know the hiring manager"})
+        fake = _make_fake_job(
+            {"title": "X", "company": "Y", "user_notes": "I know the hiring manager"}
+        )
         assert fake.user_notes == "I know the hiring manager"
 
     def test_compatible_with_format_job_for_scoring(self):
@@ -64,13 +65,15 @@ class TestMakeFakeJob:
         falling out of sync with the real Job ORM."""
         from app.ai.prompts import format_job_for_scoring
 
-        fake = _make_fake_job({
-            "title": "Senior ML Engineer",
-            "company": "OpenAI",
-            "description": "Build agents.",
-            "salary_min": 200000,
-            "salary_max": 350000,
-        })
+        fake = _make_fake_job(
+            {
+                "title": "Senior ML Engineer",
+                "company": "OpenAI",
+                "description": "Build agents.",
+                "salary_min": 200000,
+                "salary_max": 350000,
+            }
+        )
         formatted = format_job_for_scoring(fake)
         assert "Senior ML Engineer" in formatted
         assert "OpenAI" in formatted

@@ -7,12 +7,12 @@ touches rows where clean_* is NULL and the raw value looks dirty.
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Company, Job
+from app.models import Job
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +102,7 @@ _COMPANY_DOMAIN_SUFFIX_RE = re.compile(
 # Public cleaning functions
 # ---------------------------------------------------------------------------
 
+
 def clean_title(title: str, source: str = "") -> tuple[str | None, list[str]]:
     """Clean a job title. Returns (cleaned_title or None, list of rules applied).
 
@@ -118,7 +119,7 @@ def clean_title(title: str, source: str = "") -> tuple[str | None, list[str]]:
     # 1. Strip "HIRING:" prefixes
     m = _HIRING_PREFIX_RE.match(cleaned)
     if m:
-        cleaned = cleaned[m.end():].strip()
+        cleaned = cleaned[m.end() :].strip()
         rules.append("strip_hiring_prefix")
 
     # 2. Strip trailing pipe-separated location/work-type
@@ -291,9 +292,11 @@ async def clean_jobs_batch(session: AsyncSession) -> dict:
                 stats["companies_cleaned"] += 1
 
     # Update pipeline_stage for cleaned jobs
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for job in jobs:
-        if job.pipeline_stage == "scraped" and (job.clean_title is not None or job.clean_company is not None):
+        if job.pipeline_stage == "scraped" and (
+            job.clean_title is not None or job.clean_company is not None
+        ):
             job.pipeline_stage = "cleaned"
             job.cleaned_at = now
 

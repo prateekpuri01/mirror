@@ -420,7 +420,6 @@ TEST_CASES: list[ScoringTestCase] = [
         interest_fit_range=(80, 100),
         must_beat=["B4", "B5", "B6", "C8", "C9", "C10", "C11", "D12", "D13", "D14"],
     ),
-
     # ===== TIER B: Good Matches (expected composite 55-80) =====
     ScoringTestCase(
         case_id="B4",
@@ -546,7 +545,6 @@ TEST_CASES: list[ScoringTestCase] = [
         must_beat=["C8", "C10", "C11", "D12", "D13", "D14"],
         failure_mode="engineering_vs_research",
     ),
-
     # ===== TIER C: Mediocre Matches (expected composite 30-55) =====
     ScoringTestCase(
         case_id="C8",
@@ -671,7 +669,6 @@ TEST_CASES: list[ScoringTestCase] = [
         must_beat=["D12", "D13", "D14"],
         failure_mode="wrong_seniority",
     ),
-
     # ===== TIER D: Clear Mismatches (expected composite <25) =====
     ScoringTestCase(
         case_id="D12",
@@ -749,7 +746,6 @@ TEST_CASES: list[ScoringTestCase] = [
         has_deal_breaker=True,
         deal_breaker_keyword="defense contracting",
     ),
-
     # ===== TIER E: Edge Cases =====
     ScoringTestCase(
         case_id="E15",

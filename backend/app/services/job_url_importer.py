@@ -42,15 +42,14 @@ Rules:
 async def _fetch_page_playwright(url: str) -> str:
     """Fetch a URL using the shared browser pool (handles JS rendering + SSL)."""
     from app.services.browser_pool import fetch_page_text
+
     return await fetch_page_text(url, wait_ms=3000)
 
 
 async def _fetch_page_httpx(url: str) -> str:
     """Fetch a URL using httpx (fast, for static pages)."""
     try:
-        async with httpx.AsyncClient(
-            timeout=20, follow_redirects=True, verify=False
-        ) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True, verify=False) as client:
             resp = await client.get(
                 url,
                 headers={
@@ -101,6 +100,7 @@ async def _resolve_ashby_canonical_url(parent_url: str, jid: str) -> str | None:
     by sniffing network requests and return the canonical Ashby posting URL.
     """
     from app.services.browser_pool import discover_ashby_org_slug
+
     slug = await discover_ashby_org_slug(parent_url)
     if not slug:
         return None

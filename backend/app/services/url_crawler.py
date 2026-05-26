@@ -3,9 +3,9 @@
 import asyncio
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
 
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from playwright.async_api import TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright
 
 from app.services.linkedin_scraper import scrape_linkedin_profile
 
@@ -18,8 +18,10 @@ def _get_crawl_semaphore() -> asyncio.Semaphore:
     global _crawl_semaphore
     if _crawl_semaphore is None:
         from app.services.rate_limits import max_concurrent_browser
+
         _crawl_semaphore = asyncio.Semaphore(max_concurrent_browser())
     return _crawl_semaphore
+
 
 # User agent for generic crawling
 _USER_AGENT = (

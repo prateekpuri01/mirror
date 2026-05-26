@@ -29,12 +29,12 @@ import asyncio
 import json
 import logging
 from collections import Counter
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import httpx
 
-from app.config import settings
 from app.ai.client import EXTRACTION_MODEL, get_openai_client
+from app.config import settings
 from app.scrapers.discovery_adapters import DISCOVERY_ADAPTERS
 from app.services.hot_search.types import (
     CompanyCandidate,
@@ -112,17 +112,20 @@ async def _prefilter_aggregator_entries(
         response = await client.chat.completions.create(
             model=EXTRACTION_MODEL,
             messages=[
-                {"role": "system", "content": (
-                    "You filter aggregator job listings by relevance to a user's "
-                    "search guidance. Be SELECTIVE — when the user's guidance "
-                    "names a clear domain (e.g. 'AI in healthcare'), keep only "
-                    "entries plausibly in that domain and drop anything obviously "
-                    "unrelated (retail, hospitality, finance unless fintech, "
-                    "manufacturing, generic admin/sales/HR roles, foreign-language "
-                    "consultancies in unrelated fields). Better to lose a borderline "
-                    "match than flood the result list with off-topic noise. "
-                    "Return ONLY JSON."
-                )},
+                {
+                    "role": "system",
+                    "content": (
+                        "You filter aggregator job listings by relevance to a user's "
+                        "search guidance. Be SELECTIVE — when the user's guidance "
+                        "names a clear domain (e.g. 'AI in healthcare'), keep only "
+                        "entries plausibly in that domain and drop anything obviously "
+                        "unrelated (retail, hospitality, finance unless fintech, "
+                        "manufacturing, generic admin/sales/HR roles, foreign-language "
+                        "consultancies in unrelated fields). Better to lose a borderline "
+                        "match than flood the result list with off-topic noise. "
+                        "Return ONLY JSON."
+                    ),
+                },
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
@@ -152,14 +155,14 @@ async def _prefilter_aggregator_entries(
         # to the original list — better to evaluate all than block the search.
         if not filtered and sample:
             logger.info(
-                "Aggregator pre-filter returned 0 of %d entries — falling "
-                "back to unfiltered set",
+                "Aggregator pre-filter returned 0 of %d entries — falling back to unfiltered set",
                 len(sample),
             )
             return entries
         logger.info(
             "Aggregator pre-filter: %d → %d entries (%.0f%% dropped)",
-            len(sample), len(filtered),
+            len(sample),
+            len(filtered),
             (1 - len(filtered) / max(1, len(sample))) * 100,
         )
         return filtered
@@ -230,22 +233,31 @@ async def run_hot_company_search(
     # Validate at least one web search backend is reachable. The unified
     # web_search() will silently return empty if nothing is configured.
     from app.services.web_search_llm import native_web_search_supported
+
     if not (native_web_search_supported() or settings.searxng_url):
-        yield SearchEvent("error", {
-            "message": (
-                "No web search backend configured. Configure an LLM provider "
-                "key (OPENAI_API_KEY or ANTHROPIC_API_KEY) for native web "
-                "search, or run a SearXNG instance and set SEARXNG_URL."
-            ),
-        })
+        yield SearchEvent(
+            "error",
+            {
+                "message": (
+                    "No web search backend configured. Configure an LLM provider "
+                    "key (OPENAI_API_KEY or ANTHROPIC_API_KEY) for native web "
+                    "search, or run a SearXNG instance and set SEARXNG_URL."
+                ),
+            },
+        )
         yield SearchEvent("done", {"total_hits": 0, "total_candidates_checked": 0})
         return
 
-    yield SearchEvent("status", {
-        "message": "Loading profile and existing companies...",
-        "phase": "init", "iteration": 0,
-        "total_queries": 0, "hits_so_far": 0,
-    })
+    yield SearchEvent(
+        "status",
+        {
+            "message": "Loading profile and existing companies...",
+            "phase": "init",
+            "iteration": 0,
+            "total_queries": 0,
+            "hits_so_far": 0,
+        },
+    )
 
     # Load context once
     profile_data = await _load_profile_data()
@@ -290,6 +302,7 @@ async def run_hot_company_search(
     # multiplied across 3 iterations × ~30 candidates × bounded concurrency
     # produced 1.5-hour stalls in practice.
     import time
+
     _GLOBAL_BUDGET_S = 8 * 60
     start_time = time.monotonic()
 
@@ -318,29 +331,37 @@ async def run_hot_company_search(
         seen_aggregator_keys: set[str] = set()
         seed_candidates: list[CompanyCandidate] = []
         try:
-            yield SearchEvent("status", {
-                "message": "Harvesting from aggregator feeds (HN, Remotive, Muse, Arbeitnow)...",
-                "phase": "harvesting", "iteration": 0,
-                "total_queries": 0, "hits_so_far": 0,
-            })
+            yield SearchEvent(
+                "status",
+                {
+                    "message": "Harvesting from aggregator feeds (HN, Remotive, Muse, Arbeitnow)...",
+                    "phase": "harvesting",
+                    "iteration": 0,
+                    "total_queries": 0,
+                    "hits_so_far": 0,
+                },
+            )
             adapter_tasks = [
                 adapter.fetch_entries(http_client, guidance, locations or [], min_salary)
                 for adapter in DISCOVERY_ADAPTERS
             ]
             adapter_results = await asyncio.gather(
-                *adapter_tasks, return_exceptions=True,
+                *adapter_tasks,
+                return_exceptions=True,
             )
             all_entries: list = []
-            for adapter, result in zip(DISCOVERY_ADAPTERS, adapter_results):
+            for adapter, result in zip(DISCOVERY_ADAPTERS, adapter_results, strict=False):
                 if isinstance(result, Exception):
                     logger.warning(
                         "Discovery adapter %s raised: %s",
-                        adapter.source_name, result,
+                        adapter.source_name,
+                        result,
                     )
                     continue
                 logger.info(
                     "Discovery adapter %s yielded %d entries",
-                    adapter.source_name, len(result),
+                    adapter.source_name,
+                    len(result),
                 )
                 all_entries.extend(result)
             # Pre-filter the aggregator pool by guidance fit before
@@ -350,25 +371,35 @@ async def run_hot_company_search(
             # budget goes to entries that could actually match.
             pre_count = len(all_entries)
             if guidance:
-                yield SearchEvent("status", {
-                    "message": (
-                        f"Filtering {pre_count} aggregator entries against "
-                        f"your guidance..."
-                    ),
-                    "phase": "filtering", "iteration": 0,
-                    "total_queries": 0, "hits_so_far": 0,
-                })
-                all_entries = await _prefilter_aggregator_entries(
-                    all_entries, guidance,
+                yield SearchEvent(
+                    "status",
+                    {
+                        "message": (
+                            f"Filtering {pre_count} aggregator entries against your guidance..."
+                        ),
+                        "phase": "filtering",
+                        "iteration": 0,
+                        "total_queries": 0,
+                        "hits_so_far": 0,
+                    },
                 )
-            yield SearchEvent("status", {
-                "message": (
-                    f"Resolving {len(all_entries)} of {pre_count} aggregator "
-                    f"entries to ATS boards..."
-                ),
-                "phase": "harvesting", "iteration": 0,
-                "total_queries": 0, "hits_so_far": 0,
-            })
+                all_entries = await _prefilter_aggregator_entries(
+                    all_entries,
+                    guidance,
+                )
+            yield SearchEvent(
+                "status",
+                {
+                    "message": (
+                        f"Resolving {len(all_entries)} of {pre_count} aggregator "
+                        f"entries to ATS boards..."
+                    ),
+                    "phase": "harvesting",
+                    "iteration": 0,
+                    "total_queries": 0,
+                    "hits_so_far": 0,
+                },
+            )
             seed_candidates = await _harvest_candidates_from_entries(
                 all_entries,
                 http_client,
@@ -379,16 +410,22 @@ async def run_hot_company_search(
             funnel["seed_candidates"] = len(seed_candidates)
             logger.info(
                 "Aggregator harvest: %d entries → %d candidates",
-                len(all_entries), len(seed_candidates),
+                len(all_entries),
+                len(seed_candidates),
             )
-            yield SearchEvent("status", {
-                "message": (
-                    f"Harvested {len(seed_candidates)} candidates from "
-                    f"{len(all_entries)} aggregator entries — searching..."
-                ),
-                "phase": "harvested", "iteration": 0,
-                "total_queries": 0, "hits_so_far": 0,
-            })
+            yield SearchEvent(
+                "status",
+                {
+                    "message": (
+                        f"Harvested {len(seed_candidates)} candidates from "
+                        f"{len(all_entries)} aggregator entries — searching..."
+                    ),
+                    "phase": "harvested",
+                    "iteration": 0,
+                    "total_queries": 0,
+                    "hits_so_far": 0,
+                },
+            )
         except Exception:
             logger.exception("Aggregator harvest failed; continuing without seed candidates")
             seed_candidates = []
@@ -397,35 +434,56 @@ async def run_hot_company_search(
             if len(hits) >= max_hits:
                 break
             if consecutive_dry >= 3:
-                yield SearchEvent("status", {
-                    "message": "Stopping — 3 iterations with no new hits",
-                    "phase": "stopping", "iteration": iteration,
-                    "total_queries": len(past_queries), "hits_so_far": len(hits),
-                })
+                yield SearchEvent(
+                    "status",
+                    {
+                        "message": "Stopping — 3 iterations with no new hits",
+                        "phase": "stopping",
+                        "iteration": iteration,
+                        "total_queries": len(past_queries),
+                        "hits_so_far": len(hits),
+                    },
+                )
                 break
             if _budget_exceeded():
-                yield SearchEvent("status", {
-                    "message": (
-                        f"Stopping — {_GLOBAL_BUDGET_S // 60}-minute wall-clock "
-                        f"budget hit (likely Ashby rate-limiting). Returning "
-                        f"{len(hits)} companies found so far. Try narrower "
-                        f"guidance or fewer reference jobs for a faster run."
-                    ),
-                    "phase": "stopping", "iteration": iteration,
-                    "total_queries": len(past_queries), "hits_so_far": len(hits),
-                    "budget_exhausted": True,
-                })
+                yield SearchEvent(
+                    "status",
+                    {
+                        "message": (
+                            f"Stopping — {_GLOBAL_BUDGET_S // 60}-minute wall-clock "
+                            f"budget hit (likely Ashby rate-limiting). Returning "
+                            f"{len(hits)} companies found so far. Try narrower "
+                            f"guidance or fewer reference jobs for a faster run."
+                        ),
+                        "phase": "stopping",
+                        "iteration": iteration,
+                        "total_queries": len(past_queries),
+                        "hits_so_far": len(hits),
+                        "budget_exhausted": True,
+                    },
+                )
                 break
 
-            yield SearchEvent("status", {
-                "message": f"Generating search queries (round {iteration + 1}/{max_iterations})...",
-                "phase": "generating", "iteration": iteration + 1,
-                "total_queries": len(past_queries), "hits_so_far": len(hits),
-            })
+            yield SearchEvent(
+                "status",
+                {
+                    "message": f"Generating search queries (round {iteration + 1}/{max_iterations})...",
+                    "phase": "generating",
+                    "iteration": iteration + 1,
+                    "total_queries": len(past_queries),
+                    "hits_so_far": len(hits),
+                },
+            )
 
             queries = await _generate_queries(
-                guidance, profile_data, existing_companies,
-                past_queries, evaluated, len(hits), max_hits, sources,
+                guidance,
+                profile_data,
+                existing_companies,
+                past_queries,
+                evaluated,
+                len(hits),
+                max_hits,
+                sources,
                 locations=locations,
                 min_salary=min_salary,
                 reference_context=reference_context,
@@ -437,7 +495,9 @@ async def run_hot_company_search(
             # changes to investigate.
             logger.info(
                 "Hot search round %d/%d generated %d queries: %s",
-                iteration + 1, max_iterations, len(queries),
+                iteration + 1,
+                max_iterations,
+                len(queries),
                 [q[:120] for q in queries],
             )
             iteration_hits = 0
@@ -450,11 +510,16 @@ async def run_hot_company_search(
                     # user-visible "Stopping" status on the next pass.
                     break
 
-                yield SearchEvent("status", {
-                    "message": f"Searching: {query[:80]}...",
-                    "phase": "searching", "iteration": iteration + 1,
-                    "total_queries": len(past_queries), "hits_so_far": len(hits),
-                })
+                yield SearchEvent(
+                    "status",
+                    {
+                        "message": f"Searching: {query[:80]}...",
+                        "phase": "searching",
+                        "iteration": iteration + 1,
+                        "total_queries": len(past_queries),
+                        "hits_so_far": len(hits),
+                    },
+                )
 
                 results = await _discovery_search(query, max_results=10)
                 candidates = await _extract_candidates_from_results(results, query)
@@ -497,20 +562,28 @@ async def run_hot_company_search(
                         norm_key = candidate.name.lower()
                         if norm_key in evaluated:
                             funnel["already_checked"] += 1
-                            yield SearchEvent("skip", {
-                                "name": candidate.name,
-                                "source": candidate.source,
-                                "reason": "Already checked",
-                            })
+                            yield SearchEvent(
+                                "skip",
+                                {
+                                    "name": candidate.name,
+                                    "source": candidate.source,
+                                    "reason": "Already checked",
+                                },
+                            )
                             continue
                         total_candidates += 1
-                        yield SearchEvent("candidate", {
-                            "name": candidate.name,
-                            "source": candidate.source,
-                        })
+                        yield SearchEvent(
+                            "candidate",
+                            {
+                                "name": candidate.name,
+                                "source": candidate.source,
+                            },
+                        )
                         tracked_hit, _ = await _evaluate_tracked_company(
-                            candidate.name, profile_keywords,
-                            locations=locations, min_salary=min_salary,
+                            candidate.name,
+                            profile_keywords,
+                            locations=locations,
+                            min_salary=min_salary,
                             guidance=guidance,
                         )
                         if tracked_hit:
@@ -518,20 +591,23 @@ async def run_hot_company_search(
                             hits.append(tracked_hit)
                             iteration_hits += 1
                             funnel["tracked_hit"] += 1
-                            yield SearchEvent("hit", {
-                                "name": tracked_hit.name,
-                                "ats": tracked_hit.ats,
-                                "slug": tracked_hit.slug,
-                                "website": tracked_hit.website,
-                                "total_jobs": tracked_hit.total_jobs,
-                                "relevant_jobs": tracked_hit.relevant_jobs,
-                                "top_jobs": tracked_hit.top_jobs,
-                                "source": tracked_hit.source,
-                                "description": tracked_hit.description,
-                                "match_reason": tracked_hit.match_reason,
-                                "kind": tracked_hit.kind,
-                                "company_id": tracked_hit.company_id,
-                            })
+                            yield SearchEvent(
+                                "hit",
+                                {
+                                    "name": tracked_hit.name,
+                                    "ats": tracked_hit.ats,
+                                    "slug": tracked_hit.slug,
+                                    "website": tracked_hit.website,
+                                    "total_jobs": tracked_hit.total_jobs,
+                                    "relevant_jobs": tracked_hit.relevant_jobs,
+                                    "top_jobs": tracked_hit.top_jobs,
+                                    "source": tracked_hit.source,
+                                    "description": tracked_hit.description,
+                                    "match_reason": tracked_hit.match_reason,
+                                    "kind": tracked_hit.kind,
+                                    "company_id": tracked_hit.company_id,
+                                },
+                            )
                             continue
                         evaluated[norm_key] = "checking"
                         funnel["tracked_no_match"] += 1
@@ -545,11 +621,14 @@ async def run_hot_company_search(
                     dup_of = dup_map.get(candidate.name)
                     if dup_of:
                         funnel["dedup_dropped"] += 1
-                        yield SearchEvent("skip", {
-                            "name": candidate.name,
-                            "source": candidate.source,
-                            "reason": f"Duplicate of '{dup_of}'",
-                        })
+                        yield SearchEvent(
+                            "skip",
+                            {
+                                "name": candidate.name,
+                                "source": candidate.source,
+                                "reason": f"Duplicate of '{dup_of}'",
+                            },
+                        )
                         evaluated[candidate.name.lower()] = "miss"
                         continue
 
@@ -558,18 +637,24 @@ async def run_hot_company_search(
                         norm_key = f"{candidate.ats}:{candidate.slug}"
                     if norm_key in evaluated:
                         funnel["already_checked"] += 1
-                        yield SearchEvent("skip", {
-                            "name": candidate.name,
-                            "source": candidate.source,
-                            "reason": "Already checked",
-                        })
+                        yield SearchEvent(
+                            "skip",
+                            {
+                                "name": candidate.name,
+                                "source": candidate.source,
+                                "reason": "Already checked",
+                            },
+                        )
                         continue
 
                     total_candidates += 1
-                    yield SearchEvent("candidate", {
-                        "name": candidate.name,
-                        "source": candidate.source,
-                    })
+                    yield SearchEvent(
+                        "candidate",
+                        {
+                            "name": candidate.name,
+                            "source": candidate.source,
+                        },
+                    )
 
                     # Direct-URL branch: check the appropriate per-origin
                     # cap at queue time. Aggregator vs query candidates have
@@ -589,14 +674,14 @@ async def run_hot_company_search(
                         if used >= cap:
                             evaluated[norm_key] = "miss"
                             funnel[f"direct_cap_reached_{cap_label}"] += 1
-                            yield SearchEvent("skip", {
-                                "name": candidate.name,
-                                "source": candidate.source,
-                                "reason": (
-                                    f"Direct-import cap reached "
-                                    f"({cap}/{cap_label})"
-                                ),
-                            })
+                            yield SearchEvent(
+                                "skip",
+                                {
+                                    "name": candidate.name,
+                                    "source": candidate.source,
+                                    "reason": (f"Direct-import cap reached ({cap}/{cap_label})"),
+                                },
+                            )
                             continue
                         if is_aggregator:
                             aggregator_direct_count += 1
@@ -631,7 +716,9 @@ async def run_hot_company_search(
                 sem = asyncio.Semaphore(candidate_concurrency)
 
                 async def _run_eval(
-                    candidate: CompanyCandidate, norm_key: str, kind: str,
+                    candidate: CompanyCandidate,
+                    norm_key: str,
+                    kind: str,
                 ):
                     """Returns (candidate, norm_key, kind, hit, skip_reason).
                     kind is "direct" or "full"."""
@@ -639,12 +726,16 @@ async def run_hot_company_search(
                         try:
                             if kind == "direct":
                                 hit, skip_reason = await _extract_direct_job_url(
-                                    candidate.direct_job_url, profile_keywords,
-                                    locations=locations, min_salary=min_salary,
+                                    candidate.direct_job_url,
+                                    profile_keywords,
+                                    locations=locations,
+                                    min_salary=min_salary,
                                 )
                             else:
                                 hit, skip_reason = await _evaluate_candidate(
-                                    candidate, profile_keywords, http_client,
+                                    candidate,
+                                    profile_keywords,
+                                    http_client,
                                     locations=locations,
                                     min_salary=min_salary,
                                     guidance=guidance,
@@ -658,17 +749,26 @@ async def run_hot_company_search(
                                 # Pass reference context as guidance fallback
                                 # so the match reasoning knows why we searched.
                                 effective_guidance = guidance or ""
-                                if not effective_guidance and reference_context and reference_context != "(no reference jobs)":
-                                    effective_guidance = f"Finding jobs similar to: {reference_context}"
-                                rejected, desc, reason, reject_reason = (
-                                    await _generate_hit_summary(
-                                        hit.name, hit.top_jobs, profile_data,
-                                        guidance=effective_guidance,
+                                if (
+                                    not effective_guidance
+                                    and reference_context
+                                    and reference_context != "(no reference jobs)"
+                                ):
+                                    effective_guidance = (
+                                        f"Finding jobs similar to: {reference_context}"
                                     )
+                                rejected, desc, reason, reject_reason = await _generate_hit_summary(
+                                    hit.name,
+                                    hit.top_jobs,
+                                    profile_data,
+                                    guidance=effective_guidance,
                                 )
                                 if rejected:
                                     return (
-                                        candidate, norm_key, kind, None,
+                                        candidate,
+                                        norm_key,
+                                        kind,
+                                        None,
                                         f"Dropped: {reject_reason}",
                                     )
                                 if desc:
@@ -682,16 +782,19 @@ async def run_hot_company_search(
                         except Exception as e:
                             logger.warning(
                                 "Parallel eval task failed for %s: %s",
-                                candidate.name, e,
+                                candidate.name,
+                                e,
                             )
                             return (
-                                candidate, norm_key, kind, None,
+                                candidate,
+                                norm_key,
+                                kind,
+                                None,
                                 f"Eval error: {str(e)[:80]}",
                             )
 
                 task_futures = [
-                    asyncio.create_task(_run_eval(c, k, kind))
-                    for (c, k, kind) in pending_evals
+                    asyncio.create_task(_run_eval(c, k, kind)) for (c, k, kind) in pending_evals
                 ]
 
                 try:
@@ -724,18 +827,21 @@ async def run_hot_company_search(
                                     hits.append(hit)
                                     iteration_hits += 1
                                     emit_hit = hit
-                                yield SearchEvent("hit", {
-                                    "name": emit_hit.name,
-                                    "ats": emit_hit.ats,
-                                    "slug": emit_hit.slug,
-                                    "website": emit_hit.website,
-                                    "total_jobs": emit_hit.total_jobs,
-                                    "relevant_jobs": emit_hit.relevant_jobs,
-                                    "top_jobs": emit_hit.top_jobs,
-                                    "source": emit_hit.source,
-                                    "description": emit_hit.description,
-                                    "match_reason": emit_hit.match_reason,
-                                })
+                                yield SearchEvent(
+                                    "hit",
+                                    {
+                                        "name": emit_hit.name,
+                                        "ats": emit_hit.ats,
+                                        "slug": emit_hit.slug,
+                                        "website": emit_hit.website,
+                                        "total_jobs": emit_hit.total_jobs,
+                                        "relevant_jobs": emit_hit.relevant_jobs,
+                                        "top_jobs": emit_hit.top_jobs,
+                                        "source": emit_hit.source,
+                                        "description": emit_hit.description,
+                                        "match_reason": emit_hit.match_reason,
+                                    },
+                                )
                             else:
                                 # Direct URL import failed — release the slot
                                 # we reserved at queue time so we don't count
@@ -743,21 +849,26 @@ async def run_hot_company_search(
                                 # per-origin counter.
                                 if candidate.origin == "aggregator":
                                     aggregator_direct_count = max(
-                                        0, aggregator_direct_count - 1,
+                                        0,
+                                        aggregator_direct_count - 1,
                                     )
                                 else:
                                     query_direct_count = max(
-                                        0, query_direct_count - 1,
+                                        0,
+                                        query_direct_count - 1,
                                     )
                                 evaluated[norm_key] = "miss"
                                 funnel["direct_miss"] += 1
                                 if skip_reason:
                                     skip_reasons[skip_reason[:80]] += 1
-                                yield SearchEvent("skip", {
-                                    "name": candidate.name,
-                                    "source": candidate.source,
-                                    "reason": skip_reason,
-                                })
+                                yield SearchEvent(
+                                    "skip",
+                                    {
+                                        "name": candidate.name,
+                                        "source": candidate.source,
+                                        "reason": skip_reason,
+                                    },
+                                )
                             continue
 
                         # Full eval path. Drop:
@@ -779,11 +890,14 @@ async def run_hot_company_search(
                                     else "Eval returned hit with no top_jobs"
                                 )
                                 skip_reasons[reason[:80]] += 1
-                                yield SearchEvent("skip", {
-                                    "name": candidate.name,
-                                    "source": candidate.source,
-                                    "reason": reason,
-                                })
+                                yield SearchEvent(
+                                    "skip",
+                                    {
+                                        "name": candidate.name,
+                                        "source": candidate.source,
+                                        "reason": reason,
+                                    },
+                                )
                                 continue
                         if hit:
                             # Cap tentative hits separately. The user asked
@@ -795,15 +909,18 @@ async def run_hot_company_search(
                             if hit.is_tentative and tentative_emitted >= _MAX_TENTATIVE_HITS:
                                 evaluated[norm_key] = "miss"
                                 funnel["tentative_cap_reached"] += 1
-                                yield SearchEvent("skip", {
-                                    "name": candidate.name,
-                                    "source": candidate.source,
-                                    "reason": (
-                                        f"Best job match was {hit.match_score}/100 "
-                                        f"(tentative tier) but we already showed "
-                                        f"{_MAX_TENTATIVE_HITS} tentative hits"
-                                    ),
-                                })
+                                yield SearchEvent(
+                                    "skip",
+                                    {
+                                        "name": candidate.name,
+                                        "source": candidate.source,
+                                        "reason": (
+                                            f"Best job match was {hit.match_score}/100 "
+                                            f"(tentative tier) but we already showed "
+                                            f"{_MAX_TENTATIVE_HITS} tentative hits"
+                                        ),
+                                    },
+                                )
                                 continue
                             evaluated[norm_key] = "hit"
                             funnel["full_hit" if not hit.is_tentative else "tentative_hit"] += 1
@@ -813,33 +930,39 @@ async def run_hot_company_search(
                                 evaluated[f"{hit.ats}:{hit.slug}"] = "hit"
                             hits.append(hit)
                             iteration_hits += 1
-                            yield SearchEvent("hit", {
-                                "name": hit.name,
-                                "ats": hit.ats,
-                                "slug": hit.slug,
-                                "website": hit.website,
-                                "total_jobs": hit.total_jobs,
-                                "relevant_jobs": hit.relevant_jobs,
-                                "top_jobs": hit.top_jobs,
-                                "source": hit.source,
-                                "description": hit.description,
-                                "match_reason": hit.match_reason,
-                                "kind": hit.kind,
-                                "careers_url": hit.careers_url,
-                                "company_id": hit.company_id,
-                                "is_tentative": hit.is_tentative,
-                                "match_score": hit.match_score,
-                            })
+                            yield SearchEvent(
+                                "hit",
+                                {
+                                    "name": hit.name,
+                                    "ats": hit.ats,
+                                    "slug": hit.slug,
+                                    "website": hit.website,
+                                    "total_jobs": hit.total_jobs,
+                                    "relevant_jobs": hit.relevant_jobs,
+                                    "top_jobs": hit.top_jobs,
+                                    "source": hit.source,
+                                    "description": hit.description,
+                                    "match_reason": hit.match_reason,
+                                    "kind": hit.kind,
+                                    "careers_url": hit.careers_url,
+                                    "company_id": hit.company_id,
+                                    "is_tentative": hit.is_tentative,
+                                    "match_score": hit.match_score,
+                                },
+                            )
                         else:
                             evaluated[norm_key] = "miss"
                             funnel["full_miss"] += 1
                             if skip_reason:
                                 skip_reasons[skip_reason[:80]] += 1
-                            yield SearchEvent("skip", {
-                                "name": candidate.name,
-                                "source": candidate.source,
-                                "reason": skip_reason,
-                            })
+                            yield SearchEvent(
+                                "skip",
+                                {
+                                    "name": candidate.name,
+                                    "source": candidate.source,
+                                    "reason": skip_reason,
+                                },
+                            )
                 finally:
                     # Cancel any still-pending tasks (either max_hits reached
                     # or an unexpected early exit). Awaiting with
@@ -857,15 +980,19 @@ async def run_hot_company_search(
                 consecutive_dry = 0
 
     funnel["final_hits"] = len(hits)
-    yield SearchEvent("done", {
-        "total_hits": len(hits),
-        "total_candidates_checked": total_candidates,
-        "funnel": dict(funnel),
-        "top_skip_reasons": skip_reasons.most_common(8),
-    })
+    yield SearchEvent(
+        "done",
+        {
+            "total_hits": len(hits),
+            "total_candidates_checked": total_candidates,
+            "funnel": dict(funnel),
+            "top_skip_reasons": skip_reasons.most_common(8),
+        },
+    )
     logger.info(
         "Hot search funnel: %s | top skip reasons: %s",
-        dict(funnel), skip_reasons.most_common(5),
+        dict(funnel),
+        skip_reasons.most_common(5),
     )
 
 

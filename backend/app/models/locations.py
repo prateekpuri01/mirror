@@ -11,16 +11,12 @@ from app.models.base import Base
 class Location(Base):
     __tablename__ = "locations"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     display_name: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
     city: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str | None] = mapped_column(Text, nullable=True)
     country: Mapped[str] = mapped_column(Text, nullable=False)
-    is_remote: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=text("false")
-    )
+    is_remote: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

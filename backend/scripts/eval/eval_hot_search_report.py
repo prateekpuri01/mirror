@@ -113,13 +113,8 @@ def generate_markdown(report: dict) -> str:
         cov = _cov_emoji(s.get("coverage", False))
         novelty = _fmt_pct(s.get("novelty_rate"))
         relevance = _fmt_float(s.get("mean_relevance"), 2)
-        hits = (
-            f"{s.get('hits_ats', 0)} / {s.get('hits_lead', 0)} / "
-            f"{s.get('hits_tracked', 0)}"
-        )
-        imp = (
-            f"{s.get('imported_job_count', 0)} ({s.get('novel_job_count', 0)})"
-        )
+        hits = f"{s.get('hits_ats', 0)} / {s.get('hits_lead', 0)} / {s.get('hits_tracked', 0)}"
+        imp = f"{s.get('imported_job_count', 0)} ({s.get('novel_job_count', 0)})"
         elapsed = f"{s.get('elapsed_sec', 0):.0f}s"
         lines.append(
             f"| `{s.get('persona', '?')}` | {cov} | {novelty} | {relevance} "
@@ -148,9 +143,7 @@ def generate_markdown(report: dict) -> str:
         f"{agg.get('n_scenarios', 0)} personas "
         f"({agg.get('total_novel_jobs', 0)} novel)"
     )
-    lines.append(
-        f"- **Mean wall time:** {_fmt_float(agg.get('mean_elapsed_sec'), 0)}s per persona"
-    )
+    lines.append(f"- **Mean wall time:** {_fmt_float(agg.get('mean_elapsed_sec'), 0)}s per persona")
     lines.append(f"- **Estimated cost:** ~${cost:.2f} (rough; see source for assumptions)")
     lines.append("")
 
@@ -192,10 +185,18 @@ def generate_markdown(report: dict) -> str:
             lines.append("")
             funnel = s.get("funnel", {})
             for key in [
-                "aggregator_entries", "seed_candidates", "candidates_seen",
-                "already_checked", "dedup_dropped", "tracked_no_match",
-                "direct_cap_reached", "direct_hit", "direct_miss",
-                "full_hit", "full_miss", "final_hits",
+                "aggregator_entries",
+                "seed_candidates",
+                "candidates_seen",
+                "already_checked",
+                "dedup_dropped",
+                "tracked_no_match",
+                "direct_cap_reached",
+                "direct_hit",
+                "direct_miss",
+                "full_hit",
+                "full_miss",
+                "final_hits",
             ]:
                 if key in funnel:
                     lines.append(f"- `{key}`: {funnel[key]}")
@@ -219,10 +220,7 @@ def generate_markdown(report: dict) -> str:
             persona = j.get("persona", "?")
             url = j.get("url", "")
             link = f"[{title}]({url})" if url else title
-            lines.append(
-                f"- **{relevance}/5** — {company} / {link}  "
-                f"_(persona: `{persona}`)_"
-            )
+            lines.append(f"- **{relevance}/5** — {company} / {link}  _(persona: `{persona}`)_")
         lines.append("")
 
     # ---- Worst finds (kept brief; useful for honest signal)
@@ -235,10 +233,7 @@ def generate_markdown(report: dict) -> str:
             title = j.get("title", "?")
             relevance = j.get("relevance", 0)
             persona = j.get("persona", "?")
-            lines.append(
-                f"- **{relevance}/5** — {company} / {title}  "
-                f"_(persona: `{persona}`)_"
-            )
+            lines.append(f"- **{relevance}/5** — {company} / {title}  _(persona: `{persona}`)_")
         lines.append("")
 
     lines.append("---")
@@ -252,13 +247,18 @@ def generate_markdown(report: dict) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate markdown report from hot-search eval JSON.")
+    parser = argparse.ArgumentParser(
+        description="Generate markdown report from hot-search eval JSON."
+    )
     parser.add_argument(
-        "json_path", nargs="?", default=None,
+        "json_path",
+        nargs="?",
+        default=None,
         help="Path to a hot_search_*.json. Defaults to the latest in the results dir.",
     )
     parser.add_argument(
-        "--out", default=None,
+        "--out",
+        default=None,
         help="If provided, write the markdown to this path instead of stdout.",
     )
     args = parser.parse_args()

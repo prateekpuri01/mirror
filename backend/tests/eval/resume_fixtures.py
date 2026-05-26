@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 from tests.eval.fixtures import EVAL_PROFILE_DATA
 
-
 # ---------------------------------------------------------------------------
 # Extended profile for resume evaluation
 # ---------------------------------------------------------------------------
@@ -698,7 +697,6 @@ RESUME_TEST_CASES: list[ResumeTestCase] = [
             "Should not fabricate UX design credentials not in the profile",
         ],
     ),
-
     # ===== TIER: stretch =====
     ResumeTestCase(
         case_id="RS_timeseries",
@@ -747,8 +745,7 @@ RESUME_TEST_CASES: list[ResumeTestCase] = [
         expected_pitfalls=[
             "Should not overstate depth of time series experience — candidate "
             "has one project, not a career focus",
-            "Should not ignore transferable transformer and foundation model "
-            "skills from LLM work",
+            "Should not ignore transferable transformer and foundation model skills from LLM work",
             "Should not omit causal inference experience which is listed as a plus",
             "Should not fabricate forecasting results beyond what is in the profile",
         ],
@@ -804,7 +801,6 @@ RESUME_TEST_CASES: list[ResumeTestCase] = [
             "Congressional testimony already in profile",
         ],
     ),
-
     # ===== TIER: challenge =====
     ResumeTestCase(
         case_id="RS_sparse",
@@ -839,10 +835,8 @@ RESUME_TEST_CASES: list[ResumeTestCase] = [
         expected_pitfalls=[
             "Should not over-tailor to a specific domain since the JD is vague — "
             "resume should be broad",
-            "Should not omit production engineering experience which is "
-            "explicitly required",
-            "Should not assume the 'new modality' and fabricate relevant "
-            "experience",
+            "Should not omit production engineering experience which is explicitly required",
+            "Should not assume the 'new modality' and fabricate relevant experience",
             "Should not ignore the startup context — emphasize autonomy and "
             "breadth, not just depth",
         ],
@@ -891,12 +885,10 @@ RESUME_TEST_CASES: list[ResumeTestCase] = [
             "ACC_rlhf",
         ],
         expected_pitfalls=[
-            "Should flag ad optimization as a deal-breaker per candidate's "
-            "exclusion preferences",
+            "Should flag ad optimization as a deal-breaker per candidate's exclusion preferences",
             "Should not enthusiastically tailor resume to this role without "
             "surfacing the values conflict",
-            "Should not fabricate interest in advertising or engagement "
-            "optimization",
+            "Should not fabricate interest in advertising or engagement optimization",
             "Should not ignore that the role is technically a strong skill "
             "match — the conflict is values, not capability",
         ],
@@ -908,6 +900,4 @@ RESUME_TEST_CASES: list[ResumeTestCase] = [
 # Lookup helpers
 # ---------------------------------------------------------------------------
 
-RESUME_TEST_CASES_BY_ID: dict[str, ResumeTestCase] = {
-    tc.case_id: tc for tc in RESUME_TEST_CASES
-}
+RESUME_TEST_CASES_BY_ID: dict[str, ResumeTestCase] = {tc.case_id: tc for tc in RESUME_TEST_CASES}

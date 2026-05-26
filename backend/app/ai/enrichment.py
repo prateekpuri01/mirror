@@ -8,13 +8,13 @@ Step 3: Extract team names from job titles at large companies.
 import asyncio
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
-from sqlalchemy import select, func, update, delete
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_openai_client, EXTRACTION_MODEL
+from app.ai.client import EXTRACTION_MODEL, get_openai_client
 from app.ai.prompts import build_company_enrichment_system
 from app.models import Company, Job
 from app.models.profile import UserProfile
@@ -81,6 +81,7 @@ _JUNK_PATTERNS = re.compile(
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _normalize_company_name(name: str) -> str:
     """Normalize a company name for fuzzy matching."""
@@ -180,6 +181,7 @@ def _is_enriched(company: Company) -> bool:
 # Step 1: Company Resolution
 # ---------------------------------------------------------------------------
 
+
 async def resolve_companies(session: AsyncSession) -> dict:
     """Link all jobs with null company_id to company records.
 
@@ -203,14 +205,10 @@ async def resolve_companies(session: AsyncSession) -> dict:
     if junk_ids:
         # Null out job FKs pointing to junk companies
         await session.execute(
-            update(Job)
-            .where(Job.company_id.in_(junk_ids))
-            .values(company_id=None)
+            update(Job).where(Job.company_id.in_(junk_ids)).values(company_id=None)
         )
         # Delete junk company records
-        await session.execute(
-            delete(Company).where(Company.id.in_(junk_ids))
-        )
+        await session.execute(delete(Company).where(Company.id.in_(junk_ids)))
         await session.flush()
         stats["junk_skipped"] = len(junk_ids)
         logger.info("Deleted %d junk company records", len(junk_ids))
@@ -231,7 +229,7 @@ async def resolve_companies(session: AsyncSession) -> dict:
         norm = _normalize_company_name(company.name)
         norm_lookup[norm] = company
         # Register aliases
-        for alias in (company.aliases or []):
+        for alias in company.aliases or []:
             alias_lookup[alias.lower().strip()] = company
             alias_norm = _normalize_company_name(alias)
             if alias_norm:
@@ -267,9 +265,7 @@ async def resolve_companies(session: AsyncSession) -> dict:
             company = _find_merge_candidates(norm_lookup, norm)
             if company:
                 stats["merged"] += 1
-                logger.info(
-                    "Fuzzy merged '%s' → '%s'", company_name, company.name
-                )
+                logger.info("Fuzzy merged '%s' → '%s'", company_name, company.name)
 
         if company is None:
             company = Company(name=company_name, monitoring_active=False)
@@ -306,12 +302,14 @@ async def resolve_companies(session: AsyncSession) -> dict:
 # Step 2: Company Enrichment (web fetch + LLM summarize)
 # ---------------------------------------------------------------------------
 
+
 async def _web_search_compat(query: str, brave_api_key: str = "") -> list[dict]:
     """Search the web using SearXNG (with Brave fallback).
 
     Returns results in the legacy format with 'description' key for backward compat.
     """
     from app.services.web_search import web_search as unified_search
+
     results = await unified_search(query, num_results=5)
     return [
         {
@@ -326,27 +324,17 @@ async def _web_search_compat(query: str, brave_api_key: str = "") -> list[dict]:
 async def _fetch_page(url: str, *, max_chars: int = 8000) -> str:
     """Fetch a web page and return text content (tags stripped)."""
     try:
-        async with httpx.AsyncClient(
-            timeout=20, follow_redirects=True
-        ) as client:
+        async with httpx.AsyncClient(timeout=20, follow_redirects=True) as client:
             resp = await client.get(
                 url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (compatible; JobBoardBot/1.0)"
-                    )
-                },
+                headers={"User-Agent": ("Mozilla/5.0 (compatible; JobBoardBot/1.0)")},
             )
             resp.raise_for_status()
             html = resp.text
 
         # Simple HTML → text
-        text = re.sub(
-            r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.I
-        )
-        text = re.sub(
-            r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.I
-        )
+        text = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.I)
+        text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.I)
         text = re.sub(r"<[^>]+>", " ", text)
         text = re.sub(r"\s+", " ", text).strip()
         return text[:max_chars]
@@ -371,9 +359,7 @@ async def _gather_company_context(
 
     # Find website if missing
     if not website:
-        results = await _web_search_compat(
-            f'"{company.name}" company website'
-        )
+        results = await _web_search_compat(f'"{company.name}" company website')
         if results:
             website = results[0].get("url")
             if website:
@@ -386,17 +372,13 @@ async def _gather_company_context(
         # Try subpages
         base_url = website.rstrip("/")
         for path in ("/about", "/about-us", "/research", "/blog"):
-            about_text = await _fetch_page(
-                f"{base_url}{path}", max_chars=3000
-            )
+            about_text = await _fetch_page(f"{base_url}{path}", max_chars=3000)
             if len(about_text) > 200:
                 context["about_text"] = about_text
                 break
 
     # Search for recent news
-    context["news"] = await _web_search_compat(
-        f'"{company.name}" AI research 2025 2026'
-    )
+    context["news"] = await _web_search_compat(f'"{company.name}" AI research 2025 2026')
 
     return context
 
@@ -464,17 +446,11 @@ async def enrich_single_company(
     # Build source material for the LLM
     source_parts: list[str] = []
     if context["website_text"]:
-        source_parts.append(
-            f"Website content:\n{context['website_text'][:3000]}"
-        )
+        source_parts.append(f"Website content:\n{context['website_text'][:3000]}")
     if context["about_text"]:
-        source_parts.append(
-            f"About/Research page:\n{context['about_text'][:2000]}"
-        )
+        source_parts.append(f"About/Research page:\n{context['about_text'][:2000]}")
     if context["news"]:
-        news_text = "\n".join(
-            f"- {r['title']}: {r['description']}" for r in context["news"]
-        )
+        news_text = "\n".join(f"- {r['title']}: {r['description']}" for r in context["news"])
         source_parts.append(f"Recent news:\n{news_text}")
 
     # Fallback: use job descriptions when web sources fail
@@ -487,8 +463,7 @@ async def enrich_single_company(
 
     if job_titles:
         source_parts.append(
-            "Job titles at this company:\n"
-            + "\n".join(f"- {t}" for t in job_titles[:20])
+            "Job titles at this company:\n" + "\n".join(f"- {t}" for t in job_titles[:20])
         )
 
     if not source_parts:
@@ -525,7 +500,7 @@ async def enrich_single_company(
 
     notes = response.choices[0].message.content.strip()
     company.notes = notes
-    company.enriched_at = datetime.now(timezone.utc)
+    company.enriched_at = datetime.now(UTC)
     await session.commit()
     logger.info("Enriched: %s (%d chars)", company.name, len(notes))
     return True
@@ -587,9 +562,7 @@ async def extract_teams(session: AsyncSession) -> int:
 
     count = 0
     for company_id, _ in large_companies:
-        jobs_result = await session.execute(
-            select(Job).where(Job.company_id == company_id)
-        )
+        jobs_result = await session.execute(select(Job).where(Job.company_id == company_id))
         jobs = list(jobs_result.scalars().all())
 
         for job in jobs:
@@ -610,6 +583,7 @@ async def extract_teams(session: AsyncSession) -> int:
 # ---------------------------------------------------------------------------
 # Full Pipeline
 # ---------------------------------------------------------------------------
+
 
 async def run_enrichment_pipeline(
     session: AsyncSession,
@@ -634,27 +608,21 @@ async def run_enrichment_pipeline(
         "teams_extracted": 0,
         "failed": 0,
         "failed_companies": [],
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
     }
 
     try:
         # Step 1: Resolve companies
         resolve_stats = await resolve_companies(session)
-        _enrichment_status["resolved"] = (
-            resolve_stats["created"] + resolve_stats["matched"]
-        )
+        _enrichment_status["resolved"] = resolve_stats["created"] + resolve_stats["matched"]
 
         # Step 2: Enrich companies
         _enrichment_status["phase"] = "enriching"
 
-        all_companies_result = await session.execute(
-            select(Company).order_by(Company.name)
-        )
+        all_companies_result = await session.execute(select(Company).order_by(Company.name))
         all_companies = list(all_companies_result.scalars().all())
 
-        companies_to_enrich = [
-            c for c in all_companies if force or not _is_enriched(c)
-        ]
+        companies_to_enrich = [c for c in all_companies if force or not _is_enriched(c)]
         if limit > 0:
             companies_to_enrich = companies_to_enrich[:limit]
         _enrichment_status["total_companies"] = len(companies_to_enrich)
@@ -663,25 +631,19 @@ async def run_enrichment_pipeline(
         for company in companies_to_enrich:
             # Get job titles for context
             titles_result = await session.execute(
-                select(Job.title)
-                .where(Job.company_id == company.id)
-                .limit(30)
+                select(Job.title).where(Job.company_id == company.id).limit(30)
             )
             job_titles = [row[0] for row in titles_result.all()]
 
             # Fallback: match by company name string
             if not job_titles:
                 titles_result = await session.execute(
-                    select(Job.title)
-                    .where(Job.company == company.name)
-                    .limit(30)
+                    select(Job.title).where(Job.company == company.name).limit(30)
                 )
                 job_titles = [row[0] for row in titles_result.all()]
 
             try:
-                success = await enrich_single_company(
-                    session, company, job_titles, force=force
-                )
+                success = await enrich_single_company(session, company, job_titles, force=force)
                 if success:
                     _enrichment_status["enriched"] += 1
                 else:
@@ -723,9 +685,7 @@ async def enrich_single(
     force: bool = False,
 ) -> Company | None:
     """Enrich a single company by ID."""
-    result = await session.execute(
-        select(Company).where(Company.id == company_id)
-    )
+    result = await session.execute(select(Company).where(Company.id == company_id))
     company = result.scalar_one_or_none()
     if not company:
         return None
@@ -735,9 +695,7 @@ async def enrich_single(
     )
     job_titles = [row[0] for row in titles_result.all()]
 
-    await enrich_single_company(
-        session, company, job_titles, force=force
-    )
+    await enrich_single_company(session, company, job_titles, force=force)
     await session.refresh(company)
     return company
 

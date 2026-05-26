@@ -19,13 +19,12 @@ the query document from profile + guidance + reference-job context.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import math
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Sequence
 
 from app.ai.client import SCORING_MODEL, get_openai_client
 
@@ -70,10 +69,11 @@ class RankedJob:
     ``batched_llm_rerank`` — callers reconstruct the full job dict from
     their own pool using this index.
     """
+
     index: int
-    relevance: int          # 1-5
-    reason: str             # one-line explanation
-    is_tentative: bool      # True iff relevance == RERANK_TENTATIVE_FLOOR
+    relevance: int  # 1-5
+    reason: str  # one-line explanation
+    is_tentative: bool  # True iff relevance == RERANK_TENTATIVE_FLOOR
 
 
 # ---------------------------------------------------------------------------
@@ -125,12 +125,15 @@ async def embed_batch(texts: Sequence[str]) -> list[list[float]]:
     for i, chunk in enumerate(chunks):
         try:
             resp = await client.embeddings.create(
-                model=_EMBED_MODEL, input=chunk,
+                model=_EMBED_MODEL,
+                input=chunk,
             )
         except Exception as e:
             logger.warning(
                 "embed_batch chunk %d (size=%d) failed: %s — returning zero vectors",
-                i, len(chunk), e,
+                i,
+                len(chunk),
+                e,
             )
             # Return zero vectors so downstream cosine treats these as
             # orthogonal to everything (effective rank = bottom). Better
@@ -160,7 +163,7 @@ def cosine(a: Sequence[float], b: Sequence[float]) -> float:
     nb = _norm(b)
     if na == 0.0 or nb == 0.0:
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     return dot / (na * nb)
 
 
@@ -184,7 +187,7 @@ def cosine_top_k(
         dn = _norm(d)
         if dn == 0.0:
             continue
-        dot = sum(x * y for x, y in zip(query_emb, d))
+        dot = sum(x * y for x, y in zip(query_emb, d, strict=False))
         scored.append((i, dot / (qn * dn)))
     scored.sort(key=lambda t: t[1], reverse=True)
     return scored[:k]
@@ -216,7 +219,11 @@ def build_query_doc(
     if guidance and guidance.strip():
         parts.append(f"Looking for: {guidance.strip()}")
 
-    if reference_context and reference_context.strip() and reference_context != "(no reference jobs)":
+    if (
+        reference_context
+        and reference_context.strip()
+        and reference_context != "(no reference jobs)"
+    ):
         parts.append(reference_context.strip())
 
     if profile_data:
@@ -394,7 +401,7 @@ async def batched_llm_rerank(
             parts.append(f"[{dept}]")
         # Optional one-line snippet for ambiguous titles. Cap to keep
         # the prompt small.
-        snippet = (j.get("description") or j.get("description_html") or "")
+        snippet = j.get("description") or j.get("description_html") or ""
         snippet = re.sub(r"<[^>]+>", " ", snippet)
         snippet = re.sub(r"\s+", " ", snippet).strip()
         if snippet and len(title) < 40:
@@ -409,9 +416,11 @@ async def batched_llm_rerank(
 
     constraint_block = ""
     if constraints:
-        constraint_block = "HARD CONSTRAINTS — score 1 if violated:\n" + "\n".join(
-            f"  - {c}" for c in constraints
-        ) + "\n\n"
+        constraint_block = (
+            "HARD CONSTRAINTS — score 1 if violated:\n"
+            + "\n".join(f"  - {c}" for c in constraints)
+            + "\n\n"
+        )
 
     user_prompt = (
         f"Search criteria: {guidance.strip()}\n\n"
@@ -507,12 +516,14 @@ async def batched_llm_rerank(
             continue
         if r < tentative_floor:
             continue
-        ranked.append(RankedJob(
-            index=list_idx,
-            relevance=r,
-            reason=str(item.get("why", ""))[:200],
-            is_tentative=(r == tentative_floor),
-        ))
+        ranked.append(
+            RankedJob(
+                index=list_idx,
+                relevance=r,
+                reason=str(item.get("why", ""))[:200],
+                is_tentative=(r == tentative_floor),
+            )
+        )
 
     # Sort by relevance desc; stable so ties preserve LLM's order.
     ranked.sort(key=lambda x: x.relevance, reverse=True)
@@ -562,7 +573,8 @@ async def rank_jobs(
     if not all_embs or len(all_embs) != len(jobs) + 1:
         logger.warning(
             "rank_jobs: embedding count mismatch (got %d expected %d) — empty result",
-            len(all_embs), len(jobs) + 1,
+            len(all_embs),
+            len(jobs) + 1,
         )
         return []
     query_emb = all_embs[0]

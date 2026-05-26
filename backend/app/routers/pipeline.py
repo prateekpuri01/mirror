@@ -21,7 +21,12 @@ from app.schemas.pipeline import (
     RescoreResult,
 )
 from app.scrapers.runner import run_scrape
-from app.services.liveness import check_urls_batch, garbage_collect, get_liveness_stats, recheck_expired
+from app.services.liveness import (
+    check_urls_batch,
+    garbage_collect,
+    get_liveness_stats,
+    recheck_expired,
+)
 from app.services.pipeline import get_pipeline_summary, process_new_jobs, rescore_outdated
 
 logger = logging.getLogger(__name__)
@@ -100,8 +105,9 @@ async def rescore(
     Returns the list of job IDs that will be rescored so the frontend
     can display per-row progress indicators.
     """
-    from app.ai.prompts import PROMPT_VERSION
     from sqlalchemy import select as sa_select
+
+    from app.ai.prompts import PROMPT_VERSION
 
     result = await session.execute(
         sa_select(Job.id).where(
@@ -142,9 +148,7 @@ async def reprocess_jobs(
         except ValueError:
             continue
 
-    result = await session.execute(
-        sa_select(Job.id).where(Job.id.in_(job_uuids))
-    )
+    result = await session.execute(sa_select(Job.id).where(Job.id.in_(job_uuids)))
     found_ids = [str(row[0]) for row in result.all()]
     if not found_ids:
         raise HTTPException(status_code=404, detail="No valid jobs found")
@@ -168,12 +172,12 @@ async def _run_reprocess(job_ids: list[str], operations: list[str]):
     import asyncio
 
     from app.ai.scoring import score_job
+    from app.services.app_req_extraction_service import extract_application_requirements
     from app.services.extraction import (
         FIELD_PROCESSORS,
         _extract_one,
         _resolve_locations,
     )
-    from app.services.app_req_extraction_service import extract_application_requirements
 
     async with async_session() as session:
         for jid in job_ids:
@@ -183,9 +187,7 @@ async def _run_reprocess(job_ids: list[str], operations: list[str]):
                 if "extract" in operations:
                     from sqlalchemy import select as sa_select
 
-                    result = await session.execute(
-                        sa_select(Job).where(Job.id == job_uuid)
-                    )
+                    result = await session.execute(sa_select(Job).where(Job.id == job_uuid))
                     job = result.scalar_one_or_none()
                     if job:
                         semaphore = asyncio.Semaphore(1)
@@ -198,7 +200,8 @@ async def _run_reprocess(job_ids: list[str], operations: list[str]):
                                 except Exception:
                                     logger.exception(
                                         "Reprocess: processor %s failed for job %s",
-                                        name, jid,
+                                        name,
+                                        jid,
                                     )
                             meta = dict(job.extra_metadata or {})
                             meta["extracted"] = True
@@ -221,12 +224,11 @@ async def _run_reprocess(job_ids: list[str], operations: list[str]):
                     await extract_application_requirements(session, jid)
 
                 # Mark pipeline_stage back to scored
-                from sqlalchemy import select as sa_select, update as sa_update
+                from sqlalchemy import select as sa_select
+                from sqlalchemy import update as sa_update
 
                 await session.execute(
-                    sa_update(Job)
-                    .where(Job.id == job_uuid)
-                    .values(pipeline_stage="scored")
+                    sa_update(Job).where(Job.id == job_uuid).values(pipeline_stage="scored")
                 )
                 await session.commit()
 
@@ -237,9 +239,7 @@ async def _run_reprocess(job_ids: list[str], operations: list[str]):
                     from sqlalchemy import update as sa_update
 
                     await session.execute(
-                        sa_update(Job)
-                        .where(Job.id == job_uuid)
-                        .values(pipeline_stage="scored")
+                        sa_update(Job).where(Job.id == job_uuid).values(pipeline_stage="scored")
                     )
                     await session.commit()
                 except Exception:
@@ -376,4 +376,5 @@ async def gc(
 async def maintenance_status():
     """Show daily maintenance scheduler status."""
     from app.services.scheduler import get_maintenance_status
+
     return await get_maintenance_status()

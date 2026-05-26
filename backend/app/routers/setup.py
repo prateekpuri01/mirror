@@ -41,6 +41,7 @@ class SetupStatusResponse(BaseModel):
     ``needs_setup`` is true iff the configured provider has no API key set,
     so the frontend can route fresh users into ``/setup`` automatically.
     """
+
     needs_setup: bool
     llm_provider: str
     has_openai_key: bool
@@ -64,7 +65,8 @@ class SaveKeysRequest(BaseModel):
     The endpoint validates that the chosen ``llm_provider`` has its
     matching key (or a base URL for Ollama) before saving.
     """
-    llm_provider: str | None = None      # "openai" | "anthropic" | "ollama"
+
+    llm_provider: str | None = None  # "openai" | "anthropic" | "ollama"
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     ollama_base_url: str | None = None
@@ -144,6 +146,7 @@ async def test_key(request: TestKeyRequest):
 
         rate_limits.update(detected_limits)
         from app.services.rate_limits import update_from_test
+
         update_from_test(detected_limits)
 
         return TestKeyResponse(
@@ -158,7 +161,9 @@ async def test_key(request: TestKeyRequest):
         if "429" in msg:
             return TestKeyResponse(valid=False, error="Rate limited — try again in a moment")
         if "SSL" in msg or "CERTIFICATE" in msg:
-            return TestKeyResponse(valid=False, error="SSL/certificate error — check your network proxy settings")
+            return TestKeyResponse(
+                valid=False, error="SSL/certificate error — check your network proxy settings"
+            )
         return TestKeyResponse(valid=False, error=f"Connection error: {msg[:200]}")
 
 
@@ -190,11 +195,17 @@ async def save_keys(
     final_ollama = _resolved("ollama_base_url", request.ollama_base_url)
 
     if provider == "openai" and not final_openai:
-        raise HTTPException(status_code=400, detail="OpenAI provider selected but no API key supplied.")
+        raise HTTPException(
+            status_code=400, detail="OpenAI provider selected but no API key supplied."
+        )
     if provider == "anthropic" and not final_anthropic:
-        raise HTTPException(status_code=400, detail="Anthropic provider selected but no API key supplied.")
+        raise HTTPException(
+            status_code=400, detail="Anthropic provider selected but no API key supplied."
+        )
     if provider == "ollama" and not final_ollama:
-        raise HTTPException(status_code=400, detail="Ollama provider selected but no base URL supplied.")
+        raise HTTPException(
+            status_code=400, detail="Ollama provider selected but no base URL supplied."
+        )
 
     to_persist: dict[str, str | None] = {"llm_provider": provider}
     for field, val in [

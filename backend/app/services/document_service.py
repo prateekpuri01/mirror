@@ -5,7 +5,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Document, DocType
+from app.models import DocType, Document
 
 
 def migrate_resume_json(resume_json: dict) -> dict:
@@ -19,7 +19,7 @@ def migrate_resume_json(resume_json: dict) -> dict:
     experience = resume_json.get("experience")
     if not experience:
         return resume_json
-    for emp_key, emp_data in experience.items():
+    for _emp_key, emp_data in experience.items():
         if not isinstance(emp_data, dict):
             continue
         bullets = emp_data.get("bullets", [])
@@ -81,6 +81,7 @@ async def create_document(
     """
     # Compute next version: max existing version + 1
     from sqlalchemy import func as sqlfunc
+
     result = await session.execute(
         select(sqlfunc.max(Document.version)).where(
             Document.job_id == job_id,

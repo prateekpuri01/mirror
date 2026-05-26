@@ -29,6 +29,7 @@ from dataclasses import dataclass, field
 @dataclass
 class CapturedLogs:
     """Collects log messages from hot_company_search for one test case."""
+
     messages: list[str] = field(default_factory=list)
 
     def handle(self, record: logging.LogRecord) -> None:
@@ -43,6 +44,7 @@ class CapturedLogs:
 
 class _CaptureHandler(logging.Handler):
     """Routes log records to a CapturedLogs object (settable at runtime)."""
+
     def __init__(self) -> None:
         super().__init__(level=logging.INFO)
         self.target: CapturedLogs | None = None
@@ -63,16 +65,17 @@ CASES: list[tuple[str, str, str]] = [
     ("BlackLine", "https://www.blackline.com/careers/", "machine learning engineer"),
     ("Accenture", "https://www.accenture.com/us-en/careers", "data engineer"),
     ("PwC", "https://jobs.us.pwc.com/", "data scientist"),
-
     # Custom SPAs — previously bare leads
     ("Automata", "https://careers.automata.tech/jobs", "software engineer"),
     ("Flock Safety", "https://flocksafety.com/careers", "machine learning engineer"),
     ("Tempus AI", "https://www.tempus.com/careers/", "machine learning engineer"),
-
     # Big-tech SPAs
-    ("Google", "https://www.google.com/about/careers/applications/jobs/results/", "machine learning engineer"),
+    (
+        "Google",
+        "https://www.google.com/about/careers/applications/jobs/results/",
+        "machine learning engineer",
+    ),
     ("Apple", "https://jobs.apple.com/en-us/search", "machine learning engineer"),
-
     # Known-good control: standard careers page with ATS-style URLs
     ("Anthropic", "https://www.anthropic.com/careers", "machine learning engineer"),
 ]
@@ -123,7 +126,7 @@ async def run_one(
             timeout=120,
         )
         result["hits"] = hits
-    except asyncio.TimeoutError:
+    except TimeoutError:
         result["error"] = "TIMEOUT (>120s)"
     except Exception as e:
         result["error"] = f"{type(e).__name__}: {e}"
@@ -175,8 +178,7 @@ async def run_one(
     result["picked_job"] = logs.count("LLM picked job") > 0
     result["import_dedup"] = logs.count("Job URL already in database") > 0
     result["import_succeeded"] = (
-        logs.count("SUCCEEDED for") > 0
-        or logs.count("fallback SUCCEEDED for") > 0
+        logs.count("SUCCEEDED for") > 0 or logs.count("fallback SUCCEEDED for") > 0
     )
     result["used_fallback"] = logs.count("fallback for") > 0
 
@@ -233,8 +235,9 @@ async def run_diag_mode(args: argparse.Namespace) -> None:
     real-world pages without paying for LLM calls.
     """
     import json as _json
-    from app.services.browser_pool import _ensure_browser
+
     from app.ai.browser_tools import PlaywrightToolExecutor
+    from app.services.browser_pool import _ensure_browser
 
     cases = CASES
     if args.only:
@@ -245,7 +248,7 @@ async def run_diag_mode(args: argparse.Namespace) -> None:
     context = await browser.new_context(ignore_https_errors=True)
 
     try:
-        for (name, url, _guidance) in cases:
+        for name, url, _guidance in cases:
             print(f"\n=== {name} ===")
             print(f"  URL: {url}")
             page = await context.new_page()
@@ -276,9 +279,11 @@ async def run_diag_mode(args: argparse.Namespace) -> None:
                     _looks_like_direct_job_url,
                     _looks_like_job_url_relaxed,
                 )
+
                 strict = [l for l in links if _looks_like_direct_job_url(l.get("url", ""))]
                 relaxed = [
-                    l for l in links
+                    l
+                    for l in links
                     if _looks_like_job_url_relaxed(l.get("url", ""))
                     and not _looks_like_direct_job_url(l.get("url", ""))
                 ]
@@ -350,7 +355,7 @@ async def run_perplexity_mode(args: argparse.Namespace) -> None:
                 ),
                 timeout=45,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             hits = None
             error = "TIMEOUT"
         except Exception as e:
@@ -382,7 +387,7 @@ async def run_perplexity_mode(args: argparse.Namespace) -> None:
     no_hit = sum(1 for r in results if not r["hits"] and not r["error"])
     errors = sum(1 for r in results if r["error"])
     total = len(results)
-    print(f"  Imported:  {imported}/{total}  ({100*imported/total:.0f}%)")
+    print(f"  Imported:  {imported}/{total}  ({100 * imported / total:.0f}%)")
     print(f"  No hit:    {no_hit}/{total}")
     print(f"  Errors:    {errors}/{total}")
     print()
@@ -405,15 +410,19 @@ async def main() -> None:
         help="Comma-separated company names to run (case-insensitive substring match)",
     )
     parser.add_argument(
-        "--verbose", "-v", action="store_true",
+        "--verbose",
+        "-v",
+        action="store_true",
         help="Show tool-by-tool agent logs and full tracebacks on errors",
     )
     parser.add_argument(
-        "--diag", action="store_true",
+        "--diag",
+        action="store_true",
         help="Skip the agent loop — just navigate to the URL, run extract_job_links, and dump what it found",
     )
     parser.add_argument(
-        "--perplexity", action="store_true",
+        "--perplexity",
+        action="store_true",
         help="Test the Perplexity drill in isolation (skip browser agent)",
     )
     args = parser.parse_args()
@@ -449,10 +458,7 @@ async def main() -> None:
     cases = CASES
     if args.only:
         wanted = {s.strip().lower() for s in args.only.split(",") if s.strip()}
-        cases = [
-            (n, u, g) for (n, u, g) in CASES
-            if any(w in n.lower() for w in wanted)
-        ]
+        cases = [(n, u, g) for (n, u, g) in CASES if any(w in n.lower() for w in wanted)]
         if not cases:
             print(f"No cases matched --only={args.only}")
             print("Available:", ", ".join(n for (n, _, _) in CASES))
@@ -488,7 +494,7 @@ async def main() -> None:
 
     # Success rate: IMPORTED + AGENT_OK counts as "agent succeeded end-to-end"
     agent_success = buckets.get("IMPORTED", 0) + buckets.get("AGENT_OK (dup in DB)", 0)
-    print(f"  Agent-level success:  {agent_success}/{total}  ({100*agent_success/total:.0f}%)")
+    print(f"  Agent-level success:  {agent_success}/{total}  ({100 * agent_success / total:.0f}%)")
     print("    (imported OR agent picked a real job that was already in DB)")
     print()
     for label, count in sorted(buckets.items(), key=lambda x: -x[1]):

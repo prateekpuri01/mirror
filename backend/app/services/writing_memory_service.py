@@ -1,7 +1,7 @@
 """CRUD and lifecycle operations for the writing memory system."""
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,9 +60,7 @@ async def get_all_rules(
 
 
 async def get_rule(session: AsyncSession, rule_id: uuid.UUID) -> WritingMemory | None:
-    result = await session.execute(
-        select(WritingMemory).where(WritingMemory.id == rule_id)
-    )
+    result = await session.execute(select(WritingMemory).where(WritingMemory.id == rule_id))
     return result.scalar_one_or_none()
 
 
@@ -141,7 +139,9 @@ async def update_rule(
     return rule
 
 
-async def enforce_cap(session: AsyncSession, domain: str, max_rules: int = MAX_RULES_PER_DOMAIN) -> int:
+async def enforce_cap(
+    session: AsyncSession, domain: str, max_rules: int = MAX_RULES_PER_DOMAIN
+) -> int:
     """Deactivate lowest-confidence rules if over the cap. Returns count deactivated."""
     count_result = await session.execute(
         select(func.count())
@@ -163,9 +163,7 @@ async def enforce_cap(session: AsyncSession, domain: str, max_rules: int = MAX_R
     ids = [row[0] for row in to_deactivate.all()]
     if ids:
         await session.execute(
-            update(WritingMemory)
-            .where(WritingMemory.id.in_(ids))
-            .values(is_active=False)
+            update(WritingMemory).where(WritingMemory.id.in_(ids)).values(is_active=False)
         )
         await session.flush()
     return len(ids)
@@ -176,7 +174,7 @@ async def decay_stale_rules(session: AsyncSession) -> tuple[int, int]:
 
     Returns (decayed_count, deactivated_count).
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=DECAY_THRESHOLD_DAYS)
+    cutoff = datetime.now(UTC) - timedelta(days=DECAY_THRESHOLD_DAYS)
 
     # Find stale active rules
     result = await session.execute(

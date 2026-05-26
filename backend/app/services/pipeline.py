@@ -2,13 +2,13 @@
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.prefilter import run_prefilter_batch
-from app.ai.scoring import score_job, _get_profile, _build_compact_profile, _get_example_jobs
+from app.ai.scoring import _build_compact_profile, _get_example_jobs, _get_profile, score_job
 from app.models import Job
 from app.services.auto_tagger import auto_tag_jobs
 from app.services.cleaning import clean_jobs_batch
@@ -30,7 +30,15 @@ async def process_new_jobs(
 
     Returns stats: {cleaned, scored, skipped, errors, expired_excluded}.
     """
-    stats = {"cleaned": 0, "extracted": 0, "scored": 0, "skipped": 0, "errors": 0, "expired_excluded": 0, "tagged": 0}
+    stats = {
+        "cleaned": 0,
+        "extracted": 0,
+        "scored": 0,
+        "skipped": 0,
+        "errors": 0,
+        "expired_excluded": 0,
+        "tagged": 0,
+    }
 
     # Step 1: Run Layer 2 cleaning (handles its own pipeline_stage updates)
     clean_stats = await clean_jobs_batch(session)
@@ -44,7 +52,7 @@ async def process_new_jobs(
         )
     )
     uncleaned_jobs = list(result.scalars().all())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for job in uncleaned_jobs:
         job.pipeline_stage = "cleaned"
         job.cleaned_at = now
@@ -87,6 +95,7 @@ async def process_new_jobs(
 
         # Score jobs in parallel, capped by detected API rate limits
         from app.services.rate_limits import max_concurrent_scoring
+
         scoring_semaphore = asyncio.Semaphore(max_concurrent_scoring())
 
         async def _score_one(job: Job) -> bool:
@@ -119,7 +128,12 @@ async def process_new_jobs(
 
     logger.info(
         "Pipeline complete: cleaned=%d extracted=%d scored=%d skipped=%d tagged=%d errors=%d",
-        stats["cleaned"], stats["extracted"], stats["scored"], stats["skipped"], stats["tagged"], stats["errors"],
+        stats["cleaned"],
+        stats["extracted"],
+        stats["scored"],
+        stats["skipped"],
+        stats["tagged"],
+        stats["errors"],
     )
     return stats
 
@@ -173,6 +187,7 @@ async def rescore_outdated(session: AsyncSession, prompt_version: str) -> dict:
 
     # Rescore in parallel, capped by detected API rate limits
     from app.services.rate_limits import max_concurrent_scoring
+
     rescore_sem = asyncio.Semaphore(max_concurrent_scoring())
 
     async def _rescore_one(job: Job) -> bool:
@@ -197,6 +212,8 @@ async def rescore_outdated(session: AsyncSession, prompt_version: str) -> dict:
 
     logger.info(
         "Rescore complete: %d rescored, %d failed (version: %s)",
-        stats["rescored"], stats["failed"], PROMPT_VERSION,
+        stats["rescored"],
+        stats["failed"],
+        PROMPT_VERSION,
     )
     return stats

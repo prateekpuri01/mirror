@@ -12,7 +12,7 @@ Endpoints:
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -66,19 +66,27 @@ class EightfoldScraper:
                 follow_redirects=True,
             )
             resp.raise_for_status()
-            logger.debug("Eightfold session initialized, cookies: %s", list(http_client.cookies.keys()))
+            logger.debug(
+                "Eightfold session initialized, cookies: %s", list(http_client.cookies.keys())
+            )
         except Exception:
             logger.warning("Failed to init Eightfold session at %s", api_base, exc_info=True)
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient,
-        *, known_urls: set[str] | None = None,
+        self,
+        company: Company,
+        http_client: httpx.AsyncClient,
+        *,
+        known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]:
         domain, extra_filters = parse_eightfold_slug(company.eightfold_slug)
         api_base = self._api_base(company, domain)
         logger.info(
             "Fetching Eightfold jobs for %s (domain=%s, base=%s, filters=%s)",
-            company.name, domain, api_base, extra_filters or "none",
+            company.name,
+            domain,
+            api_base,
+            extra_filters or "none",
         )
 
         # Initialize session (cookies)
@@ -120,7 +128,9 @@ class EightfoldScraper:
             all_positions.extend(positions)
             start += len(positions)
 
-        logger.info("Collected %d positions for %s, fetching details...", len(all_positions), company.name)
+        logger.info(
+            "Collected %d positions for %s, fetching details...", len(all_positions), company.name
+        )
 
         # Step 2: split into known (skip detail fetch) and new
         from app.services.scrape_progress import progress
@@ -133,23 +143,27 @@ class EightfoldScraper:
 
             if known_urls and url in known_urls:
                 location = ", ".join(pos.get("locations") or []) or None
-                known_jobs.append(ScrapedJob(
-                    title=pos.get("name", ""),
-                    company_name=company.name,
-                    url=url,
-                    description="",  # already in DB
-                    location=location,
-                    remote=pos.get("workLocationOption", "").lower() in ("remote", "remote_local"),
-                    source="eightfold",
-                    metadata={"eightfold_position_id": pos["id"]},
-                ))
+                known_jobs.append(
+                    ScrapedJob(
+                        title=pos.get("name", ""),
+                        company_name=company.name,
+                        url=url,
+                        description="",  # already in DB
+                        location=location,
+                        remote=pos.get("workLocationOption", "").lower()
+                        in ("remote", "remote_local"),
+                        source="eightfold",
+                        metadata={"eightfold_position_id": pos["id"]},
+                    )
+                )
             else:
                 new_positions.append(pos)
 
         if known_urls:
             logger.info(
                 "Skipping detail fetch for %d known jobs, fetching %d new",
-                len(known_jobs), len(new_positions),
+                len(known_jobs),
+                len(new_positions),
             )
 
         progress.fetching(len(new_positions))
@@ -165,7 +179,8 @@ class EightfoldScraper:
             except Exception:
                 logger.warning(
                     "Failed to fetch detail for %s at %s",
-                    pos.get("name"), company.name,
+                    pos.get("name"),
+                    company.name,
                     exc_info=True,
                 )
             # Rate limit: 0.3s between detail requests
@@ -204,7 +219,7 @@ class EightfoldScraper:
             )
             if resp.status_code != 429:
                 break
-            backoff = 2 ** attempt
+            backoff = 2**attempt
             logger.debug("429 for position %s, backing off %ds", position_id, backoff)
             await asyncio.sleep(backoff)
 
@@ -233,7 +248,7 @@ class EightfoldScraper:
         posted_ts = pos.get("postedTs")
         if posted_ts:
             try:
-                posted_at = datetime.fromtimestamp(posted_ts, tz=timezone.utc)
+                posted_at = datetime.fromtimestamp(posted_ts, tz=UTC)
             except (ValueError, OSError):
                 pass
 

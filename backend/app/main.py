@@ -9,21 +9,21 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database import async_session
 from app.routers.application_requirements import router as app_req_router
+from app.routers.chat import router as chat_router
+from app.routers.cleaning import router as cleaning_router
 from app.routers.companies import router as companies_router
 from app.routers.documents import router as documents_router
+from app.routers.extraction import router as extraction_router
+from app.routers.hot_search import router as hot_search_router
 from app.routers.jobs import router as jobs_router
+from app.routers.onboarding import router as onboarding_router
+from app.routers.pipeline import router as pipeline_router
 from app.routers.profile import router as profile_router
 from app.routers.scoring import router as scoring_router
 from app.routers.scrape import router as scrape_router
 from app.routers.search_profiles import router as search_profiles_router
-from app.routers.tags import router as tags_router
-from app.routers.cleaning import router as cleaning_router
-from app.routers.chat import router as chat_router
-from app.routers.extraction import router as extraction_router
-from app.routers.pipeline import router as pipeline_router
-from app.routers.hot_search import router as hot_search_router
-from app.routers.onboarding import router as onboarding_router
 from app.routers.setup import router as setup_router
+from app.routers.tags import router as tags_router
 from app.routers.writing_memory import router as writing_memory_router
 from app.services.profile_sync import sync_complete_profile, sync_profile_from_yaml
 
@@ -43,8 +43,10 @@ async def lifespan(app: FastAPI):
         # Falls back to env-var values for keys with no DB row.
         try:
             from app.services import app_settings_service
+
             await app_settings_service.load_into_settings(session, settings)
             from app.ai.client import reset_openai_client
+
             reset_openai_client()
         except Exception:
             logger.exception("Failed to load runtime settings on startup")
@@ -52,6 +54,7 @@ async def lifespan(app: FastAPI):
         # If no profile.yaml exists, fall back to the fictional .example so the
         # app boots into a usable demo state instead of an empty profile.
         from pathlib import Path
+
         profile_path = Path(settings.profile_yaml_path)
         if not profile_path.exists():
             example_path = profile_path.with_name("profile.yaml.example")
@@ -81,12 +84,14 @@ async def lifespan(app: FastAPI):
         # Clean up stale in-progress operations from previous server run
         try:
             from app.services.app_req_extraction_service import cleanup_stale_extractions
+
             await cleanup_stale_extractions(session)
         except Exception:
             logger.exception("Failed to clean up stale extractions")
 
     # Start background scheduler for daily maintenance
     from app.services.scheduler import run_scheduler
+
     scheduler_task = asyncio.create_task(run_scheduler())
 
     yield
@@ -99,6 +104,7 @@ async def lifespan(app: FastAPI):
         pass
 
     from app.services.browser_pool import shutdown as shutdown_browser
+
     await shutdown_browser()
 
 

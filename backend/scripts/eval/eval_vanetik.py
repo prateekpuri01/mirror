@@ -25,21 +25,21 @@ import json
 import logging
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 # Make the backend modules importable when run as a script
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from tests.eval.external.metrics_external import (
-    spearman_rho,
     kendall_tau,
     ndcg_at_k,
     pairwise_accuracy_from_ranking,
+    spearman_rho,
     top_k_precision,
 )
 from tests.eval.external.resume_to_profile import docx_to_profile
-from tests.eval.external.scoring_runner import score_pair, ScoredPair
+from tests.eval.external.scoring_runner import ScoredPair, score_pair
 from tests.eval.external.vanetik_loader import (
     annotator_ranking_to_relevance,
     ensure_dataset_local,
@@ -155,10 +155,16 @@ def _aggregate(per_cv_rows: list[dict]) -> dict:
     top1_hits: dict[str, list[bool]] = {}
     for row in per_cv_rows:
         for ann_label, m in row.get("metrics", {}).items():
-            agg.setdefault(ann_label, {
-                "spearman": [], "kendall": [], "ndcg_at_5": [],
-                "top_3_precision": [], "pairwise_accuracy": [],
-            })
+            agg.setdefault(
+                ann_label,
+                {
+                    "spearman": [],
+                    "kendall": [],
+                    "ndcg_at_5": [],
+                    "top_3_precision": [],
+                    "pairwise_accuracy": [],
+                },
+            )
             agg[ann_label]["spearman"].append(m["spearman"])
             agg[ann_label]["kendall"].append(m["kendall"])
             agg[ann_label]["ndcg_at_5"].append(m["ndcg_at_5"])
@@ -186,13 +192,19 @@ def _aggregate(per_cv_rows: list[dict]) -> dict:
 def _print_report(report: dict) -> None:
     print()
     print("=" * 70)
-    print(f"VANETIK EVAL  —  {report['n_cvs_evaluated']} CVs × 5 vacancies = {report['n_pairs']} pairs")
+    print(
+        f"VANETIK EVAL  —  {report['n_cvs_evaluated']} CVs × 5 vacancies = {report['n_pairs']} pairs"
+    )
     print(f"Elapsed: {report['elapsed_sec']:.1f}s   Errors: {report['n_errors']}")
     print("=" * 70)
     for ann_label, m in report["aggregate"].items():
         print(f"\n[{ann_label}]  ({m['n_cvs']} CVs)")
-        print(f"  Mean pairwise acc    :  {m['mean_pairwise_accuracy']:.3f}    (chance 0.50, target > 0.65) ← relative ordering")
-        print(f"  Mean nDCG@5          :  {m['mean_ndcg_at_5']:.3f}    (target > 0.6) ← top-of-list quality")
+        print(
+            f"  Mean pairwise acc    :  {m['mean_pairwise_accuracy']:.3f}    (chance 0.50, target > 0.65) ← relative ordering"
+        )
+        print(
+            f"  Mean nDCG@5          :  {m['mean_ndcg_at_5']:.3f}    (target > 0.6) ← top-of-list quality"
+        )
         print(f"  Top-1 hit rate       :  {m['top_1_hit_rate']:.3f}    (chance 0.20)")
         print(f"  Mean top-3 precision :  {m['mean_top_3_precision']:.3f}    (target > 0.60)")
         print(f"  Mean Spearman ρ      : {m['mean_spearman']:+.3f}    (full-rank correlation)")
@@ -210,7 +222,12 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Vanetik fit-score evaluation")
     parser.add_argument("--cvs", type=int, default=30, help="Number of CVs to evaluate (max 30)")
     parser.add_argument("--concurrency", type=int, default=4, help="Parallel CV workers")
-    parser.add_argument("--cv-ids", type=str, default=None, help="Comma-separated CV ids to evaluate (overrides --cvs)")
+    parser.add_argument(
+        "--cv-ids",
+        type=str,
+        default=None,
+        help="Comma-separated CV ids to evaluate (overrides --cvs)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args()
 
@@ -228,8 +245,10 @@ async def main() -> None:
     else:
         cv_ids = annotated_cvs[: args.cvs]
 
-    print(f"Evaluating {len(cv_ids)} CVs against {len(bundle.vacancies)} vacancies "
-          f"(concurrency={args.concurrency})")
+    print(
+        f"Evaluating {len(cv_ids)} CVs against {len(bundle.vacancies)} vacancies "
+        f"(concurrency={args.concurrency})"
+    )
     t0 = time.time()
 
     sem = asyncio.Semaphore(args.concurrency)
@@ -252,7 +271,7 @@ async def main() -> None:
     aggregate = _aggregate([r for r in rows if not r.get("error")])
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     report_path = RESULTS_DIR / f"vanetik_{timestamp}.json"
 
     report = {

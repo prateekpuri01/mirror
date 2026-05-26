@@ -9,7 +9,7 @@ Typical speedup: 15s → 3s per page fetch.
 import asyncio
 import logging
 
-from playwright.async_api import async_playwright, Browser, Playwright
+from playwright.async_api import Browser, Playwright, async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,9 @@ async def fetch_page_text(url: str, wait_ms: int = 3000, timeout_ms: int = 20000
 
 
 async def fetch_page_links(
-    url: str, wait_ms: int = 4000, timeout_ms: int = 25000,
+    url: str,
+    wait_ms: int = 4000,
+    timeout_ms: int = 25000,
 ) -> list[tuple[str, str]]:
     """Render a page in Playwright and return all <a> links as (href, text) tuples.
 
@@ -115,7 +117,9 @@ async def fetch_page_links(
         return []
 
 
-async def discover_ashby_org_slug(parent_url: str, timeout_ms: int = 25000, wait_ms: int = 4000) -> str | None:
+async def discover_ashby_org_slug(
+    parent_url: str, timeout_ms: int = 25000, wait_ms: int = 4000
+) -> str | None:
     """Open ``parent_url`` in Playwright and sniff requests for the org slug.
 
     Many companies embed Ashby via ``?ashby_jid=<uuid>`` on their own careers
@@ -125,6 +129,7 @@ async def discover_ashby_org_slug(parent_url: str, timeout_ms: int = 25000, wait
     first such URL and let the caller build the canonical posting URL.
     """
     import re
+
     pattern = re.compile(r"https?://jobs\.ashbyhq\.com/([A-Za-z0-9_-]+)/", re.IGNORECASE)
     found: list[str] = []
 

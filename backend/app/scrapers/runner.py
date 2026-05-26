@@ -2,7 +2,7 @@
 
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from sqlalchemy import func, select
@@ -57,7 +57,7 @@ async def run_scrape(
                 run = ScrapeRun(
                     source=JobSource(scraper.source_name),
                     company_id=company.id,
-                    started_at=datetime.now(timezone.utc),
+                    started_at=datetime.now(UTC),
                     status="running",
                 )
                 session.add(run)
@@ -66,9 +66,7 @@ async def run_scrape(
                 try:
                     scraped_jobs = await scraper.scrape_company(company, client)
                     filtered_jobs = _apply_filters(scraped_jobs, company)
-                    new_count, updated_count = await _persist_jobs(
-                        session, filtered_jobs, company
-                    )
+                    new_count, updated_count = await _persist_jobs(session, filtered_jobs, company)
 
                     # Detect expired jobs (listings missing from current scrape)
                     scraped_urls = {sj.url for sj in scraped_jobs if sj.url}
@@ -81,14 +79,14 @@ async def run_scrape(
                     run.jobs_updated = updated_count
                     run.jobs_expired = expired_count
                     run.status = "completed"
-                    run.finished_at = datetime.now(timezone.utc)
+                    run.finished_at = datetime.now(UTC)
 
-                    company.last_scraped_at = datetime.now(timezone.utc)
+                    company.last_scraped_at = datetime.now(UTC)
                 except Exception as exc:
                     logger.exception("Scrape failed for %s", company.name)
                     run.status = "failed"
                     run.error_message = str(exc)[:2000]
-                    run.finished_at = datetime.now(timezone.utc)
+                    run.finished_at = datetime.now(UTC)
 
                 runs.append(run)
 
@@ -96,9 +94,7 @@ async def run_scrape(
     return runs
 
 
-def _apply_filters(
-    scraped_jobs: list[ScrapedJob], company: Company
-) -> list[ScrapedJob]:
+def _apply_filters(scraped_jobs: list[ScrapedJob], company: Company) -> list[ScrapedJob]:
     """Filter scraped jobs using company include/exclude patterns.
 
     Matching is case-insensitive substring against title + department/team.
@@ -142,7 +138,10 @@ def _apply_filters(
     if dropped:
         logger.info(
             "Filtered %d → %d jobs for %s (%d dropped)",
-            len(scraped_jobs), len(kept), company.name, dropped,
+            len(scraped_jobs),
+            len(kept),
+            company.name,
+            dropped,
         )
     return kept
 
@@ -169,7 +168,7 @@ async def _persist_jobs(
             existing.description = sj.description
             existing.description_html = sj.description_html
             existing.extra_metadata = sj.metadata
-            existing.last_seen_at = datetime.now(timezone.utc)
+            existing.last_seen_at = datetime.now(UTC)
             if sj.salary_min:
                 existing.salary_min = sj.salary_min
             if sj.salary_max:
@@ -188,12 +187,12 @@ async def _persist_jobs(
         ).scalar_one_or_none()
 
         if fuzzy:
-            fuzzy.last_seen_at = datetime.now(timezone.utc)
+            fuzzy.last_seen_at = datetime.now(UTC)
             logger.debug("Fuzzy duplicate skipped: %s at %s", sj.title, company.name)
             continue
 
         # New job
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         job = Job(
             title=sj.title,
             company=company.name,
@@ -244,14 +243,16 @@ async def _detect_expired_jobs(
     )
     stale_jobs = list(result.scalars().all())
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for job in stale_jobs:
         job.expired_at = now
 
     if stale_jobs:
         logger.info(
             "Expired %d jobs for %s (%s) — no longer listed",
-            len(stale_jobs), company.name, source.value,
+            len(stale_jobs),
+            company.name,
+            source.value,
         )
 
     return len(stale_jobs)
@@ -262,7 +263,7 @@ async def expire_stale_hn_jobs(session: AsyncSession, max_age_days: int = 45) ->
 
     HN threads don't have a persistent listing — jobs just age out.
     """
-    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    cutoff = datetime.now(UTC) - timedelta(days=max_age_days)
     result = await session.execute(
         select(Job).where(
             Job.source == JobSource.hn_who_is_hiring,
@@ -272,7 +273,7 @@ async def expire_stale_hn_jobs(session: AsyncSession, max_age_days: int = 45) ->
         )
     )
     stale = list(result.scalars().all())
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for job in stale:
         job.expired_at = now
 
@@ -287,7 +288,7 @@ async def run_hn_scrape(session: AsyncSession) -> ScrapeRun:
     """Scrape latest HN 'Who is hiring?' thread. Returns a ScrapeRun record."""
     run = ScrapeRun(
         source=JobSource.hn_who_is_hiring,
-        started_at=datetime.now(timezone.utc),
+        started_at=datetime.now(UTC),
         status="running",
     )
     session.add(run)
@@ -303,12 +304,12 @@ async def run_hn_scrape(session: AsyncSession) -> ScrapeRun:
         run.jobs_new = new_count
         run.jobs_updated = updated_count
         run.status = "completed"
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
     except Exception as exc:
         logger.exception("HN scrape failed")
         run.status = "failed"
         run.error_message = str(exc)[:2000]
-        run.finished_at = datetime.now(timezone.utc)
+        run.finished_at = datetime.now(UTC)
 
     await session.commit()
     return run
@@ -333,11 +334,11 @@ async def _persist_hn_jobs(
             existing.description = sj.description
             existing.description_html = sj.description_html
             existing.extra_metadata = sj.metadata
-            existing.last_seen_at = datetime.now(timezone.utc)
+            existing.last_seen_at = datetime.now(UTC)
             updated_count += 1
             continue
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         job = Job(
             title=sj.title,
             company=sj.company_name,

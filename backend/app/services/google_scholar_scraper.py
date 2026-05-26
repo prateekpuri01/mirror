@@ -12,9 +12,10 @@ IDs, since Scholar's profile page only shows a one-line snippet.
 """
 
 import logging
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import parse_qs, urlparse
 
-from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
+from playwright.async_api import TimeoutError as PlaywrightTimeout
+from playwright.async_api import async_playwright
 
 logger = logging.getLogger(__name__)
 
@@ -59,15 +60,13 @@ async def scrape_scholar_publications(
     user_id = _extract_scholar_user_id(scholar_url)
     if not user_id:
         logger.warning(
-            "Could not extract user= from Scholar URL: %s — bailing", scholar_url,
+            "Could not extract user= from Scholar URL: %s — bailing",
+            scholar_url,
         )
         return []
 
     # Ask for 100 papers per page so most authors load in one request.
-    profile_url = (
-        f"https://scholar.google.com/citations?user={user_id}"
-        f"&hl=en&cstart=0&pagesize=100"
-    )
+    profile_url = f"https://scholar.google.com/citations?user={user_id}&hl=en&cstart=0&pagesize=100"
 
     try:
         async with async_playwright() as pw:
@@ -84,14 +83,17 @@ async def scrape_scholar_publications(
 
             try:
                 await page.goto(
-                    profile_url, wait_until="domcontentloaded", timeout=20000,
+                    profile_url,
+                    wait_until="domcontentloaded",
+                    timeout=20000,
                 )
                 # Let the publication table render
                 await page.wait_for_selector("tr.gsc_a_tr", timeout=8000)
             except PlaywrightTimeout:
                 await browser.close()
                 logger.warning(
-                    "Scholar page load / table render timed out: %s", profile_url,
+                    "Scholar page load / table render timed out: %s",
+                    profile_url,
                 )
                 return []
 
@@ -126,8 +128,7 @@ async def scrape_scholar_publications(
                         continue
                     paper_link_attr = await title_el.get_attribute("href")
                     scholar_link = (
-                        f"https://scholar.google.com{paper_link_attr}"
-                        if paper_link_attr else None
+                        f"https://scholar.google.com{paper_link_attr}" if paper_link_attr else None
                     )
 
                     # Scholar puts authors + venue in two .gs_gray divs
@@ -147,9 +148,7 @@ async def scrape_scholar_publications(
                     cite_text = (await cite_el.inner_text()).strip() if cite_el else ""
 
                     authors = [
-                        a.strip().rstrip("…").strip()
-                        for a in authors_text.split(",")
-                        if a.strip()
+                        a.strip().rstrip("…").strip() for a in authors_text.split(",") if a.strip()
                     ]
                     year: int | None = None
                     if year_text.isdigit():
@@ -158,24 +157,28 @@ async def scrape_scholar_publications(
                     if cite_text.isdigit():
                         citation_count = int(cite_text)
 
-                    papers.append({
-                        "title": title,
-                        "authors": authors,
-                        "venue": venue_text,
-                        "year": year,
-                        "citation_count": citation_count,
-                        "scholar_link": scholar_link,
-                    })
+                    papers.append(
+                        {
+                            "title": title,
+                            "authors": authors,
+                            "venue": venue_text,
+                            "year": year,
+                            "citation_count": citation_count,
+                            "scholar_link": scholar_link,
+                        }
+                    )
                 except Exception:
                     logger.warning(
-                        "Failed to parse a Scholar row — skipping", exc_info=True,
+                        "Failed to parse a Scholar row — skipping",
+                        exc_info=True,
                     )
                     continue
 
             await browser.close()
             logger.info(
                 "Scraped %d papers from Scholar profile (user=%s)",
-                len(papers), user_id,
+                len(papers),
+                user_id,
             )
             return papers
     except Exception:

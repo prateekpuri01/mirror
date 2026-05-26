@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 
@@ -12,15 +13,12 @@ from app.models.jobs import Job
 from app.models.locations import JobLocation, Location
 from app.schemas.locations import LocationRead
 from app.services.extraction import (
-    get_extraction_status,
-    run_extraction_pipeline,
     _browser_salary_fallback,
     _extract_one,
     _make_display_name,
-    _truncate_description,
+    get_extraction_status,
+    run_extraction_pipeline,
 )
-
-import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +43,7 @@ async def run_extraction(background_tasks: BackgroundTasks):
     """
     status = get_extraction_status()
     if status["running"]:
-        raise HTTPException(
-            status_code=409, detail="Extraction pipeline already in progress"
-        )
+        raise HTTPException(status_code=409, detail="Extraction pipeline already in progress")
     background_tasks.add_task(_run_extraction)
     return {"message": "Extraction pipeline started", "status": "running"}
 
@@ -87,7 +83,7 @@ async def extract_preview(
     semaphore = asyncio.Semaphore(1)
     # Retry up to 2 times
     extracted = None
-    for attempt in range(2):
+    for _attempt in range(2):
         _, extracted = await _extract_one(job, semaphore)
         if extracted is not None:
             break
@@ -140,9 +136,7 @@ async def extract_apply(
         job.remote = body.work_model == "remote"
 
     # Update locations — clear existing links and rebuild
-    await session.execute(
-        JobLocation.__table__.delete().where(JobLocation.job_id == job_id)
-    )
+    await session.execute(JobLocation.__table__.delete().where(JobLocation.job_id == job_id))
 
     if body.locations:
         for loc_dict in body.locations:
@@ -151,9 +145,7 @@ async def extract_apply(
                 continue
 
             # Find or create location
-            existing = await session.execute(
-                select(Location).where(Location.display_name == dn)
-            )
+            existing = await session.execute(select(Location).where(Location.display_name == dn))
             location = existing.scalar_one_or_none()
             if location is None:
                 location = Location(
@@ -167,9 +159,11 @@ async def extract_apply(
                 await session.flush()
 
             # Link job to location
-            stmt = pg_insert(JobLocation).values(
-                job_id=job_id, location_id=location.id
-            ).on_conflict_do_nothing()
+            stmt = (
+                pg_insert(JobLocation)
+                .values(job_id=job_id, location_id=location.id)
+                .on_conflict_do_nothing()
+            )
             await session.execute(stmt)
 
     # Mark as extracted

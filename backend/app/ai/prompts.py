@@ -287,7 +287,9 @@ def build_interest_fit_prompt(
     """Build messages for interest fit scoring."""
     examples_section = f"## Positive Interest Signals (jobs the candidate actively sought out)\n\n{positive_examples}"
     if negative_examples:
-        examples_section += f"\n\n## Negative Signals (jobs the candidate rejected)\n\n{negative_examples}"
+        examples_section += (
+            f"\n\n## Negative Signals (jobs the candidate rejected)\n\n{negative_examples}"
+        )
 
     return [
         {

@@ -24,7 +24,9 @@ async def _backfill_tag(tag_id: uuid.UUID) -> None:
     try:
         async with async_session() as session:
             from sqlalchemy import select
+
             from app.models import Tag
+
             result = await session.execute(select(Tag).where(Tag.id == tag_id))
             tag = result.scalar_one_or_none()
             if tag:

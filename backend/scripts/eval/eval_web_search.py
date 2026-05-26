@@ -54,11 +54,11 @@ for _root in (_HERE.parents[1], _HERE.parents[2] / "backend"):
 
 from app.ai.client import RESUME_MODEL, get_openai_client  # noqa: E402
 from app.config import settings  # noqa: E402
-from app.services.web_search import _perplexity_search, _searxng_search  # noqa: E402
+from app.services.web_search import _searxng_search  # noqa: E402
 from app.services.web_search_llm import (  # noqa: E402
-    _OPENAI_WEB_SEARCH_MODEL_DEFAULT,
     _ANTHROPIC_WEB_SEARCH_MODEL_DEFAULT,
     _ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
+    _OPENAI_WEB_SEARCH_MODEL_DEFAULT,
     _extract_anthropic_citations,
     _extract_openai_citations,
     _join_anthropic_text,
@@ -76,11 +76,11 @@ logger.setLevel(logging.INFO)
 
 @dataclass
 class Query:
-    label: str            # short name for the table column
-    text: str             # the actual search query
-    shape: str            # company_research | discovery | recency | disambiguation | precision
-    expects_recency: bool # whether the recency axis is graded
-    judge_notes: str      # what "good" looks like for this query
+    label: str  # short name for the table column
+    text: str  # the actual search query
+    shape: str  # company_research | discovery | recency | disambiguation | precision
+    expects_recency: bool  # whether the recency axis is graded
+    judge_notes: str  # what "good" looks like for this query
     expected_answer_hint: str = ""  # short ground-truth hint the judge can use
 
 
@@ -180,9 +180,9 @@ async def test_perplexity(q: Query) -> BackendResult:
     grounded-LLM mode that ``_research_via_perplexity`` uses, not the
     raw-results helper."""
     if not settings.perplexity_api_key:
-        return BackendResult(backend="perplexity", query_label=q.label,
-                             elapsed_s=0.0, skipped=True)
+        return BackendResult(backend="perplexity", query_label=q.label, elapsed_s=0.0, skipped=True)
     import httpx
+
     t0 = time.perf_counter()
     try:
         async with httpx.AsyncClient(timeout=45) as client:
@@ -212,23 +212,28 @@ async def test_perplexity(q: Query) -> BackendResult:
         answer = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         citations = []
         for item in data.get("search_results", [])[:8]:
-            citations.append({
-                "title": item.get("title", "") or "",
-                "url": item.get("url", "") or "",
-                "snippet": item.get("date", "") or "",
-            })
+            citations.append(
+                {
+                    "title": item.get("title", "") or "",
+                    "url": item.get("url", "") or "",
+                    "snippet": item.get("date", "") or "",
+                }
+            )
         if not citations:
             for url in data.get("citations", [])[:8]:
                 if url:
                     citations.append({"title": "", "url": url, "snippet": ""})
         return BackendResult(
-            backend="perplexity", query_label=q.label,
+            backend="perplexity",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
-            answer=answer, citations=citations,
+            answer=answer,
+            citations=citations,
         )
     except Exception as e:
         return BackendResult(
-            backend="perplexity", query_label=q.label,
+            backend="perplexity",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             error=str(e)[:300],
         )
@@ -238,9 +243,11 @@ async def test_openai_native(q: Query) -> BackendResult:
     """Direct OpenAI Responses API call — bypasses ``llm_web_search`` so
     we can run this even when LLM_PROVIDER != openai."""
     if not settings.openai_api_key:
-        return BackendResult(backend="openai-native", query_label=q.label,
-                             elapsed_s=0.0, skipped=True)
+        return BackendResult(
+            backend="openai-native", query_label=q.label, elapsed_s=0.0, skipped=True
+        )
     from openai import AsyncOpenAI
+
     client = AsyncOpenAI(api_key=settings.openai_api_key)
     model = settings.llm_web_search_model or _OPENAI_WEB_SEARCH_MODEL_DEFAULT
     t0 = time.perf_counter()
@@ -253,14 +260,16 @@ async def test_openai_native(q: Query) -> BackendResult:
         answer = (getattr(response, "output_text", "") or "").strip()
         cits = _extract_openai_citations(response, num_results=8)
         return BackendResult(
-            backend="openai-native", query_label=q.label,
+            backend="openai-native",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             answer=answer,
             citations=[asdict(c) for c in cits],
         )
     except Exception as e:
         return BackendResult(
-            backend="openai-native", query_label=q.label,
+            backend="openai-native",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             error=str(e)[:300],
         )
@@ -269,13 +278,16 @@ async def test_openai_native(q: Query) -> BackendResult:
 async def test_anthropic_native(q: Query) -> BackendResult:
     """Direct Anthropic Messages API call with web_search tool."""
     if not settings.anthropic_api_key:
-        return BackendResult(backend="anthropic-native", query_label=q.label,
-                             elapsed_s=0.0, skipped=True)
+        return BackendResult(
+            backend="anthropic-native", query_label=q.label, elapsed_s=0.0, skipped=True
+        )
     try:
         from anthropic import AsyncAnthropic
     except ImportError:
         return BackendResult(
-            backend="anthropic-native", query_label=q.label, elapsed_s=0.0,
+            backend="anthropic-native",
+            query_label=q.label,
+            elapsed_s=0.0,
             error="anthropic SDK not installed",
         )
     client = AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -285,24 +297,28 @@ async def test_anthropic_native(q: Query) -> BackendResult:
         response = await client.messages.create(
             model=model,
             max_tokens=1500,
-            tools=[{
-                "type": _ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
-                "name": "web_search",
-                "max_uses": 5,
-            }],
+            tools=[
+                {
+                    "type": _ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
+                    "name": "web_search",
+                    "max_uses": 5,
+                }
+            ],
             messages=[{"role": "user", "content": q.text}],
         )
         answer = _join_anthropic_text(response)
         cits = _extract_anthropic_citations(response, num_results=8)
         return BackendResult(
-            backend="anthropic-native", query_label=q.label,
+            backend="anthropic-native",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             answer=answer,
             citations=[asdict(c) for c in cits],
         )
     except Exception as e:
         return BackendResult(
-            backend="anthropic-native", query_label=q.label,
+            backend="anthropic-native",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             error=str(e)[:300],
         )
@@ -314,14 +330,16 @@ async def test_searxng(q: Query) -> BackendResult:
     try:
         raw = await _searxng_search(q.text, num_results=8, time_range=None)
         return BackendResult(
-            backend="searxng", query_label=q.label,
+            backend="searxng",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             answer="",  # No synthesis from SearXNG
             citations=raw,
         )
     except Exception as e:
         return BackendResult(
-            backend="searxng", query_label=q.label,
+            backend="searxng",
+            query_label=q.label,
             elapsed_s=time.perf_counter() - t0,
             error=str(e)[:300],
         )
@@ -377,26 +395,43 @@ Output ONLY this JSON (no markdown fences):
 
 
 async def judge(
-    query: Query, result: BackendResult,
+    query: Query,
+    result: BackendResult,
 ) -> dict:
     """Grade one backend's result for one query."""
     if result.skipped:
-        return {"relevance": None, "citation_quality": None, "recency": None,
-                "reason": "skipped (backend not configured)"}
+        return {
+            "relevance": None,
+            "citation_quality": None,
+            "recency": None,
+            "reason": "skipped (backend not configured)",
+        }
     if result.error:
-        return {"relevance": 1, "citation_quality": 1, "recency": "n/a",
-                "reason": f"backend errored: {result.error[:150]}"}
+        return {
+            "relevance": 1,
+            "citation_quality": 1,
+            "recency": "n/a",
+            "reason": f"backend errored: {result.error[:150]}",
+        }
 
     body = (
         f"## Query ({query.shape})\n{query.text}\n\n"
         f"## What 'good' looks like\n{query.judge_notes}\n"
-        + (f"\n## Ground-truth hint\n{query.expected_answer_hint}\n" if query.expected_answer_hint else "")
+        + (
+            f"\n## Ground-truth hint\n{query.expected_answer_hint}\n"
+            if query.expected_answer_hint
+            else ""
+        )
         + f"\n## Backend: {result.backend}\n"
         f"\n## Answer ({len(result.answer)} chars)\n{result.answer[:2000]}\n\n"
         f"## Citations ({len(result.citations)})\n"
-        + "\n".join(f"  - {c.get('title','(no title)')} | {c.get('url','(no url)')}"
-                    for c in result.citations[:8])
-        + (f"\n\n## Note\n{'Recency matters for this query.' if query.expects_recency else 'Recency does not apply.'}")
+        + "\n".join(
+            f"  - {c.get('title', '(no title)')} | {c.get('url', '(no url)')}"
+            for c in result.citations[:8]
+        )
+        + (
+            f"\n\n## Note\n{'Recency matters for this query.' if query.expects_recency else 'Recency does not apply.'}"
+        )
     )
 
     client = get_openai_client()
@@ -418,8 +453,12 @@ async def judge(
             text = text.strip()
         return json.loads(text)
     except Exception as e:
-        return {"relevance": 1, "citation_quality": 1, "recency": "n/a",
-                "reason": f"judge call failed: {str(e)[:150]}"}
+        return {
+            "relevance": 1,
+            "citation_quality": 1,
+            "recency": "n/a",
+            "reason": f"judge call failed: {str(e)[:150]}",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -448,13 +487,17 @@ def render_markdown(rows: list[dict]) -> str:
 
     lines: list[str] = []
     lines.append("# Web search eval — backend comparison\n")
-    lines.append("Scores are `relevance / citation_quality / recency`. "
-                 "Each cell shows totals per axis on a 1-3 scale. "
-                 "`—` means the backend was skipped (no API key configured).\n")
+    lines.append(
+        "Scores are `relevance / citation_quality / recency`. "
+        "Each cell shows totals per axis on a 1-3 scale. "
+        "`—` means the backend was skipped (no API key configured).\n"
+    )
 
     # Per-backend averages
     lines.append("## Aggregate (mean of available axes)\n")
-    lines.append("| backend | mean relevance | mean citation | mean recency | mean total | wall time (s) |")
+    lines.append(
+        "| backend | mean relevance | mean citation | mean recency | mean total | wall time (s) |"
+    )
     lines.append("|---|---|---|---|---|---|")
     for backend in backends:
         rel: list[int] = []
@@ -477,8 +520,10 @@ def render_markdown(rows: list[dict]) -> str:
             if t is not None:
                 totals.append(t)
             times.append(r["elapsed_s"])
+
         def _avg(xs):
-            return f"{sum(xs)/len(xs):.2f}" if xs else "—"
+            return f"{sum(xs) / len(xs):.2f}" if xs else "—"
+
         lines.append(
             f"| {backend} | {_avg(rel)} | {_avg(cit)} | {_avg(rec)} | "
             f"{_avg(totals)} | {_avg(times)} |"
@@ -498,7 +543,7 @@ def render_markdown(rows: list[dict]) -> str:
                 row.append("—")
                 continue
             j = r["judgment"]
-            row.append(f"{j['relevance']} / {j['citation_quality']} / {j.get('recency','n/a')}")
+            row.append(f"{j['relevance']} / {j['citation_quality']} / {j.get('recency', 'n/a')}")
         lines.append("| " + " | ".join(row) + " |")
 
     lines.append("\n## Notes\n")
@@ -522,8 +567,9 @@ def render_markdown(rows: list[dict]) -> str:
 
 async def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--limit", type=int, default=None,
-                        help="Run only the first N queries (for smoke tests).")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Run only the first N queries (for smoke tests)."
+    )
     args = parser.parse_args()
 
     queries = QUERIES[: args.limit] if args.limit else QUERIES
@@ -536,9 +582,9 @@ async def main():
     rows: list[dict] = []
     for q in queries:
         print(f"\n→ {q.label}: {q.text[:100]}...")
-        backend_results = await asyncio.gather(*[
-            fn(q) for _, fn in BACKENDS
-        ], return_exceptions=False)
+        backend_results = await asyncio.gather(
+            *[fn(q) for _, fn in BACKENDS], return_exceptions=False
+        )
 
         # Judge each result (cheaper to do sequentially per-query to avoid
         # bursting the judge model)
@@ -552,19 +598,21 @@ async def main():
             print(f"   {r.backend:18} {status}")
 
             j = await judge(q, r)
-            rows.append({
-                "query": q.label,
-                "query_text": q.text,
-                "shape": q.shape,
-                "expects_recency": q.expects_recency,
-                "backend": r.backend,
-                "elapsed_s": r.elapsed_s,
-                "answer": r.answer,
-                "citations": r.citations,
-                "skipped": r.skipped,
-                "error": r.error,
-                "judgment": j,
-            })
+            rows.append(
+                {
+                    "query": q.label,
+                    "query_text": q.text,
+                    "shape": q.shape,
+                    "expects_recency": q.expects_recency,
+                    "backend": r.backend,
+                    "elapsed_s": r.elapsed_s,
+                    "answer": r.answer,
+                    "citations": r.citations,
+                    "skipped": r.skipped,
+                    "error": r.error,
+                    "judgment": j,
+                }
+            )
 
     # Persist
     out_dir = Path(os.environ.get("EVAL_OUTPUT_DIR", "output"))

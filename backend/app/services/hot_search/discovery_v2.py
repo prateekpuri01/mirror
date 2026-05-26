@@ -26,16 +26,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
-from typing import Sequence
 from urllib.parse import urlparse
 
 from app.services.hot_search.discovery import (
     _ATS_URL_PATTERNS,
     _SKIP_DOMAINS,
+    _generate_queries,
     _looks_like_careers_url,
     _looks_like_direct_job_url,
-    _generate_queries,
 )
 from app.services.hot_search.types import CompanyCandidate
 from app.services.web_search_llm import llm_web_search
@@ -202,7 +200,7 @@ def _build_llm_web_query(
     sections.append("")
     sections.append("CANDIDATE")
     if guidance and guidance.strip():
-        sections.append(f"Search topic: \"{guidance.strip()}\"")
+        sections.append(f'Search topic: "{guidance.strip()}"')
     else:
         sections.append(
             "The candidate hasn't specified a topic — infer from their target "
@@ -241,8 +239,7 @@ def _build_llm_web_query(
     )
     sections.append("")
     sections.append(
-        'Output one company per line: "Name — why they\'re a fit." '
-        "No numbering, no extra prose."
+        'Output one company per line: "Name — why they\'re a fit." No numbering, no extra prose.'
     )
     return "\n".join(sections)
 
@@ -363,14 +360,16 @@ async def _one_query_to_candidates(
                     # may be a slug-with-dashes; orchestrator's dedup
                     # LLM call will normalize names later).
                     name_guess = slug.replace("-", " ").title()
-                    candidates.append(CompanyCandidate(
-                        name=name_guess,
-                        url=url,
-                        ats=ats,
-                        slug=slug,
-                        source="llm_web",
-                        origin="query",
-                    ))
+                    candidates.append(
+                        CompanyCandidate(
+                            name=name_guess,
+                            url=url,
+                            ats=ats,
+                            slug=slug,
+                            source="llm_web",
+                            origin="query",
+                        )
+                    )
                     break
             continue
 
@@ -391,13 +390,15 @@ async def _one_query_to_candidates(
                 or host.split(".")[0].title()
                 or "Unknown"
             )
-            candidates.append(CompanyCandidate(
-                name=name_guess,
-                url=url,
-                source="llm_web",
-                direct_job_url=url,
-                origin="query",
-            ))
+            candidates.append(
+                CompanyCandidate(
+                    name=name_guess,
+                    url=url,
+                    source="llm_web",
+                    direct_job_url=url,
+                    origin="query",
+                )
+            )
             continue
 
         if rank == 3:
@@ -416,12 +417,14 @@ async def _one_query_to_candidates(
             if key in seen:
                 continue
             seen.add(key)
-            candidates.append(CompanyCandidate(
-                name=root.title(),
-                url=url,
-                source="llm_web",
-                origin="query",
-            ))
+            candidates.append(
+                CompanyCandidate(
+                    name=root.title(),
+                    url=url,
+                    source="llm_web",
+                    origin="query",
+                )
+            )
             continue
 
     # Primary output of the recruiter prompt is the agent's answer
@@ -447,12 +450,14 @@ async def _one_query_to_candidates(
         if any(c.name.lower().replace(" ", "").replace("-", "") == collapsed for c in candidates):
             continue
         seen.add(f"named:{norm}")
-        candidates.append(CompanyCandidate(
-            name=name,
-            url=None,
-            source="llm_web",
-            origin="query",
-        ))
+        candidates.append(
+            CompanyCandidate(
+                name=name,
+                url=None,
+                source="llm_web",
+                origin="query",
+            )
+        )
 
     return candidates
 
@@ -490,8 +495,8 @@ async def discover_via_llm_web(
         existing_companies or [],
         past_queries or [],
         evaluated or {},
-        0,                   # hits_so_far
-        n_queries,           # target — caps generation
+        0,  # hits_so_far
+        n_queries,  # target — caps generation
         sources,
         locations=locations,
         min_salary=min_salary,
@@ -548,7 +553,8 @@ async def discover_via_llm_web(
 
     logger.info(
         "discover_via_llm_web: %d candidates from %d queries",
-        len(out), len(queries),
+        len(out),
+        len(queries),
     )
     return out
 

@@ -74,7 +74,9 @@ is based — extract those.
 
 Return ONLY the JSON object, no markdown fences or extra text."""
 
-BROWSER_SALARY_SYSTEM = "You extract salary information from job posting page text. Return valid JSON only."
+BROWSER_SALARY_SYSTEM = (
+    "You extract salary information from job posting page text. Return valid JSON only."
+)
 
 BROWSER_SALARY_PROMPT = """\
 The following is the full visible text from a job posting page. Extract the salary/compensation information.
@@ -241,9 +243,13 @@ def _reset_status() -> None:
 # LLM call helpers
 # ---------------------------------------------------------------------------
 
+
 def _get_concurrency() -> int:
     from app.services.rate_limits import max_concurrent_llm_calls
+
     return max_concurrent_llm_calls()
+
+
 BATCH_COMMIT_SIZE = 100
 
 
@@ -272,7 +278,8 @@ def _count_expected_locations(raw_location: str | None) -> int:
     # Filter out non-location parts like "Remote", "REMOTE (US)", region names
     skip = {"remote", "united states", "us", "global", "north america", "canada"}
     city_parts = [
-        p for p in parts
+        p
+        for p in parts
         if p.lower().split("(")[0].strip().rstrip("-").strip().lower() not in skip
         and "remote" not in p.lower()
         and " - " not in p  # region like "Northeast - United States"
@@ -340,7 +347,9 @@ async def _extract_one(
             got = len(extracted.get("locations", []))
             if expected >= 2 and got < expected:
                 retry_msg = RETRY_PROMPT.format(
-                    got=got, expected=expected, location=job.location,
+                    got=got,
+                    expected=expected,
+                    location=job.location,
                 )
                 messages.append({"role": "assistant", "content": text})
                 messages.append({"role": "user", "content": retry_msg})
@@ -404,7 +413,10 @@ async def _browser_salary_fallback(job: Job) -> dict | None:
         if result.get("salary_confidence", "none") != "none" and result.get("salary_min"):
             logger.info(
                 "Browser fallback found salary for %s: %s-%s (%s)",
-                job.id, result["salary_min"], result.get("salary_max"), result["salary_confidence"],
+                job.id,
+                result["salary_min"],
+                result.get("salary_max"),
+                result["salary_confidence"],
             )
             return result
 
@@ -569,10 +581,7 @@ async def extract_new_jobs(
     """
     stats = {"extracted": 0, "failed": 0}
 
-    to_extract = [
-        j for j in jobs
-        if any(p.should_process(j) for p in FIELD_PROCESSORS.values())
-    ]
+    to_extract = [j for j in jobs if any(p.should_process(j) for p in FIELD_PROCESSORS.values())]
 
     if not to_extract:
         return stats
@@ -597,9 +606,7 @@ async def extract_new_jobs(
                     try:
                         await processor.apply(job, extracted, context)
                     except Exception:
-                        logger.exception(
-                            "Processor %s failed for job %s", name, job.id
-                        )
+                        logger.exception("Processor %s failed for job %s", name, job.id)
 
             meta = dict(job.extra_metadata or {})
             meta["extracted"] = True
@@ -621,6 +628,7 @@ async def extract_new_jobs(
             logger.info("Running browser salary fallback for %d jobs", len(fallback_jobs))
             # Run in parallel, capped by detected limits
             from app.services.rate_limits import max_concurrent_browser
+
             fallback_sem = asyncio.Semaphore(max_concurrent_browser())
 
             async def _fallback_one(job: Job) -> bool:
@@ -639,11 +647,14 @@ async def extract_new_jobs(
             results = await asyncio.gather(*[_fallback_one(j) for j in fallback_jobs])
             fallback_count = sum(1 for r in results if r)
             await session.commit()
-            logger.info("Browser fallback: found salary for %d/%d jobs", fallback_count, len(fallback_jobs))
+            logger.info(
+                "Browser fallback: found salary for %d/%d jobs", fallback_count, len(fallback_jobs)
+            )
 
     logger.info(
         "Extraction for new jobs complete: %d extracted, %d failed",
-        stats["extracted"], stats["failed"],
+        stats["extracted"],
+        stats["failed"],
     )
     return stats
 
@@ -670,8 +681,7 @@ async def run_extraction_pipeline(session: AsyncSession) -> None:
 
         # Filter to jobs where at least one processor wants to run
         jobs_to_process = [
-            j for j in all_jobs
-            if any(p.should_process(j) for p in FIELD_PROCESSORS.values())
+            j for j in all_jobs if any(p.should_process(j) for p in FIELD_PROCESSORS.values())
         ]
 
         _extraction_status["total_jobs"] = len(jobs_to_process)
@@ -703,9 +713,7 @@ async def run_extraction_pipeline(session: AsyncSession) -> None:
                         try:
                             await processor.apply(job, extracted, context)
                         except Exception:
-                            logger.exception(
-                                "Processor %s failed for job %s", name, job.id
-                            )
+                            logger.exception("Processor %s failed for job %s", name, job.id)
 
                 # Stamp extraction complete so re-runs skip this job
                 meta = dict(job.extra_metadata or {})

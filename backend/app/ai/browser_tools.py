@@ -329,6 +329,7 @@ class PlaywrightToolExecutor:
 
     async def _tool_navigate(self, input: dict) -> str:
         import asyncio
+
         url = input["url"]
         response = await self.page.goto(url, wait_until="domcontentloaded", timeout=30000)
         status = response.status if response else "unknown"
@@ -370,6 +371,7 @@ class PlaywrightToolExecutor:
             flush their render queue.
             """
             import asyncio
+
             try:
                 await self.page.wait_for_load_state("networkidle", timeout=3000)
             except Exception:
@@ -414,6 +416,7 @@ class PlaywrightToolExecutor:
         after a few seconds.
         """
         import asyncio
+
         selector = input["selector"]
         query = input["query"]
         try:
@@ -459,9 +462,7 @@ class PlaywrightToolExecutor:
         #    picker sees job titles from the full list.
         try:
             for _ in range(3):
-                await self.page.evaluate(
-                    "window.scrollBy(0, window.innerHeight * 2)"
-                )
+                await self.page.evaluate("window.scrollBy(0, window.innerHeight * 2)")
                 await asyncio.sleep(0.3)
             await self.page.evaluate("window.scrollTo(0, 0)")
             await asyncio.sleep(0.3)
@@ -543,6 +544,7 @@ class PlaywrightToolExecutor:
         Returns a JSON {url, title} on success, or an error string.
         """
         import asyncio
+
         contains_text = (input.get("contains_text") or "").strip().lower()
 
         initial_url = self.page.url
@@ -550,11 +552,17 @@ class PlaywrightToolExecutor:
         # Broad selector list. We filter visibility + text in Python.
         # Order matters: more-specific first.
         selectors = [
-            '[role="article"]', '[role="listitem"]',
-            'li[class*="job" i]', 'li[class*="card" i]',
-            'article', 'li', 'tr',
-            'div[class*="job-card" i]', 'div[class*="JobCard"]',
-            'div[class*="listing" i]', 'div[class*="posting" i]',
+            '[role="article"]',
+            '[role="listitem"]',
+            'li[class*="job" i]',
+            'li[class*="card" i]',
+            "article",
+            "li",
+            "tr",
+            'div[class*="job-card" i]',
+            'div[class*="JobCard"]',
+            'div[class*="listing" i]',
+            'div[class*="posting" i]',
         ]
 
         clicked_count = 0
@@ -619,11 +627,13 @@ class PlaywrightToolExecutor:
                         await self.page.wait_for_timeout(1000)
                     except Exception:
                         pass
-                    return json.dumps({
-                        "url": new_url,
-                        "title": text[:200],
-                        "discovered_via": "click_through",
-                    })
+                    return json.dumps(
+                        {
+                            "url": new_url,
+                            "title": text[:200],
+                            "discovered_via": "click_through",
+                        }
+                    )
 
                 # URL didn't change — maybe a modal/side-panel appeared.
                 # Look for the first visible apply/details link.
@@ -641,11 +651,13 @@ class PlaywrightToolExecutor:
                 except Exception:
                     apply_link = None
                 if apply_link and apply_link.get("url") and apply_link["url"] != initial_url:
-                    return json.dumps({
-                        "url": apply_link["url"],
-                        "title": text[:200],
-                        "discovered_via": "click_through_modal",
-                    })
+                    return json.dumps(
+                        {
+                            "url": apply_link["url"],
+                            "title": text[:200],
+                            "discovered_via": "click_through_modal",
+                        }
+                    )
 
         if clicked_count == 0:
             return "No clickable cards found matching criteria. Page may be empty or still loading."

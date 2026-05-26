@@ -4,20 +4,20 @@ import asyncio
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import select, or_
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_openai_client, RESUME_MODEL
+from app.ai.client import RESUME_MODEL, get_openai_client
 from app.ai.prompts import (
     PROMPT_VERSION,
-    build_role_fit_system,
+    build_interest_fit_prompt,
     build_interest_fit_system,
     build_role_fit_prompt,
-    build_interest_fit_prompt,
-    format_job_for_scoring,
+    build_role_fit_system,
     format_example_jobs,
+    format_job_for_scoring,
 )
 from app.models import Company, Job, UserProfile
 
@@ -59,7 +59,7 @@ def _build_compact_profile(data: dict) -> str:
     # Target roles
     target_roles = data.get("target_roles", [])
     if target_roles:
-        roles = [f"{r['title']} ({r.get('seniority','')})".strip() for r in target_roles]
+        roles = [f"{r['title']} ({r.get('seniority', '')})".strip() for r in target_roles]
         lines.append(f"Target roles: {', '.join(roles)}")
 
     # Domains
@@ -71,6 +71,7 @@ def _build_compact_profile(data: dict) -> str:
     # Skills (dynamic categories)
     skills = data.get("skills", {})
     from app.ai.skill_utils import format_skills_for_prompt
+
     skills_text = format_skills_for_prompt(skills)
     if skills_text:
         lines.append(skills_text)
@@ -87,7 +88,9 @@ def _build_compact_profile(data: dict) -> str:
     lines.append("Education:")
     for edu in data.get("education", []):
         honors = f" — {edu['honors']}" if edu.get("honors") else ""
-        lines.append(f"  - {edu['degree']} {edu['field']}, {edu['institution']} ({edu['year']}){honors}")
+        lines.append(
+            f"  - {edu['degree']} {edu['field']}, {edu['institution']} ({edu['year']}){honors}"
+        )
     lines.append("")
 
     # Awards (compact)
@@ -127,7 +130,9 @@ def _build_compact_profile(data: dict) -> str:
         lines.append("Key publications:")
         for p in top_pubs:
             fa = " [first author]" if p.get("first_author") else ""
-            lines.append(f"  - \"{p.get('title', '')}\" ({p.get('venue', '')}, {p.get('year', '')}){fa}")
+            lines.append(
+                f'  - "{p.get("title", "")}" ({p.get("venue", "")}, {p.get("year", "")}){fa}'
+            )
         lines.append("")
 
     # Search preferences — prefer new free-text fields, fall back to legacy
@@ -184,18 +189,12 @@ async def _get_example_jobs(session: AsyncSession) -> tuple[list[Job], list[Job]
     Keeps prompt size bounded as users dismiss more jobs over time.
     """
     pos_result = await session.execute(
-        select(Job)
-        .where(Job.thumbs == 1)
-        .order_by(Job.updated_at.desc())
-        .limit(10)
+        select(Job).where(Job.thumbs == 1).order_by(Job.updated_at.desc()).limit(10)
     )
     positive = list(pos_result.scalars().unique().all())
 
     neg_result = await session.execute(
-        select(Job)
-        .where(Job.thumbs == -1)
-        .order_by(Job.updated_at.desc())
-        .limit(5)
+        select(Job).where(Job.thumbs == -1).order_by(Job.updated_at.desc()).limit(5)
     )
     negative = list(neg_result.scalars().unique().all())
 
@@ -260,9 +259,7 @@ async def score_job(
     # Load company notes if the job is linked to a company
     company_notes = None
     if job.company_id:
-        company_result = await session.execute(
-            select(Company).where(Company.id == job.company_id)
-        )
+        company_result = await session.execute(select(Company).where(Company.id == job.company_id))
         company = company_result.scalar_one_or_none()
         if company and company.notes:
             company_notes = company.notes
@@ -295,32 +292,40 @@ async def score_job(
 
     # Post-hoc arithmetic correction: recompute totals from sub-scores
     rf = role_result.get("role_fit", {})
-    rf_computed = sum([
-        rf.get("hard_skills", {}).get("score", 0),
-        rf.get("experience_level", {}).get("score", 0),
-        rf.get("domain_relevance", {}).get("score", 0),
-        rf.get("education_fit", {}).get("score", 0),
-    ])
+    rf_computed = sum(
+        [
+            rf.get("hard_skills", {}).get("score", 0),
+            rf.get("experience_level", {}).get("score", 0),
+            rf.get("domain_relevance", {}).get("score", 0),
+            rf.get("education_fit", {}).get("score", 0),
+        ]
+    )
     rf_reported = rf.get("score", 0)
     if rf_computed > 0 and rf_computed != rf_reported:
         logger.warning(
             "Role fit arithmetic mismatch for %s: reported=%d computed=%d",
-            job.id, rf_reported, rf_computed,
+            job.id,
+            rf_reported,
+            rf_computed,
         )
     role_score = rf_computed if rf_computed > 0 else rf_reported
 
     intf = interest_result.get("interest_fit", {})
-    if_computed = sum([
-        intf.get("role_alignment", {}).get("score", 0),
-        intf.get("domain_excitement", {}).get("score", 0),
-        intf.get("organization_fit", {}).get("score", 0),
-        intf.get("practical_factors", {}).get("score", 0),
-    ])
+    if_computed = sum(
+        [
+            intf.get("role_alignment", {}).get("score", 0),
+            intf.get("domain_excitement", {}).get("score", 0),
+            intf.get("organization_fit", {}).get("score", 0),
+            intf.get("practical_factors", {}).get("score", 0),
+        ]
+    )
     if_reported = intf.get("score", 0)
     if if_computed > 0 and if_computed != if_reported:
         logger.warning(
             "Interest fit arithmetic mismatch for %s: reported=%d computed=%d",
-            job.id, if_reported, if_computed,
+            job.id,
+            if_reported,
+            if_computed,
         )
     interest_score = if_computed if if_computed > 0 else if_reported
 
@@ -328,7 +333,7 @@ async def score_job(
     rationale = {
         **role_result,
         **interest_result,
-        "scored_at": datetime.now(timezone.utc).isoformat(),
+        "scored_at": datetime.now(UTC).isoformat(),
         "model": SCORING_MODEL,
         "prompt_version": PROMPT_VERSION,
     }
@@ -341,14 +346,17 @@ async def score_job(
     job.relevance_score = round((0.6 * role_score + 0.4 * interest_score) / 100.0, 3)
     # Pipeline tracking
     job.pipeline_stage = "scored"
-    job.scored_at = datetime.now(timezone.utc)
+    job.scored_at = datetime.now(UTC)
     job.score_prompt_version = PROMPT_VERSION
 
     await session.commit()
     await session.refresh(job)
     logger.info(
         "Scored job %s: role=%d interest=%d relevance=%.3f",
-        job.id, role_score, interest_score, job.relevance_score,
+        job.id,
+        role_score,
+        interest_score,
+        job.relevance_score,
     )
     return job
 
@@ -421,7 +429,7 @@ async def score_jobs_batch(
         "total": len(jobs),
         "completed": 0,
         "failed": 0,
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": datetime.now(UTC).isoformat(),
     }
 
     logger.info("Starting batch scoring of %d jobs (concurrency=%d)", len(jobs), _CONCURRENCY)
@@ -433,7 +441,9 @@ async def score_jobs_batch(
     for batch_start in range(0, len(jobs), batch_size):
         batch = jobs[batch_start : batch_start + batch_size]
         tasks = [
-            _score_one(job.id, semaphore, session, profile_text, profile_data, positive_jobs, negative_jobs)
+            _score_one(
+                job.id, semaphore, session, profile_text, profile_data, positive_jobs, negative_jobs
+            )
             for job in batch
         ]
         results = await asyncio.gather(*tasks)

@@ -12,12 +12,11 @@ from pathlib import Path
 import pytest
 
 from tests.eval.external.huggingface_loader import (
-    HFExample,
     LABEL_TO_ORDINAL,
+    HFExample,
     example_to_job_dict,
     fetch_examples,
 )
-
 
 # ---------------------------------------------------------------------------
 # Label ordinals
@@ -85,8 +84,10 @@ def test_example_to_job_dict_shape():
 
 def _make_fake_pages(rows: list[dict], page_size: int = 100):
     """Build a fake _fetch_page that returns paginated chunks of `rows`."""
+
     def fake_fetch_page(split="test", config="default", offset=0, length=page_size, cache_dir=None):
         return rows[offset : offset + length]
+
     return fake_fetch_page
 
 
@@ -119,11 +120,26 @@ def test_fetch_examples_basic(monkeypatch):
 def test_fetch_examples_skips_invalid_rows(monkeypatch):
     """Rows with missing/invalid fields should be silently skipped."""
     fake_rows = [
-        {"row_idx": 0, "row": {"resume_text": "r0", "job_description_text": "j0", "label": "Good Fit"}},
-        {"row_idx": 1, "row": {"resume_text": "", "job_description_text": "j1", "label": "Good Fit"}},  # empty resume
-        {"row_idx": 2, "row": {"resume_text": "r2", "job_description_text": "", "label": "Good Fit"}},  # empty jd
-        {"row_idx": 3, "row": {"resume_text": "r3", "job_description_text": "j3", "label": "Garbage"}},  # bad label
-        {"row_idx": 4, "row": {"resume_text": "r4", "job_description_text": "j4", "label": "Good Fit"}},
+        {
+            "row_idx": 0,
+            "row": {"resume_text": "r0", "job_description_text": "j0", "label": "Good Fit"},
+        },
+        {
+            "row_idx": 1,
+            "row": {"resume_text": "", "job_description_text": "j1", "label": "Good Fit"},
+        },  # empty resume
+        {
+            "row_idx": 2,
+            "row": {"resume_text": "r2", "job_description_text": "", "label": "Good Fit"},
+        },  # empty jd
+        {
+            "row_idx": 3,
+            "row": {"resume_text": "r3", "job_description_text": "j3", "label": "Garbage"},
+        },  # bad label
+        {
+            "row_idx": 4,
+            "row": {"resume_text": "r4", "job_description_text": "j4", "label": "Good Fit"},
+        },
     ]
     monkeypatch.setattr(
         "tests.eval.external.huggingface_loader._fetch_page",
@@ -148,9 +164,35 @@ def test_fetch_examples_stratified_balances_uneven_input(monkeypatch):
     """Even when input is heavily skewed toward one class, stratified sampling
     should produce roughly balanced output (limited by the smaller buckets)."""
     fake_rows = (
-        [{"row_idx": i, "row": {"resume_text": f"r{i}", "job_description_text": f"j{i}", "label": "No Fit"}} for i in range(50)]
-        + [{"row_idx": i + 50, "row": {"resume_text": f"r{i}", "job_description_text": f"j{i}", "label": "Potential Fit"}} for i in range(5)]
-        + [{"row_idx": i + 100, "row": {"resume_text": f"r{i}", "job_description_text": f"j{i}", "label": "Good Fit"}} for i in range(5)]
+        [
+            {
+                "row_idx": i,
+                "row": {"resume_text": f"r{i}", "job_description_text": f"j{i}", "label": "No Fit"},
+            }
+            for i in range(50)
+        ]
+        + [
+            {
+                "row_idx": i + 50,
+                "row": {
+                    "resume_text": f"r{i}",
+                    "job_description_text": f"j{i}",
+                    "label": "Potential Fit",
+                },
+            }
+            for i in range(5)
+        ]
+        + [
+            {
+                "row_idx": i + 100,
+                "row": {
+                    "resume_text": f"r{i}",
+                    "job_description_text": f"j{i}",
+                    "label": "Good Fit",
+                },
+            }
+            for i in range(5)
+        ]
     )
     monkeypatch.setattr(
         "tests.eval.external.huggingface_loader._fetch_page",

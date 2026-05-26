@@ -9,7 +9,6 @@ from __future__ import annotations
 import math
 from collections import Counter, defaultdict
 
-
 # ---------------------------------------------------------------------------
 # Rank correlation
 # ---------------------------------------------------------------------------
@@ -113,10 +112,7 @@ def ndcg_at_k(
         return 0.0
 
     def _dcg(items: list, grades: dict) -> float:
-        return sum(
-            grades.get(item, 0) / math.log2(i + 2)
-            for i, item in enumerate(items[:k])
-        )
+        return sum(grades.get(item, 0) / math.log2(i + 2) for i, item in enumerate(items[:k]))
 
     dcg = _dcg(predicted_order, relevance_grades)
     # Ideal ordering = sort items by relevance descending
@@ -145,7 +141,7 @@ def classification_accuracy(predicted: list[str], actual: list[str]) -> float:
     """Fraction of predictions that match the ground-truth class."""
     if not predicted or len(predicted) != len(actual):
         return 0.0
-    hits = sum(1 for p, a in zip(predicted, actual) if p == a)
+    hits = sum(1 for p, a in zip(predicted, actual, strict=False) if p == a)
     return hits / len(predicted)
 
 
@@ -158,7 +154,7 @@ def confusion_matrix(
     if labels is None:
         labels = sorted(set(actual) | set(predicted))
     cm = {a: {p: 0 for p in labels} for a in labels}
-    for p, a in zip(predicted, actual):
+    for p, a in zip(predicted, actual, strict=False):
         if a in cm and p in cm[a]:
             cm[a][p] += 1
     return cm

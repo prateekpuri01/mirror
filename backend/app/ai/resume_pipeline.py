@@ -26,7 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai.content_memory_grounding import (
     format_grounding_block,
-    format_multi_entity_block,
 )
 from app.ai.content_memory_paths import (
     EXPERIENCE_BULLETS_SET,
@@ -133,7 +132,7 @@ async def run_pipeline(
     company_notes = company.notes if company and getattr(company, "notes", None) else None
     job_text = format_job_for_scoring(job, company_notes=company_notes)
     score_rationale = job.score_rationale
-    profile_text = build_full_profile_for_resume(profile_data)
+    build_full_profile_for_resume(profile_data)
     compact_profile = build_compact_profile_for_plan(profile_data)
 
     employer_label_map = _build_employer_label_map(profile_data)
@@ -146,11 +145,17 @@ async def run_pipeline(
     # ----- [1] Strategic Plan ---------------------------------------------
     update_status("planning", "strategic_plan", "Building resume strategy...", 1)
     plan_messages = build_strategic_plan_prompt(
-        compact_profile, job_text, company_research, score_rationale,
+        compact_profile,
+        job_text,
+        company_research,
+        score_rationale,
         profile_data=profile_data,
     )
     plan = await call_llm(
-        STRATEGIC_PLAN_SYSTEM, plan_messages, temperature=0.4, max_tokens=4000,
+        STRATEGIC_PLAN_SYSTEM,
+        plan_messages,
+        temperature=0.4,
+        max_tokens=4000,
     )
     _trace_dump(trace_id, "01_strategic_plan", STRATEGIC_PLAN_SYSTEM, plan_messages, plan)
     plan_text = json.dumps(plan, indent=2)
@@ -160,7 +165,10 @@ async def run_pipeline(
     update_status("planning", "selection", "Picking accomplishments to feature...", 2)
     selection_messages = build_selection_prompt(plan_text, compact_profile, job_text)
     selection = await call_llm(
-        SELECTION_SYSTEM, selection_messages, temperature=0.2, max_tokens=1500,
+        SELECTION_SYSTEM,
+        selection_messages,
+        temperature=0.2,
+        max_tokens=1500,
     )
     _trace_dump(trace_id, "02_selection", SELECTION_SYSTEM, selection_messages, selection)
 
@@ -168,21 +176,28 @@ async def run_pipeline(
     employer_anchors: list[dict] = list(selection.get("experience_employer_anchors") or [])
 
     research_ids = [rid for rid in research_ids if rid in accomplishment_lookup][:3]
-    employer_anchors = _validate_employer_anchors(employer_anchors, employer_label_map, accomplishment_lookup)
+    employer_anchors = _validate_employer_anchors(
+        employer_anchors, employer_label_map, accomplishment_lookup
+    )
 
     logger.info(
         "Selection: research_ids=%s employers=%s",
-        research_ids, [e["employer_key"] for e in employer_anchors],
+        research_ids,
+        [e["employer_key"] for e in employer_anchors],
     )
 
     # ----- [3] Parallel: research entries + skill buckets ------------------
     update_status("generating", "research_and_skills", "Writing research + skills...", 3)
 
     research_grounding = await content_memory_service.fetch_grounding(
-        session, entity_type=RESEARCH_DESCRIPTION, entity_keys=research_ids,
+        session,
+        entity_type=RESEARCH_DESCRIPTION,
+        entity_keys=research_ids,
     )
     skill_grounding = await content_memory_service.fetch_grounding(
-        session, entity_type=SKILL_BUCKET, entity_keys=SKILL_BUCKETS,
+        session,
+        entity_type=SKILL_BUCKET,
+        entity_keys=SKILL_BUCKETS,
     )
 
     plan_research_lookup = _build_plan_research_lookup(plan)
@@ -232,7 +247,7 @@ async def run_pipeline(
 
     selected_research = [r for r in research_results if r]
     technical_skills = {
-        bucket: text for bucket, text in zip(SKILL_BUCKETS, skill_results) if text
+        bucket: text for bucket, text in zip(SKILL_BUCKETS, skill_results, strict=False) if text
     }
 
     # ----- [4] Parallel: bullets per employer ------------------------------
@@ -240,7 +255,9 @@ async def run_pipeline(
 
     employer_keys = [a["employer_key"] for a in employer_anchors]
     bullet_grounding = await content_memory_service.fetch_grounding(
-        session, entity_type=EXPERIENCE_BULLETS_SET, entity_keys=employer_keys,
+        session,
+        entity_type=EXPERIENCE_BULLETS_SET,
+        entity_keys=employer_keys,
     )
 
     bullet_tasks = [
@@ -264,7 +281,7 @@ async def run_pipeline(
     bullet_results = await asyncio.gather(*bullet_tasks, return_exceptions=False)
 
     experience: dict[str, dict] = {}
-    for anchor, result in zip(employer_anchors, bullet_results):
+    for anchor, result in zip(employer_anchors, bullet_results, strict=False):
         if not result:
             continue
         experience[anchor["employer_key"]] = {"bullets": result}
@@ -287,11 +304,17 @@ async def run_pipeline(
         profile_data=profile_data,
     )
     critic_messages = build_critic_v4_prompt(
-        plan_text, critic_assembled_draft, grounding_summary, job_text,
+        plan_text,
+        critic_assembled_draft,
+        grounding_summary,
+        job_text,
     )
     try:
         critic_result = await call_llm(
-            CRITIC_V4_SYSTEM, critic_messages, temperature=0.2, max_tokens=2500,
+            CRITIC_V4_SYSTEM,
+            critic_messages,
+            temperature=0.2,
+            max_tokens=2500,
         )
     except Exception:
         logger.exception("Critic stage failed; skipping refinement")
@@ -331,21 +354,27 @@ async def run_pipeline(
 
     summary_grounding_rows = (
         await content_memory_service.fetch_grounding(
-            session, entity_type=SUMMARY, entity_keys=[SCALAR_KEY],
+            session,
+            entity_type=SUMMARY,
+            entity_keys=[SCALAR_KEY],
         )
     ).get(SCALAR_KEY, [])
     tagline_grounding_rows = (
         await content_memory_service.fetch_grounding(
-            session, entity_type=TAGLINE, entity_keys=[SCALAR_KEY],
+            session,
+            entity_type=TAGLINE,
+            entity_keys=[SCALAR_KEY],
         )
     ).get(SCALAR_KEY, [])
 
     summary_grounding = format_grounding_block(
-        summary_grounding_rows, profile_data=profile_data,
+        summary_grounding_rows,
+        profile_data=profile_data,
         label="## Your past hand-tuned summaries",
     )
     tagline_grounding = format_grounding_block(
-        tagline_grounding_rows, profile_data=profile_data,
+        tagline_grounding_rows,
+        profile_data=profile_data,
         label="## Your past hand-tuned taglines",
     )
     grounding_text = "\n\n".join(b for b in (summary_grounding, tagline_grounding) if b)
@@ -365,12 +394,20 @@ async def run_pipeline(
         employer_label_map=employer_label_map,
     )
     summary_messages = build_summary_tagline_prompt(
-        plan_text, assembled_draft, job_text, grounding_text=grounding_text,
+        plan_text,
+        assembled_draft,
+        job_text,
+        grounding_text=grounding_text,
     )
     summary_result = await call_llm(
-        SUMMARY_TAGLINE_SYSTEM, summary_messages, temperature=0.5, max_tokens=1000,
+        SUMMARY_TAGLINE_SYSTEM,
+        summary_messages,
+        temperature=0.5,
+        max_tokens=1000,
     )
-    _trace_dump(trace_id, "07_summary_tagline", SUMMARY_TAGLINE_SYSTEM, summary_messages, summary_result)
+    _trace_dump(
+        trace_id, "07_summary_tagline", SUMMARY_TAGLINE_SYSTEM, summary_messages, summary_result
+    )
     summary = (summary_result.get("summary") or "").strip()
     tagline = (summary_result.get("tagline") or "").strip()
 
@@ -415,12 +452,19 @@ async def _generate_research_entry(
     grounding_text = format_grounding_block(grounding_rows, profile_data=profile_data)
     grounding_text = _augment_with_writing_memory(grounding_text, writing_memory_text)
     messages = build_research_entry_v4_prompt(
-        accomplishment, plan_text, plan_entry, job_text,
-        grounding_text=grounding_text, critic_notes=critic_notes,
+        accomplishment,
+        plan_text,
+        plan_entry,
+        job_text,
+        grounding_text=grounding_text,
+        critic_notes=critic_notes,
     )
     try:
         entry = await call_llm(
-            RESEARCH_ENTRY_V4_SYSTEM, messages, temperature=0.4, max_tokens=1500,
+            RESEARCH_ENTRY_V4_SYSTEM,
+            messages,
+            temperature=0.4,
+            max_tokens=1500,
         )
     except Exception:
         logger.exception("Research entry generation failed for %s", accomplishment.get("id"))
@@ -451,8 +495,12 @@ async def _generate_skill_bucket(
     grounding_text = _augment_with_writing_memory(grounding_text, writing_memory_text)
     system = build_skill_bucket_system(profile_data)
     messages = build_skill_bucket_prompt(
-        bucket, plan_text, job_text, grounding_text=grounding_text,
-        critic_notes=critic_notes, other_buckets=other_buckets,
+        bucket,
+        plan_text,
+        job_text,
+        grounding_text=grounding_text,
+        critic_notes=critic_notes,
+        other_buckets=other_buckets,
     )
     try:
         result = await call_llm(system, messages, temperature=0.3, max_tokens=600)
@@ -525,10 +573,12 @@ async def _generate_bullet_set(
             text = (b.get("text") or "").strip()
             if not text:
                 continue
-            cleaned.append({
-                "text": text,
-                "accomplishment_ids": list(b.get("accomplishment_ids") or []),
-            })
+            cleaned.append(
+                {
+                    "text": text,
+                    "accomplishment_ids": list(b.get("accomplishment_ids") or []),
+                }
+            )
         elif isinstance(b, str) and b.strip():
             cleaned.append({"text": b.strip(), "accomplishment_ids": []})
     return cleaned or None
@@ -539,7 +589,6 @@ async def _generate_bullet_set(
 # ---------------------------------------------------------------------------
 
 import re as _re
-
 
 _TARGET_RESEARCH_RE = _re.compile(r"^research\[(\d+)\]$")
 _TARGET_SKILLS_RE = _re.compile(r"^skills\.([a-z_]+)$")
@@ -556,7 +605,7 @@ def _format_critic_notes(issues_for_target: list[dict]) -> str:
         current = issue.get("current", "").strip()
         bits = [f"[{kind}] {problem}"]
         if current:
-            bits.append(f"  current: \"{current}\"")
+            bits.append(f'  current: "{current}"')
         if direction:
             bits.append(f"  do instead: {direction}")
         lines.append("\n".join(bits))
@@ -617,19 +666,26 @@ async def _run_refiner(
             accomplishment = accomplishment_lookup.get(aid)
             if not accomplishment:
                 continue
-            tasks.append((target, asyncio.create_task(_generate_research_entry(
-                call_llm=call_llm,
-                accomplishment=accomplishment,
-                plan_text=plan_text,
-                plan_entry=plan_research_lookup.get(aid),
-                job_text=job_text,
-                grounding_rows=research_grounding.get(aid, []),
-                profile_data=profile_data,
-                writing_memory_text=writing_memory_text,
-                trace_id=trace_id,
-                stage_label=f"06_refiner_research_{aid}",
-                critic_notes=notes,
-            ))))
+            tasks.append(
+                (
+                    target,
+                    asyncio.create_task(
+                        _generate_research_entry(
+                            call_llm=call_llm,
+                            accomplishment=accomplishment,
+                            plan_text=plan_text,
+                            plan_entry=plan_research_lookup.get(aid),
+                            job_text=job_text,
+                            grounding_rows=research_grounding.get(aid, []),
+                            profile_data=profile_data,
+                            writing_memory_text=writing_memory_text,
+                            trace_id=trace_id,
+                            stage_label=f"06_refiner_research_{aid}",
+                            critic_notes=notes,
+                        )
+                    ),
+                )
+            )
             continue
 
         m = _TARGET_SKILLS_RE.match(target)
@@ -638,19 +694,26 @@ async def _run_refiner(
             if bucket not in SKILL_BUCKETS:
                 continue
             other_buckets = {b: technical_skills.get(b, "") for b in SKILL_BUCKETS if b != bucket}
-            tasks.append((target, asyncio.create_task(_generate_skill_bucket(
-                call_llm=call_llm,
-                bucket=bucket,
-                plan_text=plan_text,
-                job_text=job_text,
-                grounding_rows=skill_grounding.get(bucket, []),
-                profile_data=profile_data,
-                writing_memory_text=writing_memory_text,
-                trace_id=trace_id,
-                stage_label=f"06_refiner_skill_{bucket}",
-                critic_notes=notes,
-                other_buckets=other_buckets,
-            ))))
+            tasks.append(
+                (
+                    target,
+                    asyncio.create_task(
+                        _generate_skill_bucket(
+                            call_llm=call_llm,
+                            bucket=bucket,
+                            plan_text=plan_text,
+                            job_text=job_text,
+                            grounding_rows=skill_grounding.get(bucket, []),
+                            profile_data=profile_data,
+                            writing_memory_text=writing_memory_text,
+                            trace_id=trace_id,
+                            stage_label=f"06_refiner_skill_{bucket}",
+                            critic_notes=notes,
+                            other_buckets=other_buckets,
+                        )
+                    ),
+                )
+            )
             continue
 
         m = _TARGET_EXPERIENCE_RE.match(target)
@@ -659,22 +722,29 @@ async def _run_refiner(
             anchor = anchor_by_employer.get(emp_key)
             if not anchor:
                 continue
-            tasks.append((target, asyncio.create_task(_generate_bullet_set(
-                call_llm=call_llm,
-                anchor=anchor,
-                employer_label_map=employer_label_map,
-                accomplishment_lookup=accomplishment_lookup,
-                plan_text=plan_text,
-                plan=plan,
-                finalized_research=selected_research,
-                job_text=job_text,
-                grounding_rows=bullet_grounding.get(emp_key, []),
-                profile_data=profile_data,
-                writing_memory_text=writing_memory_text,
-                trace_id=trace_id,
-                stage_label=f"06_refiner_bullets_{emp_key}",
-                critic_notes=notes,
-            ))))
+            tasks.append(
+                (
+                    target,
+                    asyncio.create_task(
+                        _generate_bullet_set(
+                            call_llm=call_llm,
+                            anchor=anchor,
+                            employer_label_map=employer_label_map,
+                            accomplishment_lookup=accomplishment_lookup,
+                            plan_text=plan_text,
+                            plan=plan,
+                            finalized_research=selected_research,
+                            job_text=job_text,
+                            grounding_rows=bullet_grounding.get(emp_key, []),
+                            profile_data=profile_data,
+                            writing_memory_text=writing_memory_text,
+                            trace_id=trace_id,
+                            stage_label=f"06_refiner_bullets_{emp_key}",
+                            critic_notes=notes,
+                        )
+                    ),
+                )
+            )
             continue
 
         logger.warning("Critic target %r does not match a known shape; ignoring", target)
@@ -684,7 +754,7 @@ async def _run_refiner(
 
     results = await asyncio.gather(*(t for _, t in tasks), return_exceptions=False)
     # Apply results back into the assembled state
-    for (target, _), result in zip(tasks, results):
+    for (target, _), result in zip(tasks, results, strict=False):
         if result is None:
             continue
         m = _TARGET_RESEARCH_RE.match(target)
@@ -721,7 +791,8 @@ def _format_grounding_summary_for_critic(
         sub: list[str] = []
         for i, aid in enumerate(research_ids):
             block = format_grounding_block(
-                research_grounding.get(aid, []), profile_data=profile_data,
+                research_grounding.get(aid, []),
+                profile_data=profile_data,
                 label=f"### research[{i}] (accomplishment_id={aid})",
             )
             if block:
@@ -732,7 +803,8 @@ def _format_grounding_summary_for_critic(
     skill_blocks: list[str] = []
     for bucket in SKILL_BUCKETS:
         block = format_grounding_block(
-            skill_grounding.get(bucket, []), profile_data=profile_data,
+            skill_grounding.get(bucket, []),
+            profile_data=profile_data,
             label=f"### skills.{bucket}",
         )
         if block:
@@ -743,7 +815,8 @@ def _format_grounding_summary_for_critic(
     bullet_blocks: list[str] = []
     for emp_key in employer_keys:
         block = format_grounding_block(
-            bullet_grounding.get(emp_key, []), profile_data=profile_data,
+            bullet_grounding.get(emp_key, []),
+            profile_data=profile_data,
             label=f"### experience.{emp_key}",
         )
         if block:
@@ -802,17 +875,18 @@ def _validate_employer_anchors(
             logger.warning("Selection produced unknown employer_key=%s; dropping", emp_key)
             continue
         valid_acc_ids = [
-            aid for aid in (anchor.get("accomplishment_ids") or [])
-            if aid in accomplishment_lookup
+            aid for aid in (anchor.get("accomplishment_ids") or []) if aid in accomplishment_lookup
         ]
         if not valid_acc_ids:
             logger.warning("Employer anchor %s has no valid accomplishments; dropping", emp_key)
             continue
-        cleaned.append({
-            "employer_key": emp_key,
-            "accomplishment_ids": valid_acc_ids,
-            "bullet_count": int(anchor.get("bullet_count") or 3),
-        })
+        cleaned.append(
+            {
+                "employer_key": emp_key,
+                "accomplishment_ids": valid_acc_ids,
+                "bullet_count": int(anchor.get("bullet_count") or 3),
+            }
+        )
     return cleaned
 
 
@@ -862,7 +936,10 @@ async def _generate_publications(
     messages = build_publications_prompt(publications_text, plan_text, job_text)
     try:
         result = await call_llm(
-            PUBLICATIONS_SYSTEM, messages, temperature=0.2, max_tokens=1500,
+            PUBLICATIONS_SYSTEM,
+            messages,
+            temperature=0.2,
+            max_tokens=1500,
         )
     except Exception:
         logger.exception("Publications selection failed")
@@ -876,10 +953,12 @@ async def _generate_publications(
         citation = (p.get("citation") or "").strip()
         if not citation:
             continue
-        cleaned.append({
-            "citation": citation,
-            "publication_id": p.get("publication_id") or "",
-        })
+        cleaned.append(
+            {
+                "citation": citation,
+                "publication_id": p.get("publication_id") or "",
+            }
+        )
     return cleaned
 
 
@@ -891,7 +970,7 @@ def _format_publications_catalog(publications: list[dict]) -> str:
         authors = ", ".join(p.get("authors") or [])
         lines.append(
             f"- ID: {pid}\n"
-            f"  {authors}. \"{p.get('title', '')}\" "
+            f'  {authors}. "{p.get("title", "")}" '
             f"{p.get('venue', '')}, {p.get('year', '')}.{fa}"
         )
     return "\n".join(lines)

@@ -14,7 +14,6 @@ import pytest
 
 from tests.eval.external.resume_to_profile import docx_to_text
 
-
 # ---------------------------------------------------------------------------
 # docx_to_text — uses python-docx to write a fixture .docx, then read it back
 # ---------------------------------------------------------------------------

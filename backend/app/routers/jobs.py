@@ -106,10 +106,10 @@ async def import_job_from_url(
 
     # Check for duplicate URL
     from sqlalchemy import select
+
     from app.models import Job
-    existing = await session.execute(
-        select(Job).where(Job.url == body.url).limit(1)
-    )
+
+    existing = await session.execute(select(Job).where(Job.url == body.url).limit(1))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="This job URL has already been imported.")
 
@@ -117,6 +117,7 @@ async def import_job_from_url(
 
     # Trigger pipeline processing in background (catches this job + any stragglers)
     from app.routers.pipeline import _run_process
+
     background_tasks.add_task(_run_process)
 
     # Pre-warm company research so the eventual /generate-resume call's
@@ -126,8 +127,10 @@ async def import_job_from_url(
     from app.services.company_research_prewarm import (
         prewarm_company_research_for_jobs,
     )
+
     background_tasks.add_task(
-        prewarm_company_research_for_jobs, [str(job.id)],
+        prewarm_company_research_for_jobs,
+        [str(job.id)],
     )
 
     return job

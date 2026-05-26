@@ -200,15 +200,16 @@ async def run_extraction_agent(
             # Check for truncation
             if choice.finish_reason == "length":
                 logger.warning(
-                    "Extraction response truncated (finish_reason=length), "
-                    "asking model to continue"
+                    "Extraction response truncated (finish_reason=length), asking model to continue"
                 )
                 messages.append(message)
-                messages.append({
-                    "role": "user",
-                    "content": "Your response was truncated. Please output the "
-                    "complete JSON object again from the beginning.",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Your response was truncated. Please output the "
+                        "complete JSON object again from the beginning.",
+                    }
+                )
                 continue
 
             # Strip markdown fences if present
@@ -221,15 +222,15 @@ async def run_extraction_agent(
             try:
                 result = json.loads(final_text)
             except json.JSONDecodeError:
-                logger.warning(
-                    "Extraction returned invalid JSON, asking model to reformat"
-                )
+                logger.warning("Extraction returned invalid JSON, asking model to reformat")
                 messages.append(message)
-                messages.append({
-                    "role": "user",
-                    "content": "Your response was not valid JSON. Please output "
-                    "the complete JSON object again, with no extra text.",
-                })
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": "Your response was not valid JSON. Please output "
+                        "the complete JSON object again, with no extra text.",
+                    }
+                )
                 continue
 
             fields = result.get("application_fields", [])
@@ -247,7 +248,9 @@ async def run_extraction_agent(
         # Execute each tool call and append results
         for tool_call in message.tool_calls:
             fn_name = tool_call.function.name
-            fn_args = json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+            fn_args = (
+                json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+            )
             logger.info("Executing tool: %s(%s)", fn_name, fn_args)
 
             result_text = await executor.execute(fn_name, fn_args)
@@ -255,10 +258,12 @@ async def run_extraction_agent(
             log_result = result_text[:500] if len(result_text) > 500 else result_text
             logger.info("Tool %s result: %s", fn_name, log_result)
 
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": result_text,
-            })
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": result_text,
+                }
+            )
 
     raise RuntimeError(f"Extraction agent did not produce a result after {MAX_TOOL_ROUNDS} rounds")

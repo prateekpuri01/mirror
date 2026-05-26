@@ -3,6 +3,7 @@ from app.models.ats_learning import AtsDomainCache, AtsLearnedPattern
 from app.models.base import Base
 from app.models.chat import ChatMessage
 from app.models.companies import Company, ScrapeRun
+from app.models.content_memory import ContentMemory
 from app.models.discovered_companies import DiscoveredCompany
 from app.models.documents import ApplicationRequirements, DocType, Document
 from app.models.jobs import (
@@ -16,7 +17,6 @@ from app.models.jobs import (
 )
 from app.models.locations import JobLocation, Location
 from app.models.profile import UserProfile
-from app.models.content_memory import ContentMemory
 from app.models.writing_memory import WritingMemory
 
 __all__ = [

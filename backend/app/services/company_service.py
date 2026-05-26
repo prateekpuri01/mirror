@@ -8,9 +8,7 @@ from app.models.jobs import Job
 
 
 async def list_companies(session: AsyncSession) -> list[Company]:
-    result = await session.execute(
-        select(Company).order_by(Company.name.asc())
-    )
+    result = await session.execute(select(Company).order_by(Company.name.asc()))
     return list(result.scalars().all())
 
 
@@ -48,11 +46,13 @@ async def list_companies_with_counts(session: AsyncSession) -> list[dict]:
         if company.careers_url:
             sources.append("website")
 
-        companies.append({
-            "company": company,
-            "job_count": job_count,
-            "sources": sources,
-        })
+        companies.append(
+            {
+                "company": company,
+                "job_count": job_count,
+                "sources": sources,
+            }
+        )
 
     return companies
 
@@ -76,9 +76,9 @@ async def list_companies_paginated(
         .subquery()
     )
 
-    base = select(Company, func.coalesce(job_count_sub.c.job_count, 0).label("job_count")).outerjoin(
-        job_count_sub, Company.id == job_count_sub.c.company_id
-    )
+    base = select(
+        Company, func.coalesce(job_count_sub.c.job_count, 0).label("job_count")
+    ).outerjoin(job_count_sub, Company.id == job_count_sub.c.company_id)
 
     if q:
         pattern = f"%{q}%"
@@ -118,11 +118,13 @@ async def list_companies_paginated(
             sources.append("ashby")
         if company.careers_url:
             sources.append("website")
-        companies.append({
-            "company": company,
-            "job_count": job_count,
-            "sources": sources,
-        })
+        companies.append(
+            {
+                "company": company,
+                "job_count": job_count,
+                "sources": sources,
+            }
+        )
 
     return companies, total
 

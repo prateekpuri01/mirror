@@ -65,9 +65,8 @@ def test_pairwise_ordering(all_scores, test_cases):
     """All must_beat constraints are satisfied."""
     acc, violations = pairwise_accuracy(all_scores, test_cases)
     # Allow up to 10% violation rate
-    assert acc >= 90.0, (
-        f"Pairwise accuracy {acc:.1f}% < 90%. Violations:\n"
-        + "\n".join(violations[:10])
+    assert acc >= 90.0, f"Pairwise accuracy {acc:.1f}% < 90%. Violations:\n" + "\n".join(
+        violations[:10]
     )
 
 
@@ -79,9 +78,7 @@ def test_pairwise_ordering(all_scores, test_cases):
 DEAL_BREAKER_CASES = [tc for tc in TEST_CASES if tc.has_deal_breaker]
 
 
-@pytest.mark.parametrize(
-    "case", DEAL_BREAKER_CASES, ids=[tc.case_id for tc in DEAL_BREAKER_CASES]
-)
+@pytest.mark.parametrize("case", DEAL_BREAKER_CASES, ids=[tc.case_id for tc in DEAL_BREAKER_CASES])
 def test_deal_breaker_interest_low(all_scores: dict[str, EvalResult], case):
     """Deal-breaker jobs get interest_fit < 30."""
     if case.case_id not in all_scores:
@@ -93,9 +90,7 @@ def test_deal_breaker_interest_low(all_scores: dict[str, EvalResult], case):
     )
 
 
-@pytest.mark.parametrize(
-    "case", DEAL_BREAKER_CASES, ids=[tc.case_id for tc in DEAL_BREAKER_CASES]
-)
+@pytest.mark.parametrize("case", DEAL_BREAKER_CASES, ids=[tc.case_id for tc in DEAL_BREAKER_CASES])
 def test_deal_breaker_org_fit_low(all_scores: dict[str, EvalResult], case):
     """Deal-breaker jobs get organization_fit <= 10."""
     if case.case_id not in all_scores:
@@ -105,18 +100,14 @@ def test_deal_breaker_org_fit_low(all_scores: dict[str, EvalResult], case):
     if org_score is None:
         pytest.skip("organization_fit sub-score not found in response")
     assert org_score <= 10, (
-        f"{case.case_id} [{case.deal_breaker_keyword}] "
-        f"org_fit={org_score}, expected <=10"
+        f"{case.case_id} [{case.deal_breaker_keyword}] org_fit={org_score}, expected <=10"
     )
 
 
 def test_deal_breaker_detection_rate_overall(all_scores, test_cases):
     """Overall deal-breaker detection rate is 100%."""
     rate, failures = deal_breaker_detection_rate(all_scores, test_cases)
-    assert rate == 100.0, (
-        f"Deal-breaker detection {rate:.0f}%. Failures:\n"
-        + "\n".join(failures)
-    )
+    assert rate == 100.0, f"Deal-breaker detection {rate:.0f}%. Failures:\n" + "\n".join(failures)
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +119,7 @@ def test_tier_separation_no_bleed(all_scores):
     """Adjacent tiers have positive separation (no bleed-through)."""
     gaps = tier_separation(all_scores)
     bleed = {k: v for k, v in gaps.items() if v < 0}
-    assert not bleed, (
-        f"Tier bleed-through detected: {bleed}"
-    )
+    assert not bleed, f"Tier bleed-through detected: {bleed}"
 
 
 # ---------------------------------------------------------------------------
@@ -141,19 +130,15 @@ def test_tier_separation_no_bleed(all_scores):
 def test_arithmetic_consistency(all_scores):
     """Reported totals equal sum of sub-scores."""
     discrepancies = check_arithmetic(all_scores)
-    assert not discrepancies, (
-        f"Arithmetic errors ({len(discrepancies)}):\n"
-        + "\n".join(discrepancies[:10])
+    assert not discrepancies, f"Arithmetic errors ({len(discrepancies)}):\n" + "\n".join(
+        discrepancies[:10]
     )
 
 
 def test_range_validity(all_scores):
     """All sub-scores within their max range."""
     violations = check_range_validity(all_scores)
-    assert not violations, (
-        f"Range violations ({len(violations)}):\n"
-        + "\n".join(violations[:10])
-    )
+    assert not violations, f"Range violations ({len(violations)}):\n" + "\n".join(violations[:10])
 
 
 # ---------------------------------------------------------------------------

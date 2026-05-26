@@ -14,7 +14,7 @@ are marked with @pytest.mark.llm and skipped unless --run-llm is passed.
 import json
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import NullPool
 
 from app.ai import writing_memory as wm_ai
-from app.ai.resume_prompts import build_single_shot_system, build_revision_prompt
+from app.ai.resume_prompts import build_revision_prompt, build_single_shot_system
 from app.config import settings
 from app.models.documents import DocType, Document
 from app.models.jobs import Job, JobSource, JobStatus
@@ -49,12 +49,8 @@ async def fresh_session():
 async def _cleanup(session: AsyncSession):
     """Remove test fixtures. Runs before and after each test."""
     await session.execute(text("DELETE FROM writing_memory"))
-    await session.execute(text(
-        "DELETE FROM documents WHERE name LIKE 'E2E Test%'"
-    ))
-    await session.execute(text(
-        "DELETE FROM jobs WHERE url LIKE 'https://e2e-test-%'"
-    ))
+    await session.execute(text("DELETE FROM documents WHERE name LIKE 'E2E Test%'"))
+    await session.execute(text("DELETE FROM jobs WHERE url LIKE 'https://e2e-test-%'"))
     await session.commit()
 
 
@@ -84,9 +80,18 @@ _SAMPLE_RESUME_JSON = {
     "experience": {
         "rand": {
             "bullets": [
-                {"text": "Utilized Python frameworks to build NLP pipeline for qualitative analysis.", "accomplishment_ids": ["rand-muse"]},
-                {"text": "Leveraged cloud infrastructure to deploy ML models at scale.", "accomplishment_ids": ["rand-infra"]},
-                {"text": "Architected a retrieval-augmented generation system for document Q&A.", "accomplishment_ids": ["rand-rag"]},
+                {
+                    "text": "Utilized Python frameworks to build NLP pipeline for qualitative analysis.",
+                    "accomplishment_ids": ["rand-muse"],
+                },
+                {
+                    "text": "Leveraged cloud infrastructure to deploy ML models at scale.",
+                    "accomplishment_ids": ["rand-infra"],
+                },
+                {
+                    "text": "Architected a retrieval-augmented generation system for document Q&A.",
+                    "accomplishment_ids": ["rand-rag"],
+                },
             ]
         }
     },
@@ -155,17 +160,19 @@ async def test_multi_job_accumulation_builds_confidence(session):
     job_b = await _create_test_job(session, "B")
     job_c = await _create_test_job(session, "C")
 
-    doc_a = await _create_test_resume(session, job_a)
-    doc_b = await _create_test_resume(session, job_b)
-    doc_c = await _create_test_resume(session, job_c)
+    await _create_test_resume(session, job_a)
+    await _create_test_resume(session, job_b)
+    await _create_test_resume(session, job_c)
 
     # The rule that will be "extracted" from each edit
-    extracted_rule = [{
-        "rule_text": "Use 'built' instead of 'utilized'",
-        "category": "word_choice",
-        "scope": "universal",
-        "examples": [{"before": "Utilized Python", "after": "Built Python tools"}],
-    }]
+    extracted_rule = [
+        {
+            "rule_text": "Use 'built' instead of 'utilized'",
+            "category": "word_choice",
+            "scope": "universal",
+            "examples": [{"before": "Utilized Python", "after": "Built Python tools"}],
+        }
+    ]
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_client.return_value.chat.completions.create = AsyncMock(
@@ -180,7 +187,8 @@ async def test_multi_job_accumulation_builds_confidence(session):
             "experience.rand.bullets.0",
             job_a.id,
             domain="resume",
-            job_title=job_a.title, company=job_a.company,
+            job_title=job_a.title,
+            company=job_a.company,
         )
         await session.commit()
 
@@ -207,7 +215,8 @@ async def test_multi_job_accumulation_builds_confidence(session):
             "experience.rand.bullets.1",
             job_b.id,
             domain="resume",
-            job_title=job_b.title, company=job_b.company,
+            job_title=job_b.title,
+            company=job_b.company,
         )
         await session.commit()
 
@@ -232,7 +241,8 @@ async def test_multi_job_accumulation_builds_confidence(session):
             "experience.rand.bullets.2",
             job_c.id,
             domain="resume",
-            job_title=job_c.title, company=job_c.company,
+            job_title=job_c.title,
+            company=job_c.company,
         )
         await session.commit()
 
@@ -331,7 +341,7 @@ async def test_confidence_lifecycle_full_arc(session):
     # Step 4: Simulate 100 days passing with no reinforcement
     await session.execute(
         text("UPDATE writing_memory SET updated_at = :ts WHERE id = :id"),
-        {"ts": datetime.now(timezone.utc) - timedelta(days=100), "id": rule.id},
+        {"ts": datetime.now(UTC) - timedelta(days=100), "id": rule.id},
     )
     await session.commit()
 
@@ -347,7 +357,7 @@ async def test_confidence_lifecycle_full_arc(session):
     for _ in range(5):
         await session.execute(
             text("UPDATE writing_memory SET updated_at = :ts WHERE id = :id"),
-            {"ts": datetime.now(timezone.utc) - timedelta(days=100), "id": rule.id},
+            {"ts": datetime.now(UTC) - timedelta(days=100), "id": rule.id},
         )
         await session.commit()
         await svc.decay_stale_rules(session)
@@ -394,16 +404,26 @@ async def test_remember_this_creates_high_confidence_rule(session):
     }
 
     # Mock the LLM call inside save_preference
-    mock_response = json.dumps({
-        "rule_text": "Keep experience bullets under 15 words per sentence",
-        "category": "structure",
-    })
-    with patch.object(wm_ai, "get_openai_client") as mock_client:
+    json.dumps(
+        {
+            "rule_text": "Keep experience bullets under 15 words per sentence",
+            "category": "structure",
+        }
+    )
+    with patch.object(wm_ai, "get_openai_client"):
         # save_preference uses _call_openai_json from resume_agent
         from app.ai import resume_agent
-        with patch.object(resume_agent, "_call_openai_json", new=AsyncMock(
-            return_value={"rule_text": "Keep experience bullets under 15 words per sentence", "category": "structure"}
-        )):
+
+        with patch.object(
+            resume_agent,
+            "_call_openai_json",
+            new=AsyncMock(
+                return_value={
+                    "rule_text": "Keep experience bullets under 15 words per sentence",
+                    "category": "structure",
+                }
+            ),
+        ):
             result = await save_preference(state)
 
     # The node should return the preference for the router to persist
@@ -458,12 +478,22 @@ async def test_remember_this_confirmation_message(session):
         "_new_preference": None,
     }
 
-    with patch.object(resume_agent, "_call_openai_json", new=AsyncMock(
-        return_value={"rule_text": "Never use the word 'architected'", "category": "word_choice"}
-    )):
+    with patch.object(
+        resume_agent,
+        "_call_openai_json",
+        new=AsyncMock(
+            return_value={
+                "rule_text": "Never use the word 'architected'",
+                "category": "word_choice",
+            }
+        ),
+    ):
         result = await resume_agent.save_preference(state)
 
-    assert "remember" in result["response_text"].lower() or "preference" in result["response_text"].lower()
+    assert (
+        "remember" in result["response_text"].lower()
+        or "preference" in result["response_text"].lower()
+    )
     assert result["updated_json"] is None
 
 
@@ -645,13 +675,15 @@ async def test_consolidation_reduces_rule_count(session):
     assert len(active_before) == 6
 
     # Mock the consolidation LLM to merge all into one group
-    mock_response = json.dumps([
-        {
-            "indices": [1, 2, 3, 4, 5, 6],
-            "merged_rule_text": "Avoid corporate buzzwords: leveraged, utilized, architected, spearheaded, synergized, paradigm-shifting. Use direct verbs instead.",
-            "merged_category": "word_choice",
-        },
-    ])
+    mock_response = json.dumps(
+        [
+            {
+                "indices": [1, 2, 3, 4, 5, 6],
+                "merged_rule_text": "Avoid corporate buzzwords: leveraged, utilized, architected, spearheaded, synergized, paradigm-shifting. Use direct verbs instead.",
+                "merged_category": "word_choice",
+            },
+        ]
+    )
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_resp = MagicMock()
@@ -671,11 +703,13 @@ async def test_consolidation_reduces_rule_count(session):
 @pytest.mark.asyncio
 async def test_extraction_plus_dedup_across_many_edits(session):
     """Simulating 10 edits that all trigger the same rule should reinforce, not duplicate."""
-    extracted_rule = [{
-        "rule_text": "Prefer shorter sentences in bullet points",
-        "category": "structure",
-        "scope": "universal",
-    }]
+    extracted_rule = [
+        {
+            "rule_text": "Prefer shorter sentences in bullet points",
+            "category": "structure",
+            "scope": "universal",
+        }
+    ]
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_client.return_value.chat.completions.create = AsyncMock(
@@ -714,17 +748,19 @@ async def test_extraction_plus_dedup_across_many_edits(session):
 async def test_inline_edit_to_prompt_injection_pipeline(session):
     """Full pipeline: inline edit creates a rule that later appears in prompts."""
     job = await _create_test_job(session, "Pipeline")
-    doc = await _create_test_resume(session, job)
+    await _create_test_resume(session, job)
 
     old_value = "Utilized Python frameworks to build NLP pipeline for qualitative analysis."
     new_value = "Built Python tools for NLP-powered qualitative analysis."
 
-    extracted_rule = [{
-        "rule_text": "Replace 'utilized X to build Y' with 'built Y' — more direct",
-        "category": "word_choice",
-        "scope": "universal",
-        "examples": [{"before": old_value, "after": new_value}],
-    }]
+    extracted_rule = [
+        {
+            "rule_text": "Replace 'utilized X to build Y' with 'built Y' — more direct",
+            "category": "word_choice",
+            "scope": "universal",
+            "examples": [{"before": old_value, "after": new_value}],
+        }
+    ]
 
     with patch.object(wm_ai, "get_openai_client") as mock_client:
         mock_client.return_value.chat.completions.create = AsyncMock(
@@ -733,10 +769,14 @@ async def test_inline_edit_to_prompt_injection_pipeline(session):
 
         # Simulate what the documents router does
         count = await wm_ai.extract_and_learn(
-            session, old_value, new_value,
-            "experience.rand.bullets.0", job.id,
+            session,
+            old_value,
+            new_value,
+            "experience.rand.bullets.0",
+            job.id,
             domain="resume",
-            job_title=job.title, company=job.company,
+            job_title=job.title,
+            company=job.company,
         )
         await session.commit()
 

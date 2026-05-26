@@ -11,8 +11,8 @@ import logging
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai.client import get_openai_client, EXTRACTION_MODEL, SCORING_MODEL
-from app.ai.enrichment import _normalize_company_name, _levenshtein
+from app.ai.client import EXTRACTION_MODEL, SCORING_MODEL, get_openai_client
+from app.ai.enrichment import _levenshtein, _normalize_company_name
 from app.models import Company, Job
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,10 @@ async def llm_clean_job(
     if confidence < 0.7:
         logger.info(
             "LLM low confidence (%.2f) for job %s: title=%s, company=%s",
-            confidence, job.id, clean_title, clean_company,
+            confidence,
+            job.id,
+            clean_title,
+            clean_company,
         )
         # Still record the attempt
         meta = dict(job.extra_metadata or {})
@@ -120,7 +123,12 @@ async def llm_clean_job(
     meta.pop("llm_cleaning_reason", None)
     job.extra_metadata = meta
 
-    return {"status": "applied", "confidence": confidence, "clean_title": clean_title, "clean_company": clean_company}
+    return {
+        "status": "applied",
+        "confidence": confidence,
+        "clean_title": clean_title,
+        "clean_company": clean_company,
+    }
 
 
 async def llm_clean_batch(session: AsyncSession) -> dict:
@@ -134,10 +142,7 @@ async def llm_clean_batch(session: AsyncSession) -> dict:
     result = await session.execute(select(Job))
     all_jobs = list(result.scalars().all())
 
-    flagged = [
-        j for j in all_jobs
-        if (j.extra_metadata or {}).get("needs_llm_cleaning")
-    ]
+    flagged = [j for j in all_jobs if (j.extra_metadata or {}).get("needs_llm_cleaning")]
 
     if not flagged:
         logger.info("No jobs flagged for LLM cleaning")
@@ -174,6 +179,8 @@ async def llm_clean_batch(session: AsyncSession) -> dict:
     await session.commit()
     logger.info(
         "LLM cleaning complete: %d cleaned, %d low_confidence, %d failed",
-        stats["cleaned"], stats["low_confidence"], stats["failed"],
+        stats["cleaned"],
+        stats["low_confidence"],
+        stats["failed"],
     )
     return stats

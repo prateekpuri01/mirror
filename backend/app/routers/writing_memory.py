@@ -94,6 +94,7 @@ async def consolidate(
     Returns a structured report so the UI can show what was merged.
     """
     from app.ai.writing_memory import consolidate_rules
+
     report = await consolidate_rules(session, domain)
     await session.commit()
     return report

@@ -46,6 +46,7 @@ async def enrich_publication(paper_metadata: dict, profile_data: dict) -> dict:
     """
     # Build profile context
     from app.ai.skill_utils import flatten_skills
+
     all_skills = flatten_skills(profile_data.get("skills", {}))
     target_roles = [r.get("title", "") for r in profile_data.get("target_roles", [])]
     domains = profile_data.get("domains", [])
@@ -56,17 +57,17 @@ async def enrich_publication(paper_metadata: dict, profile_data: dict) -> dict:
     ]
 
     user_content = f"""Publication metadata:
-Title: {paper_metadata.get('title', '')}
-Authors: {', '.join(paper_metadata.get('authors', []))}
-Venue: {paper_metadata.get('venue', '')}
-Year: {paper_metadata.get('year', '')}
-Abstract: {paper_metadata.get('abstract', '')[:500]}
-Citation count: {paper_metadata.get('citation_count', 'unknown')}
+Title: {paper_metadata.get("title", "")}
+Authors: {", ".join(paper_metadata.get("authors", []))}
+Venue: {paper_metadata.get("venue", "")}
+Year: {paper_metadata.get("year", "")}
+Abstract: {paper_metadata.get("abstract", "")[:500]}
+Citation count: {paper_metadata.get("citation_count", "unknown")}
 
 User profile context:
-Skills: {', '.join(all_skills[:30])}
-Target roles: {', '.join(target_roles)}
-Domains: {', '.join(domains)}
+Skills: {", ".join(all_skills[:30])}
+Target roles: {", ".join(target_roles)}
+Domains: {", ".join(domains)}
 Work history (key: employer, dates):
 {chr(10).join(wh_context)}
 
@@ -92,20 +93,13 @@ Generate the enrichment JSON."""
         enrichment = {}
 
     # Generate a stable ID from the title
-    title_slug = (
-        paper_metadata.get("title", "untitled")[:40]
-        .lower()
-        .replace(" ", "-")
-        .strip("-")
-    )
+    title_slug = paper_metadata.get("title", "untitled")[:40].lower().replace(" ", "-").strip("-")
     pub_id = f"pub-auto-{title_slug}"
 
     # Determine first_author status
     authors = paper_metadata.get("authors", [])
     user_name = profile_data.get("personal", {}).get("name", "")
-    first_author = bool(
-        authors and user_name and user_name.lower() in authors[0].lower()
-    )
+    first_author = bool(authors and user_name and user_name.lower() in authors[0].lower())
 
     return {
         "id": pub_id,

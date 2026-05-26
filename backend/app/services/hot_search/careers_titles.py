@@ -26,7 +26,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from urllib.parse import urljoin, urlparse
 
 logger = logging.getLogger(__name__)
@@ -43,24 +42,53 @@ _USER_AGENT = (
 # Keywords used to decide if an XHR response *might* be a job listing.
 # Liberal — the JSON-shape sniffer below will validate before we accept.
 _API_HINT_KEYWORDS = (
-    "job", "career", "position", "vacanc", "opening", "posting",
-    "requisit", "search", "/wday/", "/cxs/", "graphql", "/role",
-    "/listing", "/hiring",
+    "job",
+    "career",
+    "position",
+    "vacanc",
+    "opening",
+    "posting",
+    "requisit",
+    "search",
+    "/wday/",
+    "/cxs/",
+    "graphql",
+    "/role",
+    "/listing",
+    "/hiring",
 )
 
 # Heuristic title-field names spanning common ATSes.
 _TITLE_KEYS = (
-    "title", "jobTitle", "name", "heading", "displayTitle",
-    "postingTitle", "requisitionTitle",
+    "title",
+    "jobTitle",
+    "name",
+    "heading",
+    "displayTitle",
+    "postingTitle",
+    "requisitionTitle",
 )
 _URL_KEYS = (
-    "externalPath", "url", "jobUrl", "href", "link",
-    "apply_url", "external_url", "applyUrl", "canonicalUrl",
-    "detailUrl", "permaLink", "jobDetailsUrl",
+    "externalPath",
+    "url",
+    "jobUrl",
+    "href",
+    "link",
+    "apply_url",
+    "external_url",
+    "applyUrl",
+    "canonicalUrl",
+    "detailUrl",
+    "permaLink",
+    "jobDetailsUrl",
 )
 _LOC_KEYS = (
-    "location", "locations", "primaryLocation", "city",
-    "jobLocation", "loc",
+    "location",
+    "locations",
+    "primaryLocation",
+    "city",
+    "jobLocation",
+    "loc",
 )
 
 # Common envelope paths to find the job array inside an API response.
@@ -109,10 +137,7 @@ def _looks_like_job_list_shape(data) -> bool:
                 break
     if not sample:
         return False
-    return all(
-        isinstance(item, dict) and any(tk in item for tk in _TITLE_KEYS)
-        for item in sample
-    )
+    return all(isinstance(item, dict) and any(tk in item for tk in _TITLE_KEYS) for item in sample)
 
 
 def _extract_loc(item: dict) -> str | None:
@@ -201,11 +226,13 @@ def _extract_jobs_from_xhr(captured: list[dict]) -> list[dict]:
             if url in seen_urls:
                 continue
             seen_urls.add(url)
-            results.append({
-                "title": title[:200],
-                "url": url,
-                "location": _extract_loc(item),
-            })
+            results.append(
+                {
+                    "title": title[:200],
+                    "url": url,
+                    "location": _extract_loc(item),
+                }
+            )
     return results
 
 
@@ -328,10 +355,7 @@ async def list_job_titles(
             matches_keyword = any(kw in url_lower for kw in _API_HINT_KEYWORDS)
 
             data = await response.json()
-            looks_like_jobs = (
-                _looks_like_job_list_shape(data)
-                if not matches_keyword else False
-            )
+            looks_like_jobs = _looks_like_job_list_shape(data) if not matches_keyword else False
             if not matches_keyword and not looks_like_jobs:
                 return
             captured.append({"url": response.url, "data": data})
@@ -422,10 +446,12 @@ async def list_job_titles(
 
         return merged[:max_titles]
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.info(
             "careers_titles: %s timed out at %.0fs; partial captures=%d",
-            careers_url, timeout_s, len(captured),
+            careers_url,
+            timeout_s,
+            len(captured),
         )
         # Even on timeout, what we captured via XHR may be useful.
         try:

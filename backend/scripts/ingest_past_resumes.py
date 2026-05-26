@@ -39,7 +39,7 @@ from sqlalchemy import select  # noqa: E402
 
 from app.ai.utils import employer_key as employer_key_fn  # noqa: E402
 from app.database import async_session  # noqa: E402
-from app.models import ContentMemory, Document, DocType, UserProfile  # noqa: E402
+from app.models import ContentMemory, DocType, Document, UserProfile  # noqa: E402
 from app.services import content_memory_service  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -61,8 +61,13 @@ _HEADER_EDUCATION = "EDUCATION"
 _HEADER_AWARDS = "AWARDS & HONORS"
 
 _ALL_HEADERS = {
-    _HEADER_SUMMARY, _HEADER_RESEARCH, _HEADER_EXPERIENCE,
-    _HEADER_PUBLICATIONS, _HEADER_SKILLS, _HEADER_EDUCATION, _HEADER_AWARDS,
+    _HEADER_SUMMARY,
+    _HEADER_RESEARCH,
+    _HEADER_EXPERIENCE,
+    _HEADER_PUBLICATIONS,
+    _HEADER_SKILLS,
+    _HEADER_EDUCATION,
+    _HEADER_AWARDS,
 }
 
 _BULLET_PREFIX = "•"  # • that docx_builder emits as the bullet glyph
@@ -130,7 +135,7 @@ def parse_filename(
     for company in multiword_companies:
         prefix = f"{owner_name} {company} "
         if filename.startswith(prefix):
-            title = filename[len(prefix):].removesuffix(".docx").strip().replace("_", " ")
+            title = filename[len(prefix) :].removesuffix(".docx").strip().replace("_", " ")
             return company, _clean_title_artifact(title)
 
     for pat in _build_filename_patterns(owner_name):
@@ -191,7 +196,12 @@ def parse_docx(path: Path) -> dict:
                 break
             # Some resumes use other separators; accept any short non-empty
             # line that doesn't look like a header or contact info.
-            if tagline and tagline.upper() not in _ALL_HEADERS and "@" not in tagline and "linkedin" not in tagline.lower():
+            if (
+                tagline
+                and tagline.upper() not in _ALL_HEADERS
+                and "@" not in tagline
+                and "linkedin" not in tagline.lower()
+            ):
                 out["tagline"] = tagline
                 break
 
@@ -275,7 +285,7 @@ def parse_docx(path: Path) -> dict:
                 ("Engineering:", "engineering"),
             ):
                 if text.startswith(label):
-                    value = text[len(label):].strip()
+                    value = text[len(label) :].strip()
                     if value:
                         out["technical_skills"][key] = value
                     break
@@ -299,8 +309,27 @@ def parse_docx(path: Path) -> dict:
 
 
 _STOPWORDS = {
-    "a", "an", "the", "of", "and", "or", "for", "to", "in", "with", "on",
-    "by", "at", "from", "as", "is", "are", "was", "were", "be", "this",
+    "a",
+    "an",
+    "the",
+    "of",
+    "and",
+    "or",
+    "for",
+    "to",
+    "in",
+    "with",
+    "on",
+    "by",
+    "at",
+    "from",
+    "as",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "this",
 }
 
 
@@ -329,7 +358,11 @@ def match_accomplishment_id(title: str, catalog: list[dict]) -> str | None:
             continue
         overlap = len(title_tokens & candidate_tokens) / len(title_tokens)
         # Bonus when the accomplishment title's own tokens are mostly covered
-        coverage = len(title_tokens & candidate_tokens) / len(candidate_tokens) if candidate_tokens else 0.0
+        coverage = (
+            len(title_tokens & candidate_tokens) / len(candidate_tokens)
+            if candidate_tokens
+            else 0.0
+        )
         score = overlap * 0.7 + coverage * 0.3
         if score > best_score:
             best_score = score
@@ -357,12 +390,12 @@ async def ingest_one(session, *, docx_path: Path, profile_data: dict) -> dict | 
     # (comma-separated) for companies referenced by past resumes that aren't
     # in the current work_history.
     work_companies = tuple(
-        wh.get("employer", "") for wh in (profile_data.get("work_history") or [])
+        wh.get("employer", "")
+        for wh in (profile_data.get("work_history") or [])
         if wh.get("employer") and " " in wh.get("employer", "")
     )
     env_extras = tuple(
-        c.strip() for c in os.environ.get("INGEST_MULTIWORD_COMPANIES", "").split(",")
-        if c.strip()
+        c.strip() for c in os.environ.get("INGEST_MULTIWORD_COMPANIES", "").split(",") if c.strip()
     )
     multiword = work_companies + env_extras
 
@@ -392,12 +425,14 @@ async def ingest_one(session, *, docx_path: Path, profile_data: dict) -> dict | 
         if not aid:
             unmatched.append(entry.get("title", ""))
             continue
-        research_with_ids.append({
-            "category_label": entry.get("category_label", ""),
-            "title": entry.get("title", ""),
-            "description": entry.get("description", ""),
-            "accomplishment_id": aid,
-        })
+        research_with_ids.append(
+            {
+                "category_label": entry.get("category_label", ""),
+                "title": entry.get("title", ""),
+                "description": entry.get("description", ""),
+                "accomplishment_id": aid,
+            }
+        )
 
     # Map experience employer display names → employer_keys
     experience: dict[str, dict] = {}
@@ -468,7 +503,9 @@ async def ingest_one(session, *, docx_path: Path, profile_data: dict) -> dict | 
             user_payload_json=None,
             job_context=job_context,
             source_text_hash=content_memory_service.compute_source_hash(
-                "research_description", [entry["accomplishment_id"]], profile_data,
+                "research_description",
+                [entry["accomplishment_id"]],
+                profile_data,
             ),
         )
         stats["research_inserted"] += 1
@@ -478,9 +515,7 @@ async def ingest_one(session, *, docx_path: Path, profile_data: dict) -> dict | 
         bullets_payload = block["bullets"]
         if not bullets_payload:
             continue
-        accomp_ids = [
-            aid for b in bullets_payload for aid in (b.get("accomplishment_ids") or [])
-        ]
+        accomp_ids = [aid for b in bullets_payload for aid in (b.get("accomplishment_ids") or [])]
         await _add_memory_row(
             session,
             entity_type="experience_bullets_set",
@@ -490,7 +525,9 @@ async def ingest_one(session, *, docx_path: Path, profile_data: dict) -> dict | 
             user_payload_json=bullets_payload,
             job_context=job_context,
             source_text_hash=content_memory_service.compute_source_hash(
-                "experience_bullets_set", accomp_ids, profile_data,
+                "experience_bullets_set",
+                accomp_ids,
+                profile_data,
             ),
         )
         stats["bullet_sets_inserted"] += 1
@@ -611,9 +648,12 @@ async def main():
                 logger.info(
                     "INGESTED %s — research=%d (unmatched=%d) bullets=%d skills=%d summary=%s tagline=%s",
                     path.name,
-                    stats["research_inserted"], len(stats["research_unmatched"]),
-                    stats["bullet_sets_inserted"], stats["skills_inserted"],
-                    stats["summary_inserted"], stats["tagline_inserted"],
+                    stats["research_inserted"],
+                    len(stats["research_unmatched"]),
+                    stats["bullet_sets_inserted"],
+                    stats["skills_inserted"],
+                    stats["summary_inserted"],
+                    stats["tagline_inserted"],
                 )
                 if stats["research_unmatched"]:
                     logger.info("  unmatched titles: %s", stats["research_unmatched"])

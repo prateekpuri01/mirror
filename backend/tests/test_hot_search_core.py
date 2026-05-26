@@ -26,7 +26,6 @@ from app.services.hot_search.evaluation import (
     _verify_jobs_with_extraction,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -80,7 +79,9 @@ class TestVerifyJobsWithExtraction:
             new=AsyncMock(),
         ) as mock_extract:
             result = await _verify_jobs_with_extraction(
-                jobs, locations=[], min_salary=200_000,
+                jobs,
+                locations=[],
+                min_salary=200_000,
             )
         assert result == []
         mock_extract.assert_not_called()
@@ -96,7 +97,9 @@ class TestVerifyJobsWithExtraction:
             new=AsyncMock(return_value=None),
         ):
             result = await _verify_jobs_with_extraction(
-                jobs, locations=["San Francisco"], min_salary=None,
+                jobs,
+                locations=["San Francisco"],
+                min_salary=None,
             )
         assert result == []
 
@@ -110,7 +113,9 @@ class TestVerifyJobsWithExtraction:
             new=AsyncMock(return_value=None),
         ):
             result = await _verify_jobs_with_extraction(
-                jobs, locations=[], min_salary=None,
+                jobs,
+                locations=[],
+                min_salary=None,
             )
         assert len(result) == 1
         assert result[0]["title"] == "Senior ML Engineer"
@@ -122,13 +127,17 @@ class TestVerifyJobsWithExtraction:
         jobs = [_job()]
         with patch(
             "app.services.hot_search.evaluation._extract_from_preview",
-            new=AsyncMock(return_value={
-                "salary_max": None,
-                "location_match": True,
-            }),
+            new=AsyncMock(
+                return_value={
+                    "salary_max": None,
+                    "location_match": True,
+                }
+            ),
         ):
             result = await _verify_jobs_with_extraction(
-                jobs, locations=["San Francisco"], min_salary=200_000,
+                jobs,
+                locations=["San Francisco"],
+                min_salary=200_000,
             )
         assert result == []
 
@@ -137,13 +146,17 @@ class TestVerifyJobsWithExtraction:
         jobs = [_job()]
         with patch(
             "app.services.hot_search.evaluation._extract_from_preview",
-            new=AsyncMock(return_value={
-                "salary_max": 150_000,
-                "location_match": True,
-            }),
+            new=AsyncMock(
+                return_value={
+                    "salary_max": 150_000,
+                    "location_match": True,
+                }
+            ),
         ):
             result = await _verify_jobs_with_extraction(
-                jobs, locations=["San Francisco"], min_salary=200_000,
+                jobs,
+                locations=["San Francisco"],
+                min_salary=200_000,
             )
         assert result == []
 
@@ -154,13 +167,17 @@ class TestVerifyJobsWithExtraction:
         jobs = [_job(location="NYC")]
         with patch(
             "app.services.hot_search.evaluation._extract_from_preview",
-            new=AsyncMock(return_value={
-                "salary_max": 250_000,
-                "location_match": False,
-            }),
+            new=AsyncMock(
+                return_value={
+                    "salary_max": 250_000,
+                    "location_match": False,
+                }
+            ),
         ):
             result = await _verify_jobs_with_extraction(
-                jobs, locations=["San Francisco"], min_salary=None,
+                jobs,
+                locations=["San Francisco"],
+                min_salary=None,
             )
         assert result == []
 
@@ -171,16 +188,20 @@ class TestVerifyJobsWithExtraction:
         jobs = [_job()]
         with patch(
             "app.services.hot_search.evaluation._extract_from_preview",
-            new=AsyncMock(return_value={
-                "salary_max": 250_000,
-                "salary_min": 200_000,
-                "location_match": True,
-                "work_model": "hybrid",
-                "locations": [{"city": "San Francisco", "state": "CA"}],
-            }),
+            new=AsyncMock(
+                return_value={
+                    "salary_max": 250_000,
+                    "salary_min": 200_000,
+                    "location_match": True,
+                    "work_model": "hybrid",
+                    "locations": [{"city": "San Francisco", "state": "CA"}],
+                }
+            ),
         ):
             result = await _verify_jobs_with_extraction(
-                jobs, locations=["San Francisco"], min_salary=200_000,
+                jobs,
+                locations=["San Francisco"],
+                min_salary=200_000,
             )
         assert len(result) == 1
         assert result[0]["extracted_salary_max"] == 250_000
@@ -200,7 +221,8 @@ class TestPickBestJobForGuidance:
     @pytest.mark.asyncio
     async def test_empty_jobs_returns_none(self):
         result = await _pick_best_job_for_guidance(
-            jobs=[], guidance="ML engineer",
+            jobs=[],
+            guidance="ML engineer",
         )
         assert result == (None, None)
 
@@ -215,7 +237,9 @@ class TestPickBestJobForGuidance:
         ]
         with patch("app.services.hot_search.evaluation.get_openai_client") as mock_client_factory:
             picked, rejection = await _pick_best_job_for_guidance(
-                jobs, guidance="ML", locations=["San Francisco"],
+                jobs,
+                guidance="ML",
+                locations=["San Francisco"],
             )
         assert picked is None
         assert rejection is not None
@@ -237,7 +261,8 @@ class TestPickBestJobForGuidance:
             return_value=mock_client,
         ):
             picked, rejection = await _pick_best_job_for_guidance(
-                jobs, guidance="ML engineer",
+                jobs,
+                guidance="ML engineer",
             )
         assert picked is None
         assert rejection is not None
@@ -261,7 +286,8 @@ class TestPickBestJobForGuidance:
             return_value=mock_client,
         ):
             picked, rejection = await _pick_best_job_for_guidance(
-                jobs, guidance="ML engineer",
+                jobs,
+                guidance="ML engineer",
             )
         assert picked is not None
         assert picked["title"] == "Senior ML Engineer"
@@ -280,7 +306,8 @@ class TestPickBestJobForGuidance:
             return_value=mock_client,
         ):
             picked, rejection = await _pick_best_job_for_guidance(
-                jobs, guidance="ML engineer",
+                jobs,
+                guidance="ML engineer",
             )
         assert picked is None
         assert rejection is not None  # has best_title + reason
@@ -316,8 +343,10 @@ class TestHarvestCandidatesFromEntries:
             new=AsyncMock(),  # should NOT be called
         ) as mock_probe:
             result = await _harvest_candidates_from_entries(
-                [entry], http_client=MagicMock(),
-                seen=seen, existing_companies_lower=set(),
+                [entry],
+                http_client=MagicMock(),
+                seen=seen,
+                existing_companies_lower=set(),
             )
         assert len(result) == 1
         assert result[0].ats == "greenhouse"
@@ -338,8 +367,10 @@ class TestHarvestCandidatesFromEntries:
             source="remotive",
         )
         result = await _harvest_candidates_from_entries(
-            [entry], http_client=MagicMock(),
-            seen=set(), existing_companies_lower=set(),
+            [entry],
+            http_client=MagicMock(),
+            seen=set(),
+            existing_companies_lower=set(),
         )
         assert len(result) == 1
         assert result[0].ats == "lever"
@@ -362,8 +393,10 @@ class TestHarvestCandidatesFromEntries:
             new=AsyncMock(return_value=("ashby", "gamma")),
         ):
             result = await _harvest_candidates_from_entries(
-                [entry], http_client=MagicMock(),
-                seen=set(), existing_companies_lower=set(),
+                [entry],
+                http_client=MagicMock(),
+                seen=set(),
+                existing_companies_lower=set(),
             )
         assert len(result) == 1
         assert result[0].ats == "ashby"
@@ -385,8 +418,10 @@ class TestHarvestCandidatesFromEntries:
             new=AsyncMock(return_value=None),
         ):
             result = await _harvest_candidates_from_entries(
-                [entry], http_client=MagicMock(),
-                seen=set(), existing_companies_lower=set(),
+                [entry],
+                http_client=MagicMock(),
+                seen=set(),
+                existing_companies_lower=set(),
             )
         assert len(result) == 1
         assert result[0].ats is None
@@ -399,16 +434,20 @@ class TestHarvestCandidatesFromEntries:
         e1 = AggregatorEntry(
             company_name="Acme",
             job_url="https://boards.greenhouse.io/acme/jobs/1",
-            title="MLE", source="hn",
+            title="MLE",
+            source="hn",
         )
         e2 = AggregatorEntry(
             company_name="Acme",
             job_url="https://boards.greenhouse.io/acme/jobs/2",
-            title="DS", source="remotive",
+            title="DS",
+            source="remotive",
         )
         result = await _harvest_candidates_from_entries(
-            [e1, e2], http_client=MagicMock(),
-            seen=set(), existing_companies_lower=set(),
+            [e1, e2],
+            http_client=MagicMock(),
+            seen=set(),
+            existing_companies_lower=set(),
         )
         assert len(result) == 1
         assert result[0].slug == "acme"
@@ -420,10 +459,12 @@ class TestHarvestCandidatesFromEntries:
         entry = AggregatorEntry(
             company_name="Already-Tracked Co",
             job_url="https://boards.greenhouse.io/already-tracked/jobs/1",
-            title="MLE", source="hn",
+            title="MLE",
+            source="hn",
         )
         result = await _harvest_candidates_from_entries(
-            [entry], http_client=MagicMock(),
+            [entry],
+            http_client=MagicMock(),
             seen=set(),
             existing_companies_lower={"already-tracked co"},
         )
@@ -436,12 +477,14 @@ class TestHarvestCandidatesFromEntries:
         ats_entry = AggregatorEntry(
             company_name="Acme",
             job_url="https://boards.greenhouse.io/acme/jobs/1",
-            title="MLE", source="hn",
+            title="MLE",
+            source="hn",
         )
         direct_entry = AggregatorEntry(
             company_name="Beta",
             job_url="https://example.com/jobs/2",
-            title="DS", source="hn",
+            title="DS",
+            source="hn",
         )
         with patch(
             "app.services.hot_search.discovery._probe_name_for_ats",
@@ -449,8 +492,10 @@ class TestHarvestCandidatesFromEntries:
         ):
             # Pass direct first to verify ordering happens at the end
             result = await _harvest_candidates_from_entries(
-                [direct_entry, ats_entry], http_client=MagicMock(),
-                seen=set(), existing_companies_lower=set(),
+                [direct_entry, ats_entry],
+                http_client=MagicMock(),
+                seen=set(),
+                existing_companies_lower=set(),
             )
         assert len(result) == 2
         # ATS should come first regardless of input order
@@ -465,9 +510,15 @@ class TestHarvestCandidatesFromEntries:
 
 def _scraped(**kw) -> ScrapedJob:
     base = dict(
-        title="Engineer", company_name="Acme", url="https://x", description="",
-        description_html=None, location=None, remote=False,
-        salary_min=None, salary_max=None,
+        title="Engineer",
+        company_name="Acme",
+        url="https://x",
+        description="",
+        description_html=None,
+        location=None,
+        remote=False,
+        salary_min=None,
+        salary_max=None,
     )
     base.update(kw)
     return ScrapedJob(**base)
@@ -499,10 +550,12 @@ class TestScoreJobRelevance:
             "deal_breakers": {"crypto"},
         }
         with_breaker = score_job_relevance(
-            _scraped(title="Crypto Engineer"), kw,
+            _scraped(title="Crypto Engineer"),
+            kw,
         )
         without_breaker = score_job_relevance(
-            _scraped(title="Backend Engineer"), kw,
+            _scraped(title="Backend Engineer"),
+            kw,
         )
         # With deal-breaker, score should be reduced by 30 points
         assert without_breaker - with_breaker >= 30
@@ -513,10 +566,12 @@ class TestScoreJobRelevance:
             "remote_preference": "remote",
         }
         remote_job = score_job_relevance(
-            _scraped(title="Engineer", remote=True), kw,
+            _scraped(title="Engineer", remote=True),
+            kw,
         )
         onsite_job = score_job_relevance(
-            _scraped(title="Engineer", remote=False), kw,
+            _scraped(title="Engineer", remote=False),
+            kw,
         )
         assert remote_job - onsite_job == 10
 

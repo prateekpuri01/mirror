@@ -8,7 +8,6 @@ Default values are conservative (free-tier safe). If the user's key test
 detects higher limits, they're bumped up.
 """
 
-import asyncio
 import logging
 
 logger = logging.getLogger(__name__)

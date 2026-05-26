@@ -10,7 +10,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
-
 # ---------------------------------------------------------------------------
 # Phase 1 output: Strategic Plan
 # ---------------------------------------------------------------------------
@@ -18,32 +17,32 @@ from typing import Any, TypedDict
 
 class AccomplishmentPick(TypedDict):
     accomplishment_id: str
-    rationale: str          # Why this accomplishment for this job?
-    framing_angle: str      # How should the description be framed?
+    rationale: str  # Why this accomplishment for this job?
+    framing_angle: str  # How should the description be framed?
     reserve_for_bullets: str  # What to NOT say in the description — save for bullets
 
 
 class BulletMapping(TypedDict):
     employer_key: str
     accomplishment_ids: list[str]  # Which accomplishments to use for this employer
-    rationale: str                 # Why these? What job requirements do they address?
-    emphasis: str                  # What angle to take for this employer's bullets
+    rationale: str  # Why these? What job requirements do they address?
+    emphasis: str  # What angle to take for this employer's bullets
 
 
 class RedundancyWarning(TypedDict):
     accomplishment_id: str
-    appears_in: list[str]      # e.g., ["selected_research.0", "experience.rand.bullets.1"]
-    differentiation: str       # How to make these two appearances complementary
+    appears_in: list[str]  # e.g., ["selected_research.0", "experience.rand.bullets.1"]
+    differentiation: str  # How to make these two appearances complementary
 
 
 class StrategicPlan(TypedDict):
-    core_argument: str                             # 1-2 sentences: why this person gets an interview
+    core_argument: str  # 1-2 sentences: why this person gets an interview
     selected_accomplishments: list[AccomplishmentPick]  # exactly 3
-    bullet_mapping: list[BulletMapping]            # one per employer
-    summary_angle: str                             # framing direction (NOT the summary text itself)
-    tone: str                                      # e.g., "technical builder", "research leader"
-    redundancy_warnings: list[RedundancyWarning]   # accomplishments appearing in multiple sections
-    pitfalls: list[str]                            # what to avoid
+    bullet_mapping: list[BulletMapping]  # one per employer
+    summary_angle: str  # framing direction (NOT the summary text itself)
+    tone: str  # e.g., "technical builder", "research leader"
+    redundancy_warnings: list[RedundancyWarning]  # accomplishments appearing in multiple sections
+    pitfalls: list[str]  # what to avoid
 
 
 # ---------------------------------------------------------------------------
@@ -52,11 +51,11 @@ class StrategicPlan(TypedDict):
 
 
 class GenerationLogEntry(TypedDict):
-    step: str                          # e.g., "research_pick", "research_desc.0", "experience.rand"
+    step: str  # e.g., "research_pick", "research_desc.0", "experience.rand"
     accomplishment_ids: list[str] | None  # which accomplishments this step used
-    reasoning: str                     # why these choices were made
-    content_preview: str               # first ~100 chars of what was generated
-    avoid_downstream: str              # what NOT to repeat in later steps
+    reasoning: str  # why these choices were made
+    content_preview: str  # first ~100 chars of what was generated
+    avoid_downstream: str  # what NOT to repeat in later steps
 
 
 # ---------------------------------------------------------------------------
@@ -77,9 +76,13 @@ class GenerationContext:
 
     # Grows through Phase 2
     generation_log: list[dict] = field(default_factory=list)
-    research_picks: list[dict] = field(default_factory=list)      # [{accomplishment_id, rationale}]
-    research_descriptions: list[dict] = field(default_factory=list)  # [{category_label, title, description, accomplishment_id}]
-    experience_blocks: dict[str, dict] = field(default_factory=dict)  # employer_key -> {bullets, accomplishment_ids}
+    research_picks: list[dict] = field(default_factory=list)  # [{accomplishment_id, rationale}]
+    research_descriptions: list[dict] = field(
+        default_factory=list
+    )  # [{category_label, title, description, accomplishment_id}]
+    experience_blocks: dict[str, dict] = field(
+        default_factory=dict
+    )  # employer_key -> {bullets, accomplishment_ids}
 
     # Set in later Phase 2 steps
     summary: str | None = None
@@ -197,13 +200,15 @@ class GenerationContext:
         avoid_downstream: str = "",
     ) -> None:
         """Append a generation log entry."""
-        self.generation_log.append({
-            "step": step,
-            "accomplishment_ids": accomplishment_ids,
-            "reasoning": reasoning,
-            "content_preview": content_preview[:100],
-            "avoid_downstream": avoid_downstream,
-        })
+        self.generation_log.append(
+            {
+                "step": step,
+                "accomplishment_ids": accomplishment_ids,
+                "reasoning": reasoning,
+                "content_preview": content_preview[:100],
+                "avoid_downstream": avoid_downstream,
+            }
+        )
 
     # ---------------------------------------------------------------------------
     # Assembly

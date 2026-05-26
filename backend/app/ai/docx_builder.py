@@ -15,20 +15,20 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 import yaml
 from docx import Document
-from docx.enum.section import WD_ORIENT, WD_SECTION
+from docx.enum.section import WD_ORIENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Emu, Inches, Pt, RGBColor, Twips
 
-from app.ai.resume_presets import LAYOUTS, resolve_style
+from app.ai.resume_presets import resolve_style
 
 logger = logging.getLogger(__name__)
 
@@ -38,14 +38,14 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_STYLE: dict[str, Any] = {
     "colors": {
-        "navy": "#1A1A1A",         # near-black — name (bold), section headers
-        "orange": "#B8851E",        # mustard — the pop: tagline, accents, rules
-        "contact": "#555555",       # mid-gray — contact line
-        "separator": "#B8B8B8",     # light gray — separator characters
-        "dark": "#1F1F1F",          # near-black — body text
-        "name_first": "#8B7355",    # warm tan — first name
-        "link": "#8B6914",          # darker mustard — readable links on white
-        "border": "#B8851E",        # mustard — section-header underline POP
+        "navy": "#1A1A1A",  # near-black — name (bold), section headers
+        "orange": "#B8851E",  # mustard — the pop: tagline, accents, rules
+        "contact": "#555555",  # mid-gray — contact line
+        "separator": "#B8B8B8",  # light gray — separator characters
+        "dark": "#1F1F1F",  # near-black — body text
+        "name_first": "#8B7355",  # warm tan — first name
+        "link": "#8B6914",  # darker mustard — readable links on white
+        "border": "#B8851E",  # mustard — section-header underline POP
     },
     "fonts": {
         "name_light": "Cambria",
@@ -232,7 +232,9 @@ def _add_bottom_border(paragraph, sz: str = "6", space: str = "2", color: str = 
     pPr.append(pBdr)
 
 
-def _add_paragraph_top_border(paragraph, sz: str = "6", space: str = "1", color: str = "B8851E") -> None:
+def _add_paragraph_top_border(
+    paragraph, sz: str = "6", space: str = "1", color: str = "B8851E"
+) -> None:
     pPr = paragraph._p.get_or_add_pPr()
     pBdr = OxmlElement("w:pBdr")
     top = OxmlElement("w:top")
@@ -450,14 +452,18 @@ def _render_contact_line(
     for i, (emoji, text, url) in enumerate(items):
         if i > 0:
             run = paragraph.add_run("    ")
-            _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact)
+            _set_run(
+                ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact
+            )
         run = paragraph.add_run(emoji)
         _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact)
         if url:
             _add_hyperlink(ctx, paragraph, url, text)
         else:
             run = paragraph.add_run(text)
-            _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact)
+            _set_run(
+                ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact
+            )
 
 
 def _build_contact_grid_items(personal: dict) -> list[dict]:
@@ -492,7 +498,9 @@ def _build_contact_grid_items(personal: dict) -> list[dict]:
     return items[:4]
 
 
-def _add_hyperlink_white(ctx: BuildContext, paragraph, url: str, text: str, size_pt: float = 9.0) -> None:
+def _add_hyperlink_white(
+    ctx: BuildContext, paragraph, url: str, text: str, size_pt: float = 9.0
+) -> None:
     """Hyperlink styled for the dark band header — light gray, no underline."""
     part = paragraph.part
     r_id = part.relate_to(
@@ -523,7 +531,9 @@ def _add_hyperlink_white(ctx: BuildContext, paragraph, url: str, text: str, size
     paragraph._p.append(hyperlink)
 
 
-def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict, tagline: str) -> None:
+def _render_timeline_designer_header(
+    ctx: BuildContext, doc, profile_data: dict, tagline: str
+) -> None:
     """Designer header for the timeline layout — colored band, 3 stacked rows.
 
     Row 1: centered name in large white reverse type with letter-spacing.
@@ -561,7 +571,8 @@ def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict,
     name_p.paragraph_format.space_after = Pt(0)
     run = name_p.add_run(full_name.upper())
     _set_run(
-        ctx, run,
+        ctx,
+        run,
         font_name=ctx.font.name_bold,
         size=Pt(26),
         color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -585,14 +596,16 @@ def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict,
         rule = "─" * 5
         run_l = tag_p.add_run(rule + "  ")
         _set_run(
-            ctx, run_l,
+            ctx,
+            run_l,
             font_name=ctx.font.body,
             size=Pt(8),
             color=RGBColor(0xCC, 0xCC, 0xCC),
         )
         run_t = tag_p.add_run(tagline.upper())
         _set_run(
-            ctx, run_t,
+            ctx,
+            run_t,
             font_name=ctx.font.body,
             size=Pt(8.5),
             color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -601,7 +614,8 @@ def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict,
         _set_run_char_spacing(run_t, 30)
         run_r = tag_p.add_run("  " + rule)
         _set_run(
-            ctx, run_r,
+            ctx,
+            run_r,
             font_name=ctx.font.body,
             size=Pt(8),
             color=RGBColor(0xCC, 0xCC, 0xCC),
@@ -622,7 +636,8 @@ def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict,
         icon_p.paragraph_format.space_after = Pt(1)
         run = icon_p.add_run(item["icon"])
         _set_run(
-            ctx, run,
+            ctx,
+            run,
             font_name=ctx.font.body,
             size=Pt(13),
             color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -637,7 +652,8 @@ def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict,
         else:
             run = val_p.add_run(item["value"])
             _set_run(
-                ctx, run,
+                ctx,
+                run,
                 font_name=ctx.font.body,
                 size=Pt(8),
                 color=RGBColor(0xE6, 0xE6, 0xE6),
@@ -653,7 +669,13 @@ def _render_timeline_designer_header(ctx: BuildContext, doc, profile_data: dict,
         for i, (label, url) in enumerate(links):
             if i > 0:
                 run = p.add_run("  |  ")
-                _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.separator)
+                _set_run(
+                    ctx,
+                    run,
+                    font_name=ctx.font.body,
+                    size=ctx.size.contact,
+                    color=ctx.color.separator,
+                )
             _add_hyperlink(ctx, p, url, label)
 
 
@@ -672,12 +694,21 @@ def _render_centered_header(ctx: BuildContext, doc, profile_data: dict, tagline:
 
     if first_name:
         run = p.add_run(first_name.upper())
-        _set_run(ctx, run, font_name=ctx.font.name_light, size=ctx.size.name, color=ctx.color.name_first)
+        _set_run(
+            ctx, run, font_name=ctx.font.name_light, size=ctx.size.name, color=ctx.color.name_first
+        )
     if last_name:
         spacer = p.add_run(" ")
         spacer.font.size = ctx.size.name
         run = p.add_run(last_name.upper())
-        _set_run(ctx, run, font_name=ctx.font.name_bold, size=ctx.size.name, color=ctx.color.dark, bold=True)
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.name_bold,
+            size=ctx.size.name,
+            color=ctx.color.dark,
+            bold=True,
+        )
 
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -702,7 +733,13 @@ def _render_centered_header(ctx: BuildContext, doc, profile_data: dict, tagline:
         for i, (label, url) in enumerate(links):
             if i > 0:
                 run = p.add_run("  |  ")
-                _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.separator)
+                _set_run(
+                    ctx,
+                    run,
+                    font_name=ctx.font.body,
+                    size=ctx.size.contact,
+                    color=ctx.color.separator,
+                )
             _add_hyperlink(ctx, p, url, label)
 
 
@@ -734,7 +771,8 @@ def _render_banner_header(ctx: BuildContext, doc, profile_data: dict, tagline: s
     name_p.paragraph_format.space_after = Pt(0)
     run = name_p.add_run(full_name.upper())
     _set_run(
-        ctx, run,
+        ctx,
+        run,
         font_name=ctx.font.name_bold,
         size=Pt(24),
         color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -748,7 +786,8 @@ def _render_banner_header(ctx: BuildContext, doc, profile_data: dict, tagline: s
         tag_p.paragraph_format.space_after = Pt(0)
         run = tag_p.add_run(tagline)
         _set_run(
-            ctx, run,
+            ctx,
+            run,
             font_name=ctx.font.body,
             size=Pt(11),
             color=RGBColor(0xE6, 0xE6, 0xE6),
@@ -770,7 +809,13 @@ def _render_banner_header(ctx: BuildContext, doc, profile_data: dict, tagline: s
         for i, (label, url) in enumerate(links):
             if i > 0:
                 run = p.add_run("  |  ")
-                _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.separator)
+                _set_run(
+                    ctx,
+                    run,
+                    font_name=ctx.font.body,
+                    size=ctx.size.contact,
+                    color=ctx.color.separator,
+                )
             _add_hyperlink(ctx, p, url, label)
 
 
@@ -806,7 +851,8 @@ def _render_compact_header(ctx: BuildContext, doc, profile_data: dict, tagline: 
     name_p.paragraph_format.space_after = Pt(0)
     run = name_p.add_run(full_name)
     _set_run(
-        ctx, run,
+        ctx,
+        run,
         font_name=ctx.font.name_bold,
         size=Pt(20),
         color=ctx.color.navy,
@@ -819,7 +865,8 @@ def _render_compact_header(ctx: BuildContext, doc, profile_data: dict, tagline: 
         tag_p.paragraph_format.space_after = Pt(0)
         run = tag_p.add_run(tagline)
         _set_run(
-            ctx, run,
+            ctx,
+            run,
             font_name=ctx.font.body,
             size=Pt(10.5),
             color=ctx.color.orange,
@@ -839,7 +886,9 @@ def _render_compact_header(ctx: BuildContext, doc, profile_data: dict, tagline: 
             _add_hyperlink(ctx, p, url, text)
         else:
             run = p.add_run(text)
-            _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact)
+            _set_run(
+                ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.contact
+            )
 
     # Thin accent rule below header
     rule_p = doc.add_paragraph()
@@ -856,7 +905,13 @@ def _render_compact_header(ctx: BuildContext, doc, profile_data: dict, tagline: 
         for i, (label, url) in enumerate(links):
             if i > 0:
                 run = p.add_run("  |  ")
-                _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.contact, color=ctx.color.separator)
+                _set_run(
+                    ctx,
+                    run,
+                    font_name=ctx.font.body,
+                    size=ctx.size.contact,
+                    color=ctx.color.separator,
+                )
             _add_hyperlink(ctx, p, url, label)
 
 
@@ -877,7 +932,14 @@ def _render_section_header(ctx: BuildContext, doc, title: str) -> None:
     p.paragraph_format.space_before = Emu(127000)
     p.paragraph_format.space_after = Emu(38100)
     run = p.add_run(title.upper())
-    _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.section_header, color=ctx.color.navy, bold=True)
+    _set_run(
+        ctx,
+        run,
+        font_name=ctx.font.body,
+        size=ctx.size.section_header,
+        color=ctx.color.navy,
+        bold=True,
+    )
     if ctx.layout.get("section_underline", True):
         _add_bottom_border(p, sz="6", space="2", color=ctx.border_hex)
 
@@ -903,7 +965,8 @@ def _render_section_header_spaced(ctx: BuildContext, doc, title: str) -> None:
     p.paragraph_format.space_after = Pt(2)
     run = p.add_run(title.upper())
     _set_run(
-        ctx, run,
+        ctx,
+        run,
         font_name=ctx.font.body,
         size=ctx.size.section_header,
         color=ctx.color.orange,
@@ -919,7 +982,8 @@ def _render_section_header_accent_bar(ctx: BuildContext, doc, title: str) -> Non
     p.paragraph_format.space_after = Pt(2)
     bar = p.add_run("▍ ")
     _set_run(
-        ctx, bar,
+        ctx,
+        bar,
         font_name=ctx.font.body,
         size=Pt(13),
         color=ctx.color.orange,
@@ -927,7 +991,8 @@ def _render_section_header_accent_bar(ctx: BuildContext, doc, title: str) -> Non
     )
     run = p.add_run(title.upper())
     _set_run(
-        ctx, run,
+        ctx,
+        run,
         font_name=ctx.font.body,
         size=ctx.size.section_header,
         color=ctx.color.navy,
@@ -953,10 +1018,19 @@ def _render_selected_research(ctx: BuildContext, doc, research_entries: list) ->
 
         label = entry.get("category_label", "RESEARCH")
         run = p.add_run(f"{label.upper()} — ")
-        _set_run(ctx, run, font_name=ctx.font.skill_label, size=ctx.size.body, color=ctx.color.orange, bold=True)
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.skill_label,
+            size=ctx.size.body,
+            color=ctx.color.orange,
+            bold=True,
+        )
 
         run = p.add_run(entry.get("title", ""))
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body, color=ctx.color.navy, bold=True)
+        _set_run(
+            ctx, run, font_name=ctx.font.body, size=ctx.size.body, color=ctx.color.navy, bold=True
+        )
 
         desc = entry.get("description", "")
         if desc:
@@ -969,7 +1043,13 @@ def _render_selected_research(ctx: BuildContext, doc, research_entries: list) ->
 
 
 def _render_experience_block(
-    ctx: BuildContext, doc, org: str, title: str, location: str, dates: str, bullets: list,
+    ctx: BuildContext,
+    doc,
+    org: str,
+    title: str,
+    location: str,
+    dates: str,
+    bullets: list,
 ) -> None:
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(6)
@@ -1021,7 +1101,8 @@ def _render_experience(ctx: BuildContext, doc, experience_data: dict, profile_da
             continue
         info = wh_by_key.get(key, {})
         _render_experience_block(
-            ctx, doc,
+            ctx,
+            doc,
             info.get("org", key),
             info.get("title", ""),
             info.get("location", ""),
@@ -1064,7 +1145,14 @@ def _render_skills(ctx: BuildContext, doc, skills_data: dict) -> None:
         p.paragraph_format.space_before = Emu(19050)
         p.paragraph_format.space_after = Emu(31750)
         run = p.add_run(f"{label}: ")
-        _set_run(ctx, run, font_name=ctx.font.skill_label, size=ctx.size.body_small, color=ctx.color.navy, bold=True)
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.skill_label,
+            size=ctx.size.body_small,
+            color=ctx.color.navy,
+            bold=True,
+        )
         run = p.add_run(value)
         _set_run(ctx, run, size=ctx.size.body_small)
 
@@ -1138,7 +1226,10 @@ def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_da
     _render_timeline_designer_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
     _render_summary(ctx, doc, resume_data.get("summary", ""))
     _render_experience_education_timeline(
-        ctx, doc, resume_data.get("experience", {}), profile_data,
+        ctx,
+        doc,
+        resume_data.get("experience", {}),
+        profile_data,
     )
     _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
     _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
@@ -1147,7 +1238,10 @@ def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_da
 
 
 def _render_experience_education_timeline(
-    ctx: BuildContext, doc, experience_data: dict, profile_data: dict,
+    ctx: BuildContext,
+    doc,
+    experience_data: dict,
+    profile_data: dict,
 ) -> None:
     """Combined work + education timeline.
 
@@ -1178,13 +1272,15 @@ def _render_experience_education_timeline(
         employer = wh.get("employer", key)
         location = wh.get("location", "")
         subtitle = f"{employer}  ·  {location}" if location else employer
-        work_blocks.append({
-            "kind": "work",
-            "date": date_str,
-            "title": wh.get("title", ""),
-            "subtitle": subtitle,
-            "bullets": bullets,
-        })
+        work_blocks.append(
+            {
+                "kind": "work",
+                "date": date_str,
+                "title": wh.get("title", ""),
+                "subtitle": subtitle,
+                "bullets": bullets,
+            }
+        )
 
     rendered = {employer_key(wh.get("employer", "")) for wh in work_history}
     for key, emp in experience_data.items():
@@ -1193,13 +1289,15 @@ def _render_experience_education_timeline(
         bullets = emp.get("bullets", [])
         if not bullets:
             continue
-        work_blocks.append({
-            "kind": "work",
-            "date": "",
-            "title": key,
-            "subtitle": "",
-            "bullets": bullets,
-        })
+        work_blocks.append(
+            {
+                "kind": "work",
+                "date": "",
+                "title": key,
+                "subtitle": "",
+                "bullets": bullets,
+            }
+        )
 
     # ---- Education blocks ------------------------------------------------
     edu_blocks: list[dict] = []
@@ -1212,13 +1310,15 @@ def _render_experience_education_timeline(
             subtitle = f"{institution}  —  {honors}"
         else:
             subtitle = institution or honors
-        edu_blocks.append({
-            "kind": "education",
-            "date": year,
-            "title": degree_field,
-            "subtitle": subtitle,
-            "bullets": [],
-        })
+        edu_blocks.append(
+            {
+                "kind": "education",
+                "date": year,
+                "title": degree_field,
+                "subtitle": subtitle,
+                "bullets": [],
+            }
+        )
 
     # ---- Assemble blocks, inserting Education sub-heading row ------------
     blocks: list[dict] = list(work_blocks)
@@ -1255,7 +1355,8 @@ def _render_experience_education_timeline(
             sub_p.paragraph_format.space_after = Pt(0)
             run = sub_p.add_run(block["label"])
             _set_run(
-                ctx, run,
+                ctx,
+                run,
                 font_name=ctx.font.body,
                 size=ctx.size.body_small,
                 color=ctx.color.contact,
@@ -1273,7 +1374,8 @@ def _render_experience_education_timeline(
         date_p.paragraph_format.space_after = Pt(0)
         run = date_p.add_run(block["date"])
         _set_run(
-            ctx, run,
+            ctx,
+            run,
             font_name=ctx.font.body,
             size=ctx.size.body_small,
             color=ctx.color.navy,
@@ -1285,15 +1387,23 @@ def _render_experience_education_timeline(
         title_p.paragraph_format.space_before = Pt(0)
         title_p.paragraph_format.space_after = Pt(0)
         run = title_p.add_run(block["title"])
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body, color=ctx.color.navy, bold=True)
+        _set_run(
+            ctx, run, font_name=ctx.font.body, size=ctx.size.body, color=ctx.color.navy, bold=True
+        )
 
         if block["subtitle"]:
             sub_p = content_cell.add_paragraph()
             sub_p.paragraph_format.space_before = Pt(0)
             sub_p.paragraph_format.space_after = Pt(2)
             run = sub_p.add_run(block["subtitle"])
-            _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                     color=ctx.color.contact, italic=True)
+            _set_run(
+                ctx,
+                run,
+                font_name=ctx.font.body,
+                size=ctx.size.body_small,
+                color=ctx.color.contact,
+                italic=True,
+            )
 
         for bullet in block["bullets"]:
             bullet_text = bullet["text"] if isinstance(bullet, dict) else bullet
@@ -1320,10 +1430,17 @@ def _remove_cell_borders(cell) -> None:
     tcPr.append(tcBorders)
 
 
-def _set_cell_margins(cell, top_in: float, right_in: float, bottom_in: float, left_in: float) -> None:
+def _set_cell_margins(
+    cell, top_in: float, right_in: float, bottom_in: float, left_in: float
+) -> None:
     tcPr = cell._tc.get_or_add_tcPr()
     tcMar = OxmlElement("w:tcMar")
-    for side, val in (("top", top_in), ("left", left_in), ("bottom", bottom_in), ("right", right_in)):
+    for side, val in (
+        ("top", top_in),
+        ("left", left_in),
+        ("bottom", bottom_in),
+        ("right", right_in),
+    ):
         m = OxmlElement(f"w:{side}")
         m.set(qn("w:w"), str(int(val * 1440)))  # inches → twips
         m.set(qn("w:type"), "dxa")
@@ -1338,7 +1455,8 @@ def _render_sidebar_section_header(ctx: BuildContext, cell, title: str) -> None:
     p.paragraph_format.space_after = Pt(2)
     run = p.add_run(title.upper())
     _set_run(
-        ctx, run,
+        ctx,
+        run,
         font_name=ctx.font.body,
         size=ctx.size.section_header,
         color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -1360,7 +1478,8 @@ def _render_sidebar_name(ctx: BuildContext, cell, profile_data: dict) -> None:
     if first_name:
         run = p.add_run(first_name)
         _set_run(
-            ctx, run,
+            ctx,
+            run,
             font_name=ctx.font.name_bold,
             size=Pt(22),
             color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -1372,7 +1491,8 @@ def _render_sidebar_name(ctx: BuildContext, cell, profile_data: dict) -> None:
         p2.paragraph_format.space_after = Pt(6)
         run = p2.add_run(last_name)
         _set_run(
-            ctx, run,
+            ctx,
+            run,
             font_name=ctx.font.name_bold,
             size=Pt(22),
             color=RGBColor(0xFF, 0xFF, 0xFF),
@@ -1393,7 +1513,9 @@ def _render_sidebar_contact(ctx: BuildContext, cell, profile_data: dict) -> None
         items.append(("Address", location))
     if phone:
         digits = "".join(c for c in phone if c.isdigit())
-        items.append(("Phone", f"{digits[:3]}-{digits[3:6]}-{digits[6:]}" if len(digits) == 10 else phone))
+        items.append(
+            ("Phone", f"{digits[:3]}-{digits[3:6]}-{digits[6:]}" if len(digits) == 10 else phone)
+        )
     if email:
         items.append(("E-mail", email))
     if linkedin:
@@ -1405,14 +1527,25 @@ def _render_sidebar_contact(ctx: BuildContext, cell, profile_data: dict) -> None
         p.paragraph_format.space_before = Pt(3)
         p.paragraph_format.space_after = Pt(0)
         run = p.add_run(label)
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                 color=RGBColor(0xFF, 0xFF, 0xFF), bold=True)
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.body,
+            size=ctx.size.body_small,
+            color=RGBColor(0xFF, 0xFF, 0xFF),
+            bold=True,
+        )
         p2 = cell.add_paragraph()
         p2.paragraph_format.space_before = Pt(0)
         p2.paragraph_format.space_after = Pt(0)
         run = p2.add_run(value)
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                 color=RGBColor(0xE6, 0xE6, 0xE6))
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.body,
+            size=ctx.size.body_small,
+            color=RGBColor(0xE6, 0xE6, 0xE6),
+        )
 
 
 def _render_sidebar_skills(ctx: BuildContext, cell, skills_data: dict) -> None:
@@ -1439,11 +1572,21 @@ def _render_sidebar_skills(ctx: BuildContext, cell, skills_data: dict) -> None:
         p.paragraph_format.left_indent = Inches(0.12)
         p.paragraph_format.first_line_indent = Inches(-0.12)
         run = p.add_run("•  ")
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                 color=RGBColor(0xFF, 0xFF, 0xFF))
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.body,
+            size=ctx.size.body_small,
+            color=RGBColor(0xFF, 0xFF, 0xFF),
+        )
         run = p.add_run(item)
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                 color=RGBColor(0xE6, 0xE6, 0xE6))
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.body,
+            size=ctx.size.body_small,
+            color=RGBColor(0xE6, 0xE6, 0xE6),
+        )
 
 
 def _render_sidebar_education(ctx: BuildContext, cell, profile_data: dict) -> None:
@@ -1457,15 +1600,26 @@ def _render_sidebar_education(ctx: BuildContext, cell, profile_data: dict) -> No
         p.paragraph_format.space_after = Pt(0)
         degree_field = f"{edu.get('degree', '')} {edu.get('field', '')}".strip()
         run = p.add_run(degree_field)
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                 color=RGBColor(0xFF, 0xFF, 0xFF), bold=True)
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.body,
+            size=ctx.size.body_small,
+            color=RGBColor(0xFF, 0xFF, 0xFF),
+            bold=True,
+        )
         p2 = cell.add_paragraph()
         p2.paragraph_format.space_before = Pt(0)
         p2.paragraph_format.space_after = Pt(0)
         meta = ", ".join(filter(None, [edu.get("institution", ""), str(edu.get("year", ""))]))
         run = p2.add_run(meta)
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body_small,
-                 color=RGBColor(0xE6, 0xE6, 0xE6))
+        _set_run(
+            ctx,
+            run,
+            font_name=ctx.font.body,
+            size=ctx.size.body_small,
+            color=RGBColor(0xE6, 0xE6, 0xE6),
+        )
 
 
 def _build_layout_two_column(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
@@ -1494,8 +1648,8 @@ def _build_layout_two_column(ctx: BuildContext, doc, resume_data: dict, profile_
     sidebar_cell.width = Inches(sidebar_width_in)
     main_cell.width = Inches(main_width_in)
     # Also set on the underlying tblGrid so Word respects them
-    for cell, w_in in ((sidebar_cell, sidebar_width_in), (main_cell, main_width_in)):
-        for tc in cell._tc.findall(qn("w:tc")):
+    for cell, _w_in in ((sidebar_cell, sidebar_width_in), (main_cell, main_width_in)):
+        for _tc in cell._tc.findall(qn("w:tc")):
             pass  # noqa: PIE790 — width set above is sufficient
 
     # Sidebar shading + margins
@@ -1522,8 +1676,9 @@ def _build_layout_two_column(ctx: BuildContext, doc, resume_data: dict, profile_
         p.paragraph_format.space_before = Pt(2)
         p.paragraph_format.space_after = Pt(4)
         run = p.add_run(tagline)
-        _set_run(ctx, run, font_name=ctx.font.body, size=ctx.size.body,
-                 color=ctx.color.dark, italic=True)
+        _set_run(
+            ctx, run, font_name=ctx.font.body, size=ctx.size.body, color=ctx.color.dark, italic=True
+        )
 
     _render_summary(ctx, main_cell, resume_data.get("summary", ""))
     _render_experience(ctx, main_cell, resume_data.get("experience", {}), profile_data)
@@ -1546,8 +1701,8 @@ _LAYOUT_DISPATCH = {
 
 
 def _sanitize_filename(s: str) -> str:
-    s = re.sub(r'[<>:"/\\|?*]', '', s)
-    s = re.sub(r'\s+', ' ', s.strip())
+    s = re.sub(r'[<>:"/\\|?*]', "", s)
+    s = re.sub(r"\s+", " ", s.strip())
     return s
 
 
@@ -1600,7 +1755,7 @@ def build_docx(
         safe_title = _sanitize_filename(title)
         filename = f"{safe_name} {safe_company} {safe_title}.docx"
     else:
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         filename = f"{job_id}_{timestamp}.docx"
     filepath = os.path.join(OUTPUT_DIR, filename)
 

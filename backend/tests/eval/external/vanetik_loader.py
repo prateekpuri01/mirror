@@ -107,17 +107,19 @@ def _load_vacancies(csv_path: Path) -> list[dict]:
     with csv_path.open("r", encoding="utf-8", errors="replace") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            rows.append({
-                "title": row.get("job_title", "").strip(),
-                "company": "Vanetik Vacancy",  # not in dataset
-                "description": row.get("job_description", "").strip(),
-                "salary_min": None,
-                "salary_max": None,
-                "user_notes": None,
-                "extra_metadata": None,
-                "_dataset_id": row.get("id"),
-                "_uid": row.get("uid"),
-            })
+            rows.append(
+                {
+                    "title": row.get("job_title", "").strip(),
+                    "company": "Vanetik Vacancy",  # not in dataset
+                    "description": row.get("job_description", "").strip(),
+                    "salary_min": None,
+                    "salary_max": None,
+                    "user_notes": None,
+                    "extra_metadata": None,
+                    "_dataset_id": row.get("id"),
+                    "_uid": row.get("uid"),
+                }
+            )
     if len(rows) != 5:
         logger.warning("Expected 5 vacancies, got %d", len(rows))
     return rows
@@ -156,9 +158,7 @@ def _parse_annotation_file(txt_path: Path) -> dict[int, dict[str, list[int]]]:
     parsed: dict[str, list[list[int]]] = {}
     for label, body in blocks.items():
         rows = inner_re.findall(body)
-        parsed[label] = [
-            [int(x.strip()) for x in s.strip("[] \t").split(",")] for s in rows
-        ]
+        parsed[label] = [[int(x.strip()) for x in s.strip("[] \t").split(",")] for s in rows]
         if len(parsed[label]) != 30:
             logger.warning("%s has %d rankings (expected 30)", label, len(parsed[label]))
 
@@ -168,9 +168,7 @@ def _parse_annotation_file(txt_path: Path) -> dict[int, dict[str, list[int]]]:
             cv_idx = i + 1
             # Validate: must be a permutation of {1,2,3,4,5}
             if sorted(row) != [1, 2, 3, 4, 5]:
-                logger.warning(
-                    "Skipping CV %d %s: invalid permutation %s", cv_idx, label, row
-                )
+                logger.warning("Skipping CV %d %s: invalid permutation %s", cv_idx, label, row)
                 continue
             rankings.setdefault(cv_idx, {})[label] = row
     return rankings
@@ -205,9 +203,7 @@ def load_bundle(cache_dir: Path = DEFAULT_CACHE) -> VanetikBundle:
     return bundle
 
 
-def annotator_ranking_to_relevance(
-    ranking: list[int], num_vacancies: int = 5
-) -> dict[int, int]:
+def annotator_ranking_to_relevance(ranking: list[int], num_vacancies: int = 5) -> dict[int, int]:
     """Convert annotator ranking [2,1,4,3,5] (vacancy positions, best to worst)
     into a relevance grade dict {vacancy_position: grade}.
 

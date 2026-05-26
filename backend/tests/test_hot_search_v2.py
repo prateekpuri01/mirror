@@ -30,7 +30,6 @@ from app.services.hot_search.ranking import (
     cosine_top_k,
 )
 
-
 # ---------------------------------------------------------------------------
 # classify_url — production must agree with the eval harness or scoring
 # behavior drifts between dev and prod.
@@ -38,30 +37,34 @@ from app.services.hot_search.ranking import (
 
 
 class TestClassifyUrl:
-    @pytest.mark.parametrize("url,expected_rank,expected_prefix", [
-        ("https://boards.greenhouse.io/acme/jobs/123", 1, "ats:greenhouse"),
-        ("https://jobs.lever.co/stripe/uuid-here", 1, "ats:lever"),
-        ("https://jobs.ashbyhq.com/notion/abc", 1, "ats:ashby"),
-        # Direct posting on company domain
-        ("https://stripe.com/jobs/listing/ml-eng/7079044", 2, "direct"),
-        ("https://microsoft.com/job/123456/Senior-Engineer", 2, "direct"),
-        # Careers landing page
-        ("https://anthropic.com/careers", 3, "careers"),
-        ("https://acme.io/jobs", 3, "careers"),
-        # Aggregator noise — must be rank 0
-        ("https://linkedin.com/jobs/view/12345", 0, "aggregator"),
-        ("https://www.indeed.com/jobs?q=ml", 0, "aggregator"),
-        ("https://www.glassdoor.com/Jobs/Anthropic.htm", 0, "aggregator"),
-        ("https://wellfound.com/jobs/anthropic", 0, "aggregator"),
-        # Malformed
-        ("not-a-url", 0, "invalid"),
-        ("", 0, "invalid"),
-    ])
+    @pytest.mark.parametrize(
+        "url,expected_rank,expected_prefix",
+        [
+            ("https://boards.greenhouse.io/acme/jobs/123", 1, "ats:greenhouse"),
+            ("https://jobs.lever.co/stripe/uuid-here", 1, "ats:lever"),
+            ("https://jobs.ashbyhq.com/notion/abc", 1, "ats:ashby"),
+            # Direct posting on company domain
+            ("https://stripe.com/jobs/listing/ml-eng/7079044", 2, "direct"),
+            ("https://microsoft.com/job/123456/Senior-Engineer", 2, "direct"),
+            # Careers landing page
+            ("https://anthropic.com/careers", 3, "careers"),
+            ("https://acme.io/jobs", 3, "careers"),
+            # Aggregator noise — must be rank 0
+            ("https://linkedin.com/jobs/view/12345", 0, "aggregator"),
+            ("https://www.indeed.com/jobs?q=ml", 0, "aggregator"),
+            ("https://www.glassdoor.com/Jobs/Anthropic.htm", 0, "aggregator"),
+            ("https://wellfound.com/jobs/anthropic", 0, "aggregator"),
+            # Malformed
+            ("not-a-url", 0, "invalid"),
+            ("", 0, "invalid"),
+        ],
+    )
     def test_rank_and_kind(self, url, expected_rank, expected_prefix):
         rank, kind = classify_url(url)
         assert rank == expected_rank, f"{url} → rank={rank} kind={kind} (expected {expected_rank})"
-        assert kind.startswith(expected_prefix), \
+        assert kind.startswith(expected_prefix), (
             f"{url} → kind={kind} (expected prefix {expected_prefix})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -71,16 +74,19 @@ class TestClassifyUrl:
 
 
 class TestNormalizeName:
-    @pytest.mark.parametrize("input_name,expected", [
-        ("Anthropic", "anthropic"),
-        ("Anthropic, PBC", "anthropic"),
-        ("Anthropic Inc.", "anthropic"),
-        ("Stripe, Inc", "stripe"),
-        ("ACME Corp.", "acme"),
-        ("Notion Labs", "notion labs"),    # Labs is not in suffix list
-        ("OpenAI LLC", "openai"),
-        ("  whitespace co  ", "whitespace"),
-    ])
+    @pytest.mark.parametrize(
+        "input_name,expected",
+        [
+            ("Anthropic", "anthropic"),
+            ("Anthropic, PBC", "anthropic"),
+            ("Anthropic Inc.", "anthropic"),
+            ("Stripe, Inc", "stripe"),
+            ("ACME Corp.", "acme"),
+            ("Notion Labs", "notion labs"),  # Labs is not in suffix list
+            ("OpenAI LLC", "openai"),
+            ("  whitespace co  ", "whitespace"),
+        ],
+    )
     def test_collapses_variants(self, input_name, expected):
         assert normalize_name(input_name) == expected
 
@@ -131,10 +137,10 @@ class TestCosineTopK:
     def test_orders_by_cosine_desc(self):
         query = [1.0, 0.0]
         docs = [
-            [0.5, 0.5],       # ~0.707
-            [1.0, 0.0],       # 1.0
-            [0.0, 1.0],       # 0.0
-            [0.9, 0.1],       # ~0.994
+            [0.5, 0.5],  # ~0.707
+            [1.0, 0.0],  # 1.0
+            [0.0, 1.0],  # 0.0
+            [0.9, 0.1],  # ~0.994
         ]
         result = cosine_top_k(query, docs, k=4)
         # Indices in order of similarity to query
@@ -199,20 +205,24 @@ class TestBuildQueryDoc:
 
 class TestBuildJobDoc:
     def test_includes_title_and_company(self):
-        doc = build_job_doc({
-            "title": "Senior ML Engineer",
-            "company": "Anthropic",
-            "location": "San Francisco",
-        })
+        doc = build_job_doc(
+            {
+                "title": "Senior ML Engineer",
+                "company": "Anthropic",
+                "location": "San Francisco",
+            }
+        )
         assert "Senior ML Engineer" in doc
         assert "Anthropic" in doc
         assert "San Francisco" in doc
 
     def test_strips_html(self):
-        doc = build_job_doc({
-            "title": "ML Engineer",
-            "description_html": "<p>Build <b>ML</b> systems.</p>",
-        })
+        doc = build_job_doc(
+            {
+                "title": "ML Engineer",
+                "description_html": "<p>Build <b>ML</b> systems.</p>",
+            }
+        )
         assert "<p>" not in doc
         assert "<b>" not in doc
         assert "Build" in doc
@@ -235,15 +245,20 @@ class TestBatchedLlmRerank:
     async def test_parses_json_array_and_sorts_desc(self):
         # LLM returns 3 jobs ranked 4, 2, 5
         llm_response = MagicMock()
-        llm_response.choices = [MagicMock(
-            message=MagicMock(content='[{"i":1,"r":4,"why":"good"},{"i":2,"r":2,"why":"ok"},{"i":3,"r":5,"why":"perfect"}]')
-        )]
+        llm_response.choices = [
+            MagicMock(
+                message=MagicMock(
+                    content='[{"i":1,"r":4,"why":"good"},{"i":2,"r":2,"why":"ok"},{"i":3,"r":5,"why":"perfect"}]'
+                )
+            )
+        ]
         client = MagicMock()
         client.chat.completions.create = AsyncMock(return_value=llm_response)
         with patch("app.services.hot_search.ranking.get_openai_client", return_value=client):
             result = await batched_llm_rerank(
                 [{"title": "a"}, {"title": "b"}, {"title": "c"}],
-                guidance="test", top_k=10,
+                guidance="test",
+                top_k=10,
             )
         # Sorted descending: 5, 4, 2
         assert [r.relevance for r in result] == [5, 4, 2]
@@ -255,14 +270,17 @@ class TestBatchedLlmRerank:
     @pytest.mark.asyncio
     async def test_drops_below_tentative_floor(self):
         llm_response = MagicMock()
-        llm_response.choices = [MagicMock(
-            message=MagicMock(content='[{"i":1,"r":3,"why":"ok"},{"i":2,"r":1,"why":"no"}]')
-        )]
+        llm_response.choices = [
+            MagicMock(
+                message=MagicMock(content='[{"i":1,"r":3,"why":"ok"},{"i":2,"r":1,"why":"no"}]')
+            )
+        ]
         client = MagicMock()
         client.chat.completions.create = AsyncMock(return_value=llm_response)
         with patch("app.services.hot_search.ranking.get_openai_client", return_value=client):
             result = await batched_llm_rerank(
-                [{"title": "a"}, {"title": "b"}], guidance="test",
+                [{"title": "a"}, {"title": "b"}],
+                guidance="test",
             )
         # The r=1 entry is below the tentative floor (2), should be dropped
         assert len(result) == 1
@@ -271,14 +289,15 @@ class TestBatchedLlmRerank:
     @pytest.mark.asyncio
     async def test_tentative_flag_set_at_floor(self):
         llm_response = MagicMock()
-        llm_response.choices = [MagicMock(
-            message=MagicMock(content='[{"i":1,"r":2,"why":"tentative"}]')
-        )]
+        llm_response.choices = [
+            MagicMock(message=MagicMock(content='[{"i":1,"r":2,"why":"tentative"}]'))
+        ]
         client = MagicMock()
         client.chat.completions.create = AsyncMock(return_value=llm_response)
         with patch("app.services.hot_search.ranking.get_openai_client", return_value=client):
             result = await batched_llm_rerank(
-                [{"title": "a"}], guidance="test",
+                [{"title": "a"}],
+                guidance="test",
             )
         assert len(result) == 1
         assert result[0].relevance == 2
@@ -294,14 +313,15 @@ class TestBatchedLlmRerank:
         # Some models wrap arrays in an outer object when response_format
         # is json_object. We unwrap common keys.
         llm_response = MagicMock()
-        llm_response.choices = [MagicMock(
-            message=MagicMock(content='{"results":[{"i":1,"r":4,"why":"good"}]}')
-        )]
+        llm_response.choices = [
+            MagicMock(message=MagicMock(content='{"results":[{"i":1,"r":4,"why":"good"}]}'))
+        ]
         client = MagicMock()
         client.chat.completions.create = AsyncMock(return_value=llm_response)
         with patch("app.services.hot_search.ranking.get_openai_client", return_value=client):
             result = await batched_llm_rerank(
-                [{"title": "a"}], guidance="test",
+                [{"title": "a"}],
+                guidance="test",
             )
         assert len(result) == 1
         assert result[0].relevance == 4
@@ -309,14 +329,15 @@ class TestBatchedLlmRerank:
     @pytest.mark.asyncio
     async def test_drops_out_of_bounds_indices(self):
         llm_response = MagicMock()
-        llm_response.choices = [MagicMock(
-            message=MagicMock(content='[{"i":1,"r":4},{"i":99,"r":5}]')
-        )]
+        llm_response.choices = [
+            MagicMock(message=MagicMock(content='[{"i":1,"r":4},{"i":99,"r":5}]'))
+        ]
         client = MagicMock()
         client.chat.completions.create = AsyncMock(return_value=llm_response)
         with patch("app.services.hot_search.ranking.get_openai_client", return_value=client):
             result = await batched_llm_rerank(
-                [{"title": "only one"}], guidance="test",
+                [{"title": "only one"}],
+                guidance="test",
             )
         # i=99 is OOB; drop
         assert len(result) == 1
@@ -331,7 +352,8 @@ class TestBatchedLlmRerank:
         with patch("app.services.hot_search.ranking.get_openai_client", return_value=client):
             # Should not raise, should return empty
             result = await batched_llm_rerank(
-                [{"title": "a"}], guidance="test",
+                [{"title": "a"}],
+                guidance="test",
             )
         assert result == []
 
@@ -345,32 +367,36 @@ class TestBatchedLlmRerank:
 
 class TestExtractJobsFromXhr:
     def test_top_level_list(self):
-        captured = [{
-            "url": "https://example.com/api/jobs",
-            "data": [
-                {"title": "ML Eng", "url": "https://example.com/jobs/1", "location": "SF"},
-                {"title": "DS",     "url": "https://example.com/jobs/2", "location": "NYC"},
-            ]
-        }]
+        captured = [
+            {
+                "url": "https://example.com/api/jobs",
+                "data": [
+                    {"title": "ML Eng", "url": "https://example.com/jobs/1", "location": "SF"},
+                    {"title": "DS", "url": "https://example.com/jobs/2", "location": "NYC"},
+                ],
+            }
+        ]
         result = _extract_jobs_from_xhr(captured)
         assert len(result) == 2
         assert result[0]["title"] == "ML Eng"
         assert result[0]["location"] == "SF"
 
     def test_workday_envelope(self):
-        captured = [{
-            "url": "https://acme.wd5.myworkdayjobs.com/api",
-            "data": {
-                "jobPostings": [
-                    {
-                        "title": "Senior Eng",
-                        "externalPath": "/job/Senior-Eng_R123",
-                        "locationsText": "Remote",   # not in our key list
-                        "primaryLocation": "USA",
-                    }
-                ]
+        captured = [
+            {
+                "url": "https://acme.wd5.myworkdayjobs.com/api",
+                "data": {
+                    "jobPostings": [
+                        {
+                            "title": "Senior Eng",
+                            "externalPath": "/job/Senior-Eng_R123",
+                            "locationsText": "Remote",  # not in our key list
+                            "primaryLocation": "USA",
+                        }
+                    ]
+                },
             }
-        }]
+        ]
         result = _extract_jobs_from_xhr(captured)
         assert len(result) == 1
         # Relative externalPath resolved against API host
@@ -378,40 +404,46 @@ class TestExtractJobsFromXhr:
         assert result[0]["location"] == "USA"
 
     def test_graphql_envelope(self):
-        captured = [{
-            "url": "https://example.com/graphql",
-            "data": {
+        captured = [
+            {
+                "url": "https://example.com/graphql",
                 "data": {
-                    "jobs": [
-                        {"title": "Backend Eng", "url": "https://example.com/jobs/5"},
-                    ]
-                }
+                    "data": {
+                        "jobs": [
+                            {"title": "Backend Eng", "url": "https://example.com/jobs/5"},
+                        ]
+                    }
+                },
             }
-        }]
+        ]
         result = _extract_jobs_from_xhr(captured)
         assert len(result) == 1
         assert result[0]["title"] == "Backend Eng"
 
     def test_dedups_by_url(self):
-        captured = [{
-            "url": "https://example.com/api",
-            "data": [
-                {"title": "ML", "url": "https://example.com/jobs/1"},
-                {"title": "ML duplicate", "url": "https://example.com/jobs/1"},
-            ]
-        }]
+        captured = [
+            {
+                "url": "https://example.com/api",
+                "data": [
+                    {"title": "ML", "url": "https://example.com/jobs/1"},
+                    {"title": "ML duplicate", "url": "https://example.com/jobs/1"},
+                ],
+            }
+        ]
         result = _extract_jobs_from_xhr(captured)
         assert len(result) == 1
 
     def test_skips_items_missing_title_or_url(self):
-        captured = [{
-            "url": "https://example.com/api",
-            "data": [
-                {"title": "Has title only"},
-                {"url": "https://example.com/jobs/x"},
-                {"title": "Both", "url": "https://example.com/jobs/y"},
-            ]
-        }]
+        captured = [
+            {
+                "url": "https://example.com/api",
+                "data": [
+                    {"title": "Has title only"},
+                    {"url": "https://example.com/jobs/x"},
+                    {"title": "Both", "url": "https://example.com/jobs/y"},
+                ],
+            }
+        ]
         result = _extract_jobs_from_xhr(captured)
         assert len(result) == 1
         assert result[0]["title"] == "Both"
@@ -421,10 +453,7 @@ class TestExtractJobsFromXhr:
 
     def test_non_job_response_ignored(self):
         # No matching envelope path
-        captured = [{
-            "url": "https://example.com/api/cart",
-            "data": {"items": []}
-        }]
+        captured = [{"url": "https://example.com/api/cart", "data": {"items": []}}]
         # Path "items" matches our list, but the list is empty → no output.
         result = _extract_jobs_from_xhr(captured)
         assert result == []
@@ -432,25 +461,36 @@ class TestExtractJobsFromXhr:
 
 class TestLooksLikeJobListShape:
     def test_list_of_job_like_objects(self):
-        assert _looks_like_job_list_shape([
-            {"title": "ML Eng", "company": "Acme"},
-            {"title": "Backend Eng", "company": "Acme"},
-            {"title": "DS", "company": "Acme"},
-        ]) is True
+        assert (
+            _looks_like_job_list_shape(
+                [
+                    {"title": "ML Eng", "company": "Acme"},
+                    {"title": "Backend Eng", "company": "Acme"},
+                    {"title": "DS", "company": "Acme"},
+                ]
+            )
+            is True
+        )
 
     def test_list_of_non_job_dicts_rejected(self):
         # No title-like fields
-        assert _looks_like_job_list_shape([
-            {"price": 100, "currency": "USD"},
-            {"price": 200, "currency": "USD"},
-            {"price": 300, "currency": "USD"},
-        ]) is False
+        assert (
+            _looks_like_job_list_shape(
+                [
+                    {"price": 100, "currency": "USD"},
+                    {"price": 200, "currency": "USD"},
+                    {"price": 300, "currency": "USD"},
+                ]
+            )
+            is False
+        )
 
     def test_handles_nested_dict(self):
         # Job array nested one level deep
-        assert _looks_like_job_list_shape({
-            "data": [{"title": "a"}, {"title": "b"}, {"title": "c"}]
-        }) is True
+        assert (
+            _looks_like_job_list_shape({"data": [{"title": "a"}, {"title": "b"}, {"title": "c"}]})
+            is True
+        )
 
     def test_empty_returns_false(self):
         assert _looks_like_job_list_shape([]) is False

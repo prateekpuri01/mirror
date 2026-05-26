@@ -9,7 +9,7 @@ maintenance is overdue (>24h since last run) and triggers:
 
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
 
@@ -30,7 +30,7 @@ async def _get_last_maintenance(r: aioredis.Redis) -> datetime | None:
 
 
 async def _set_last_maintenance(r: aioredis.Redis) -> None:
-    await r.set(REDIS_KEY, datetime.now(timezone.utc).isoformat())
+    await r.set(REDIS_KEY, datetime.now(UTC).isoformat())
 
 
 async def _run_maintenance() -> None:
@@ -95,7 +95,7 @@ async def run_scheduler() -> None:
     while True:
         try:
             last_run = await _get_last_maintenance(r)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             if last_run is None:
                 logger.info("No previous maintenance recorded — running now")
@@ -125,7 +125,7 @@ async def get_maintenance_status() -> dict:
     except Exception:
         last_run = None
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if last_run:
         elapsed = (now - last_run).total_seconds()
         next_run_in = max(0, MAINTENANCE_INTERVAL - elapsed)

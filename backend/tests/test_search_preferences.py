@@ -5,7 +5,7 @@ import re
 import pytest
 
 from app.ai.prefilter import build_keyword_lists
-from app.ai.prompts import build_interest_fit_system, build_company_enrichment_system
+from app.ai.prompts import build_company_enrichment_system, build_interest_fit_system
 from app.ai.scoring import _build_compact_profile
 from app.services.company_discovery import _build_keyword_sets
 

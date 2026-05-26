@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
@@ -34,6 +34,7 @@ async def cleanup_stale_extractions(session: AsyncSession) -> int:
     Returns the number of jobs cleaned up.
     """
     from sqlalchemy import update
+
     result = await session.execute(
         update(ApplicationRequirements)
         .where(ApplicationRequirements.extraction_status == "running")
@@ -113,7 +114,7 @@ async def extract_application_requirements(
                     ),
                     timeout=300,  # 5-minute wall-clock timeout
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 logger.warning("Extraction agent timed out after 5 minutes for job %s", job_id)
                 raise RuntimeError("Extraction timed out after 5 minutes")
             finally:
@@ -138,8 +139,7 @@ async def extract_application_requirements(
 
         # Derive legacy columns from application_fields
         short_answer_fields = [
-            f for f in fields
-            if f.get("response_type") in ("short_answer", "free_text")
+            f for f in fields if f.get("response_type") in ("short_answer", "free_text")
         ]
         fixed_fields = [f for f in fields if f.get("response_type") == "fixed_response"]
 
@@ -171,15 +171,13 @@ async def extract_application_requirements(
                 for f in fixed_fields
             ]
             app_req.needs_other = True
-            app_req.other_description = "; ".join(
-                f.get("label", "") for f in fixed_fields
-            )
+            app_req.other_description = "; ".join(f.get("label", "") for f in fixed_fields)
         else:
             app_req.other_requirements = []
             app_req.needs_other = False
 
         app_req.extraction_status = "completed"
-        app_req.extracted_at = datetime.now(timezone.utc)
+        app_req.extracted_at = datetime.now(UTC)
         await session.commit()
 
         logger.info("Extraction completed for job %s", job_id)

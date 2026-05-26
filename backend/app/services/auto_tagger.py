@@ -67,9 +67,7 @@ async def auto_tag_jobs(
 
     # Load existing job-tag associations to avoid duplicates
     job_ids = [j.id for j in jobs]
-    existing_result = await session.execute(
-        select(JobTag).where(JobTag.job_id.in_(job_ids))
-    )
+    existing_result = await session.execute(select(JobTag).where(JobTag.job_id.in_(job_ids)))
     existing_pairs: set[tuple] = {(jt.job_id, jt.tag_id) for jt in existing_result.scalars().all()}
 
     tagged_jobs = 0

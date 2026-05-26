@@ -1,6 +1,6 @@
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import yaml
@@ -93,7 +93,7 @@ async def sync_profile_from_yaml(session: AsyncSession, yaml_path: str) -> UserP
     with open(path) as f:
         data = yaml.safe_load(f)
 
-    profile = UserProfile(yaml_path=yaml_path, data=data, synced_at=datetime.now(timezone.utc))
+    profile = UserProfile(yaml_path=yaml_path, data=data, synced_at=datetime.now(UTC))
     session.add(profile)
 
     await session.commit()
@@ -133,7 +133,7 @@ async def sync_complete_profile(
     updated = dict(profile.data) if profile.data else {}
     updated["complete_profile"] = complete_data
     profile.data = updated
-    profile.synced_at = datetime.now(timezone.utc)
+    profile.synced_at = datetime.now(UTC)
 
     await session.commit()
     await session.refresh(profile)
@@ -141,9 +141,7 @@ async def sync_complete_profile(
     return profile
 
 
-async def update_profile_section(
-    session: AsyncSession, sections: dict
-) -> dict:
+async def update_profile_section(session: AsyncSession, sections: dict) -> dict:
     """Merge top-level sections into profile.data JSONB.
 
     Args:
@@ -160,7 +158,7 @@ async def update_profile_section(
         profile = UserProfile(
             yaml_path="",
             data=sections,
-            synced_at=datetime.now(timezone.utc),
+            synced_at=datetime.now(UTC),
         )
         session.add(profile)
     else:
@@ -170,7 +168,7 @@ async def update_profile_section(
                 continue  # Don't allow complete_profile via this endpoint
             updated[key] = value
         profile.data = updated
-        profile.synced_at = datetime.now(timezone.utc)
+        profile.synced_at = datetime.now(UTC)
 
     await session.commit()
     await session.refresh(profile)
@@ -181,9 +179,7 @@ async def update_profile_section(
     return data
 
 
-async def update_complete_profile(
-    session: AsyncSession, sections: dict
-) -> dict:
+async def update_complete_profile(session: AsyncSession, sections: dict) -> dict:
     """Merge sections into profile.data['complete_profile'].
 
     Args:
@@ -210,7 +206,7 @@ async def update_complete_profile(
         complete["accomplishments"] = _ensure_accomplishment_ids(complete["accomplishments"])
     updated["complete_profile"] = complete
     profile.data = updated
-    profile.synced_at = datetime.now(timezone.utc)
+    profile.synced_at = datetime.now(UTC)
     # SQLAlchemy doesn't reliably detect nested-JSONB mutations even when
     # the top-level attribute is reassigned (it can do an equality check
     # that sees no change when the nested list is shared between old and

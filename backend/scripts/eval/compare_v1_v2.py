@@ -13,8 +13,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from pathlib import Path
 from typing import Any
 
 
@@ -52,13 +50,14 @@ def main():
     a1 = v1.get("aggregate", {})
     a2 = v2.get("aggregate", {})
     print("\n## Aggregate")
-    print(
-        f"{'metric':<28}  {'v1':>10}  {'v2':>10}  {'Δ':>10}"
-    )
+    print(f"{'metric':<28}  {'v1':>10}  {'v2':>10}  {'Δ':>10}")
     print("-" * 64)
     for key in (
-        "coverage_rate", "mean_novelty_rate", "mean_relevance",
-        "mean_elapsed_sec", "total_elapsed_sec",
+        "coverage_rate",
+        "mean_novelty_rate",
+        "mean_relevance",
+        "mean_elapsed_sec",
+        "total_elapsed_sec",
     ):
         v1_val = a1.get(key) if key != "total_elapsed_sec" else v1.get(key)
         v2_val = a2.get(key) if key != "total_elapsed_sec" else v2.get(key)
@@ -74,9 +73,7 @@ def main():
     personas = sorted(set(s1.keys()) | set(s2.keys()))
 
     print("\n## Per-persona — mean_relevance")
-    print(
-        f"{'persona':<26} {'v1':>6}  {'v2':>6}  {'Δ':>6}  {'v1 hits':>8} {'v2 hits':>8}"
-    )
+    print(f"{'persona':<26} {'v1':>6}  {'v2':>6}  {'Δ':>6}  {'v1 hits':>8} {'v2 hits':>8}")
     print("-" * 70)
     for p in personas:
         r1 = (s1.get(p) or {}).get("mean_relevance")
@@ -86,10 +83,7 @@ def main():
         flag = ""
         if r1 is not None and r2 is not None and (r1 - r2) > 0.5:
             flag = "  ⚠ regress"
-        print(
-            f"{p:<26} {_fmt(r1):>6}  {_fmt(r2):>6}  {_delta(r2, r1):>6}  "
-            f"{n1:>8} {n2:>8}{flag}"
-        )
+        print(f"{p:<26} {_fmt(r1):>6}  {_fmt(r2):>6}  {_delta(r2, r1):>6}  {n1:>8} {n2:>8}{flag}")
 
     # ---------------- Gate summary ----------------
     print("\n## Gate Summary")
@@ -104,21 +98,27 @@ def main():
         return f"  {'✓' if ok else '✗'} {check}"
 
     if rel1 is not None and rel2 is not None:
-        print(_pass(
-            f"mean_relevance v2 ≥ v1 ({_fmt(rel2)} vs {_fmt(rel1)})",
-            rel2 >= rel1,
-        ))
+        print(
+            _pass(
+                f"mean_relevance v2 ≥ v1 ({_fmt(rel2)} vs {_fmt(rel1)})",
+                rel2 >= rel1,
+            )
+        )
     if cov1 is not None and cov2 is not None:
         # Coverage is a rate (0-1) — both should be similar
-        print(_pass(
-            f"coverage_rate v2 ≥ v1 ({_fmt(cov2)} vs {_fmt(cov1)})",
-            cov2 >= cov1 * 0.9,  # 10% tolerance
-        ))
+        print(
+            _pass(
+                f"coverage_rate v2 ≥ v1 ({_fmt(cov2)} vs {_fmt(cov1)})",
+                cov2 >= cov1 * 0.9,  # 10% tolerance
+            )
+        )
     if el1 is not None and el2 is not None:
-        print(_pass(
-            f"mean_elapsed_sec v2 ≤ v1 ({_fmt(el2, 0)}s vs {_fmt(el1, 0)}s)",
-            el2 <= el1,
-        ))
+        print(
+            _pass(
+                f"mean_elapsed_sec v2 ≤ v1 ({_fmt(el2, 0)}s vs {_fmt(el1, 0)}s)",
+                el2 <= el1,
+            )
+        )
     # Per-persona regress check
     any_regress = False
     for p in personas:
@@ -127,10 +127,12 @@ def main():
         if r1 is not None and r2 is not None and (r1 - r2) > 0.5:
             any_regress = True
             break
-    print(_pass(
-        "no single persona drops >0.5 mean_relevance",
-        not any_regress,
-    ))
+    print(
+        _pass(
+            "no single persona drops >0.5 mean_relevance",
+            not any_regress,
+        )
+    )
 
     print()
 

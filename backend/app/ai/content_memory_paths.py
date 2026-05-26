@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # Sentinel entity_key for entities that are unique per resume but have no
 # natural sub-key (summary, tagline).
 SCALAR_KEY = "__scalar__"

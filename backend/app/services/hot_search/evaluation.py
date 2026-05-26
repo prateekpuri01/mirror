@@ -21,8 +21,7 @@ from app.config import settings
 from app.database import async_session
 from app.models.companies import Company
 from app.models.jobs import Job
-from app.models.profile import UserProfile
-from app.scrapers import make_temp_company, SCRAPERS_BY_ATS
+from app.scrapers import SCRAPERS_BY_ATS, make_temp_company
 from app.services.company_discovery import _verify_ats_slug, score_job_relevance
 from app.services.extraction import (
     EXTRACTION_PROMPT,
@@ -32,8 +31,6 @@ from app.services.extraction import (
     _truncate_description,
 )
 from app.services.hot_search.discovery import (
-    _ATS_URL_PATTERNS,
-    _ats_url_has_specific_job,
     _domain_of,
     _domain_plausible_for_company,
     _is_skip_domain,
@@ -45,7 +42,7 @@ from app.services.hot_search.discovery import (
     _search_company_careers_page,
     _slug_plausible_for_name,
 )
-from app.services.hot_search.llm_helpers import _openai_chat, _parse_json_array
+from app.services.hot_search.llm_helpers import _openai_chat
 from app.services.hot_search.types import CompanyCandidate, CompanyHit
 from app.services.scrape_cache import get_scraped_jobs, set_scraped_jobs
 
@@ -65,6 +62,7 @@ def _get_eval_semaphore() -> asyncio.Semaphore:
     global _eval_semaphore
     if _eval_semaphore is None:
         from app.services.rate_limits import max_concurrent_scoring
+
         _eval_semaphore = asyncio.Semaphore(max_concurrent_scoring())
     return _eval_semaphore
 
@@ -72,12 +70,6 @@ def _get_eval_semaphore() -> asyncio.Semaphore:
 # ---------------------------------------------------------------------------
 # Data types — canonical definitions live in app.services.hot_search.types
 # ---------------------------------------------------------------------------
-
-from app.services.hot_search.types import (  # noqa: E402
-    CompanyCandidate,
-    CompanyHit,
-    SearchEvent,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -126,14 +118,16 @@ async def _drill_lead_company_jobs(
     direct_urls: list[str] = []
     domain = _domain_of(careers_url) if careers_url else None
     if domain:
-        query = f'site:{domain} ({keyword_clause})'
+        query = f"site:{domain} ({keyword_clause})"
         results = await _precise_search(query, max_results=10)
         for r in results:
             url = r.get("url", "")
             if _looks_like_direct_job_url(url) and len(direct_urls) < max_jobs:
                 direct_urls.append(url)
         if direct_urls:
-            logger.info("Lead drill domain-scoped for '%s': found %d URLs", company_name, len(direct_urls))
+            logger.info(
+                "Lead drill domain-scoped for '%s': found %d URLs", company_name, len(direct_urls)
+            )
 
     # Strategy 2: open web search (if domain search found nothing)
     if not direct_urls:
@@ -148,7 +142,9 @@ async def _drill_lead_company_jobs(
             ):
                 direct_urls.append(url)
         if direct_urls:
-            logger.info("Lead drill open-web for '%s': found %d URLs", company_name, len(direct_urls))
+            logger.info(
+                "Lead drill open-web for '%s': found %d URLs", company_name, len(direct_urls)
+            )
 
     if not direct_urls:
         logger.info("Lead drill for '%s': no direct job URLs found via search", company_name)
@@ -158,8 +154,10 @@ async def _drill_lead_company_jobs(
     imported: list[CompanyHit] = []
     for url in direct_urls:
         hit, reason = await _extract_direct_job_url(
-            url, profile_keywords,
-            locations=locations, min_salary=min_salary,
+            url,
+            profile_keywords,
+            locations=locations,
+            min_salary=min_salary,
         )
         if hit:
             imported.append(hit)
@@ -188,43 +186,52 @@ def _extract_jobs_from_api_responses(
     nested structure, GraphQL envelopes) and return ``[{url, title}]``
     pairs. Relative URLs are resolved against the page host.
     """
-    from urllib.parse import urlparse, urljoin
+    from urllib.parse import urljoin, urlparse
 
     # Common response-envelope paths. Tried in order; first non-empty list wins.
     LIST_PATHS = [
-        ("jobPostings",),                      # Workday
-        ("results",),                          # Taleo, many ATS
-        ("jobs",),                             # generic
-        ("postings",),                         # generic
-        ("items",),                            # generic
-        ("hits",),                             # Algolia-backed sites
-        ("requisitions",),                     # SAP SuccessFactors
-        ("openings",),                         # some ATS
+        ("jobPostings",),  # Workday
+        ("results",),  # Taleo, many ATS
+        ("jobs",),  # generic
+        ("postings",),  # generic
+        ("items",),  # generic
+        ("hits",),  # Algolia-backed sites
+        ("requisitions",),  # SAP SuccessFactors
+        ("openings",),  # some ATS
         ("searchResults",),
         ("searchResults", "jobPostings"),
-        ("data", "jobs"),                      # GraphQL
+        ("data", "jobs"),  # GraphQL
         ("data", "jobPostings"),
         ("data", "careers", "jobs"),
         ("data", "search", "jobs"),
         ("data", "requisitions"),
         ("payload", "jobs"),
-        ("records",),                          # Salesforce-style
+        ("records",),  # Salesforce-style
     ]
 
     # Per-job field candidates
     URL_KEYS = (
-        "externalPath",     # Workday: path relative to tenant
-        "url", "jobUrl", "href", "link",
-        "apply_url", "external_url", "applyUrl", "canonicalUrl",
-        "detailUrl", "permaLink", "jobDetailsUrl",
+        "externalPath",  # Workday: path relative to tenant
+        "url",
+        "jobUrl",
+        "href",
+        "link",
+        "apply_url",
+        "external_url",
+        "applyUrl",
+        "canonicalUrl",
+        "detailUrl",
+        "permaLink",
+        "jobDetailsUrl",
     )
     TITLE_KEYS = (
-        "title", "jobTitle", "name", "heading", "displayTitle",
-        "postingTitle", "requisitionTitle",
-    )
-    ID_KEYS = (
-        "id", "jobId", "requisitionId", "externalId", "postingId",
-        "reqId", "jobRequisitionId",
+        "title",
+        "jobTitle",
+        "name",
+        "heading",
+        "displayTitle",
+        "postingTitle",
+        "requisitionTitle",
     )
 
     results: list[dict] = []
@@ -324,6 +331,7 @@ async def _drill_perplexity_for_job(
 
     # Skip if no LLM provider supports native web search
     from app.services.web_search_llm import llm_web_search, native_web_search_supported
+
     if not native_web_search_supported():
         return []
 
@@ -357,8 +365,7 @@ async def _drill_perplexity_for_job(
     # Normalize to the shape downstream code expects (legacy ``_perplexity_search``
     # return shape: list of {title, url, snippet}).
     results = [
-        {"title": c.title, "url": c.url, "snippet": c.snippet}
-        for c in search_result.citations
+        {"title": c.title, "url": c.url, "snippet": c.snippet} for c in search_result.citations
     ]
 
     # Filter to likely job URLs, drop aggregators
@@ -369,47 +376,58 @@ async def _drill_perplexity_for_job(
             continue
         # Accept strict OR relaxed job URL shapes
         if _looks_like_direct_job_url(url) or _looks_like_job_url_relaxed(url):
-            candidates.append({
-                "title": r.get("title", "") or r.get("snippet", ""),
-                "url": url,
-            })
+            candidates.append(
+                {
+                    "title": r.get("title", "") or r.get("snippet", ""),
+                    "url": url,
+                }
+            )
 
     if not candidates:
         logger.info(
             "Perplexity drill for '%s': %d results, none looked like job URLs",
-            company_name, len(results),
+            company_name,
+            len(results),
         )
         return []
 
     logger.info(
         "Perplexity drill for '%s': %d candidate job URLs",
-        company_name, len(candidates),
+        company_name,
+        len(candidates),
     )
 
     # Let the LLM picker choose the best fit (reuses existing logic).
     # Pass min_salary=None here — the salary filter is already applied at
     # the evaluate_candidate layer via _job_passes_salary_filter.
     best, _ = await _pick_best_job_for_guidance(
-        candidates[:5], guidance, locations, min_salary,
+        candidates[:5],
+        guidance,
+        locations,
+        min_salary,
     )
     if not best or not best.get("url"):
         logger.info("Perplexity drill for '%s': picker rejected all candidates", company_name)
         return []
 
     hit, reason = await _extract_direct_job_url(
-        best["url"], profile_keywords,
-        locations=locations, min_salary=min_salary,
+        best["url"],
+        profile_keywords,
+        locations=locations,
+        min_salary=min_salary,
     )
     if hit:
         logger.info(
             "Perplexity drill SUCCEEDED for '%s': imported '%s'",
-            company_name, (best.get("title") or "?")[:50],
+            company_name,
+            (best.get("title") or "?")[:50],
         )
         return [hit]
 
     logger.info(
         "Perplexity drill for '%s': picked URL but import failed — %s",
-        company_name, reason,
+        company_name,
+        reason,
     )
     return []
 
@@ -437,9 +455,10 @@ async def _crawl_careers_page_for_job(
     Returns a list of CompanyHit objects (0 or 1 elements).
     """
     import json as _json
-    from app.services.browser_pool import _ensure_browser
-    from app.ai.browser_tools import PlaywrightToolExecutor, CAREERS_CRAWLER_TOOLS
+
+    from app.ai.browser_tools import CAREERS_CRAWLER_TOOLS, PlaywrightToolExecutor
     from app.ai.client import EXTRACTION_MODEL
+    from app.services.browser_pool import _ensure_browser
 
     _USER_AGENT = (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -507,9 +526,20 @@ Tips:
         # lists even when the URL doesn't have a job-related keyword
         # (e.g. Apple's /api/role/... or Google's experimental /v3/...).
         _API_HINT_KEYWORDS = (
-            "job", "career", "position", "vacanc", "opening", "posting",
-            "requisit", "search", "/wday/", "/cxs/", "graphql", "/role",
-            "/listing", "/hiring",
+            "job",
+            "career",
+            "position",
+            "vacanc",
+            "opening",
+            "posting",
+            "requisit",
+            "search",
+            "/wday/",
+            "/cxs/",
+            "graphql",
+            "/role",
+            "/listing",
+            "/hiring",
         )
 
         async def _on_response(response):
@@ -556,9 +586,13 @@ Tips:
                     if sample and all(
                         isinstance(item, dict)
                         and any(
-                            tk in item for tk in (
-                                "title", "jobTitle", "postingTitle",
-                                "name", "heading",
+                            tk in item
+                            for tk in (
+                                "title",
+                                "jobTitle",
+                                "postingTitle",
+                                "name",
+                                "heading",
                             )
                         )
                         for item in sample
@@ -676,7 +710,11 @@ Tips:
 
                 for tool_call in message.tool_calls:
                     fn_name = tool_call.function.name
-                    fn_args = _json.loads(tool_call.function.arguments) if tool_call.function.arguments else {}
+                    fn_args = (
+                        _json.loads(tool_call.function.arguments)
+                        if tool_call.function.arguments
+                        else {}
+                    )
                     logger.info("Browser agent tool: %s(%s)", fn_name, str(fn_args)[:100])
 
                     if fn_name == "done":
@@ -706,8 +744,10 @@ Tips:
                         if collected_strict:
                             logger.info(
                                 "Browser agent for '%s': %d strict job links (+%d relaxed) from %d total this round",
-                                company_name, len(collected_strict),
-                                len(collected_relaxed), len(all_links),
+                                company_name,
+                                len(collected_strict),
+                                len(collected_relaxed),
+                                len(all_links),
                             )
                             logger.debug(
                                 "Browser agent candidate titles: %s",
@@ -718,47 +758,59 @@ Tips:
                             )
                             # Try strict matches immediately — high confidence
                             best, _ = await _pick_best_job_for_guidance(
-                                [{"title": l["title"], "url": l["url"]}
-                                 for l in list(collected_strict.values())[:10]],
-                                guidance, locations, min_salary,
+                                [
+                                    {"title": l["title"], "url": l["url"]}
+                                    for l in list(collected_strict.values())[:10]
+                                ],
+                                guidance,
+                                locations,
+                                min_salary,
                             )
                             if best and best.get("url"):
                                 hit, reason = await _extract_direct_job_url(
-                                    best["url"], profile_keywords,
-                                    locations=locations, min_salary=min_salary,
+                                    best["url"],
+                                    profile_keywords,
+                                    locations=locations,
+                                    min_salary=min_salary,
                                 )
                                 if hit:
                                     logger.info(
                                         "Browser agent SUCCEEDED for '%s': imported '%s'",
-                                        company_name, best.get("title", "?")[:50],
+                                        company_name,
+                                        best.get("title", "?")[:50],
                                     )
                                     return [hit]
                                 else:
                                     logger.info("Browser agent import failed: %s", reason)
                             # Fall through: keep collecting in case this
                             # particular pick didn't verify as a real job
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": f"Found {len(all_links)} links, {len(collected_strict)} look like job postings. Still searching for a relevant match.",
-                            })
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "content": f"Found {len(all_links)} links, {len(collected_strict)} look like job postings. Still searching for a relevant match.",
+                                }
+                            )
                             continue
                         else:
                             # Tell the agent no strict job URLs matched,
                             # mention if we have relaxed candidates to fall back on
                             hint = (
                                 f" ({len(collected_relaxed)} candidate URLs saved for fallback)"
-                                if collected_relaxed else ""
+                                if collected_relaxed
+                                else ""
                             )
-                            messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": (
-                                    f"Found {len(all_links)} links but none strictly match "
-                                    f"job posting URL patterns{hint}. Try searching with "
-                                    f"different keywords or clicking a category filter."
-                                ),
-                            })
+                            messages.append(
+                                {
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "content": (
+                                        f"Found {len(all_links)} links but none strictly match "
+                                        f"job posting URL patterns{hint}. Try searching with "
+                                        f"different keywords or clicking a category filter."
+                                    ),
+                                }
+                            )
                             continue
 
                     # click_job_card returns a JSON object with a URL when
@@ -786,28 +838,31 @@ Tips:
                                 collected_relaxed[url] = link
                             logger.info(
                                 "click_job_card SUCCEEDED for '%s': captured %s",
-                                company_name, url[:100],
+                                company_name,
+                                url[:100],
                             )
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call.id,
-                            "content": result_text,
-                        })
+                        messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call.id,
+                                "content": result_text,
+                            }
+                        )
                         continue
 
                     # Execute other tools normally (fill_and_search, click_element)
                     result_text = await executor.execute(fn_name, fn_args)
                     logger.info("Browser agent tool result: %s", result_text[:200])
-                    messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "content": result_text,
-                    })
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call.id,
+                            "content": result_text,
+                        }
+                    )
 
                 # If the inner loop broke out due to "done", exit the agent loop
-                if any(
-                    tc.function.name == "done" for tc in (message.tool_calls or [])
-                ):
+                if any(tc.function.name == "done" for tc in (message.tool_calls or [])):
                     break
 
             logger.info("Browser agent for '%s': exhausted rounds", company_name)
@@ -826,7 +881,9 @@ Tips:
             except (_json.JSONDecodeError, TypeError):
                 final_links = []
             except Exception as e:
-                logger.info("Browser agent fallback extraction failed for '%s': %s", company_name, e)
+                logger.info(
+                    "Browser agent fallback extraction failed for '%s': %s", company_name, e
+                )
                 final_links = []
 
             for link in final_links:
@@ -848,11 +905,13 @@ Tips:
                 page_host = None
                 try:
                     from urllib.parse import urlparse
+
                     page_host = urlparse(careers_url).hostname
                 except Exception:
                     pass
                 api_jobs = _extract_jobs_from_api_responses(
-                    captured_api_responses, page_host,
+                    captured_api_responses,
+                    page_host,
                 )
                 if api_jobs:
                     # Deduplicate URL-by-URL; classify each by existing filters
@@ -881,37 +940,46 @@ Tips:
                     )
 
             # Try strict first, then relaxed
-            fallback_candidates = (
-                list(collected_strict.values())
-                or list(collected_relaxed.values())
+            fallback_candidates = list(collected_strict.values()) or list(
+                collected_relaxed.values()
             )
 
             if fallback_candidates:
                 logger.info(
                     "Browser agent fallback for '%s': trying %d candidates (%d strict, %d relaxed)",
-                    company_name, len(fallback_candidates),
-                    len(collected_strict), len(collected_relaxed),
+                    company_name,
+                    len(fallback_candidates),
+                    len(collected_strict),
+                    len(collected_relaxed),
                 )
                 best, _ = await _pick_best_job_for_guidance(
-                    [{"title": l.get("title", ""), "url": l["url"]}
-                     for l in fallback_candidates[:10]],
-                    guidance, locations, min_salary,
+                    [
+                        {"title": l.get("title", ""), "url": l["url"]}
+                        for l in fallback_candidates[:10]
+                    ],
+                    guidance,
+                    locations,
+                    min_salary,
                 )
                 if best and best.get("url"):
                     hit, reason = await _extract_direct_job_url(
-                        best["url"], profile_keywords,
-                        locations=locations, min_salary=min_salary,
+                        best["url"],
+                        profile_keywords,
+                        locations=locations,
+                        min_salary=min_salary,
                     )
                     if hit:
                         logger.info(
                             "Browser agent fallback SUCCEEDED for '%s': imported '%s'",
-                            company_name, best.get("title", "?")[:50],
+                            company_name,
+                            best.get("title", "?")[:50],
                         )
                         return [hit]
                     else:
                         logger.info(
                             "Browser agent fallback import failed for '%s': %s",
-                            company_name, reason,
+                            company_name,
+                            reason,
                         )
 
             return []
@@ -988,9 +1056,7 @@ def _summarize_profile_for_match(profile_data: dict) -> str:
     roles = profile_data.get("target_roles") or []
     if roles:
         titles = [
-            r.get("title", "").strip()
-            for r in roles
-            if isinstance(r, dict) and r.get("title")
+            r.get("title", "").strip() for r in roles if isinstance(r, dict) and r.get("title")
         ]
         if titles:
             lines.append(f"Target roles: {', '.join(titles[:5])}")
@@ -1226,7 +1292,10 @@ truly contains zero location information — not when you're merely uncertain.""
 
 
 async def _extract_from_preview(
-    title: str, company: str, location: str | None, description: str | None,
+    title: str,
+    company: str,
+    location: str | None,
+    description: str | None,
     filter_locations: list[str] | None = None,
 ) -> dict | None:
     """Run LLM extraction on a job preview (raw strings, not a DB model).
@@ -1263,6 +1332,7 @@ def _get_verify_semaphore() -> asyncio.Semaphore:
     global _verify_semaphore
     if _verify_semaphore is None:
         from app.services.rate_limits import max_concurrent_browser
+
         _verify_semaphore = asyncio.Semaphore(max_concurrent_browser())
     return _verify_semaphore
 
@@ -1276,6 +1346,7 @@ async def _verify_jobs_with_extraction(
 
     Returns only jobs that pass verification, annotated with extracted data.
     """
+
     async def _verify_one(job: dict) -> dict | None:
         # Cheap salary check FIRST using scraper-provided structured data,
         # before paying for LLM extraction.
@@ -1342,7 +1413,10 @@ async def _verify_jobs_with_extraction(
     verified = [r for r in results if r is not None]
     logger.info(
         "Verified %d/%d jobs with extraction (locations=%s, min_salary=%s)",
-        len(verified), len(candidates), locations, min_salary,
+        len(verified),
+        len(candidates),
+        locations,
+        min_salary,
     )
     return verified
 
@@ -1400,6 +1474,7 @@ async def _extract_direct_job_url(
     # .title, .description, and .remote on its first argument — duck-type a
     # SimpleNamespace from job_data so we don't have to build a full ScrapedJob.
     from types import SimpleNamespace
+
     company_name = job_data.get("company", "Unknown")
     title = job_data.get("title", "")
     description = job_data.get("description", "")
@@ -1419,22 +1494,25 @@ async def _extract_direct_job_url(
         website=None,
         total_jobs=1,
         relevant_jobs=1 if score > 0 else 0,
-        top_jobs=[{
-            "title": title,
-            "url": url,
-            "location": job_data.get("location"),
-            "relevance": score,
-            "remote": job_data.get("remote", False),
-            "salary_min": job_data.get("salary_min"),
-            "salary_max": job_data.get("salary_max"),
-            "description": desc_snippet,
-            # The review UI renders description_html via dangerouslySetInnerHTML,
-            # so escape the raw extracted text before wrapping it.
-            "description_html": (
-                f"<div style='white-space:pre-wrap'>{html.escape(desc_snippet)}</div>"
-                if desc_snippet else None
-            ),
-        }],
+        top_jobs=[
+            {
+                "title": title,
+                "url": url,
+                "location": job_data.get("location"),
+                "relevance": score,
+                "remote": job_data.get("remote", False),
+                "salary_min": job_data.get("salary_min"),
+                "salary_max": job_data.get("salary_max"),
+                "description": desc_snippet,
+                # The review UI renders description_html via dangerouslySetInnerHTML,
+                # so escape the raw extracted text before wrapping it.
+                "description_html": (
+                    f"<div style='white-space:pre-wrap'>{html.escape(desc_snippet)}</div>"
+                    if desc_snippet
+                    else None
+                ),
+            }
+        ],
         source="direct_url",
         description="",
         match_reason="",
@@ -1444,7 +1522,9 @@ async def _extract_direct_job_url(
     # hits don't leak past the user's location/salary constraints.
     if locations or min_salary:
         verified = await _verify_jobs_with_extraction(
-            hit.top_jobs, locations or [], min_salary,
+            hit.top_jobs,
+            locations or [],
+            min_salary,
         )
         if not verified:
             return None, "Failed location/salary verification"
@@ -1471,10 +1551,10 @@ def _direct_slug_for(name: str) -> str:
 # its own can comfortably exceed 90s. The semaphore (rate_limits) keeps
 # concurrency bounded; this is just per-candidate wall-time headroom.
 _CANDIDATE_TIMEOUT = 90  # was 180; most evals complete in 20-50s and the
-                         # tail (Ashby-throttled / Playwright-stalled) was
-                         # eating 30%+ of wall-clock at the longer cap.
-                         # The orchestration's global 8-min budget still
-                         # bounds the whole search regardless.
+# tail (Ashby-throttled / Playwright-stalled) was
+# eating 30%+ of wall-clock at the longer cap.
+# The orchestration's global 8-min budget still
+# bounds the whole search regardless.
 
 
 async def _evaluate_candidate(
@@ -1503,21 +1583,28 @@ async def _evaluate_candidate(
         try:
             return await asyncio.wait_for(
                 _evaluate_candidate_inner(
-                    candidate, profile_keywords, http_client,
-                    locations, min_salary, guidance=guidance,
+                    candidate,
+                    profile_keywords,
+                    http_client,
+                    locations,
+                    min_salary,
+                    guidance=guidance,
                     profile_fit_threshold=profile_fit_threshold,
                 ),
                 timeout=_CANDIDATE_TIMEOUT,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning(
                 "Candidate evaluation timed out after %ds: %s",
-                _CANDIDATE_TIMEOUT, candidate.name,
+                _CANDIDATE_TIMEOUT,
+                candidate.name,
             )
             return None, "Evaluation timed out"
         except Exception:
             logger.warning(
-                "Failed to evaluate candidate: %s", candidate.name, exc_info=True,
+                "Failed to evaluate candidate: %s",
+                candidate.name,
+                exc_info=True,
             )
             return None, "Evaluation error"
 
@@ -1577,8 +1664,11 @@ async def _evaluate_candidate_inner(
             # URL (the open-web search strategy doesn't need the domain).
             logger.info("DRILL_STRATEGY: lead_drill ATTEMPT '%s'", candidate.name)
             drilled = await _drill_lead_company_jobs(
-                candidate.name, careers_url, profile_keywords,
-                locations=locations, min_salary=min_salary,
+                candidate.name,
+                careers_url,
+                profile_keywords,
+                locations=locations,
+                min_salary=min_salary,
             )
 
             if drilled:
@@ -1594,6 +1684,7 @@ async def _evaluate_candidate_inner(
                     for j in merged_top_jobs:
                         # Build a fake ScrapedJob-like for the helpers
                         from types import SimpleNamespace
+
                         fake = SimpleNamespace(
                             title=j.get("title", ""),
                             location=j.get("location"),
@@ -1611,7 +1702,8 @@ async def _evaluate_candidate_inner(
                 if merged_top_jobs:
                     logger.info(
                         "DRILL_STRATEGY: lead_drill SUCCESS '%s' n_jobs=%d",
-                        candidate.name, len(merged_top_jobs),
+                        candidate.name,
+                        len(merged_top_jobs),
                     )
                     return CompanyHit(
                         name=candidate.name,
@@ -1650,12 +1742,16 @@ async def _evaluate_candidate_inner(
                             subdomain = domain.split(".")[0].lower()
                             if _slug_plausible_for_name(subdomain, candidate.name):
                                 careers_url = url
-                                logger.info("Found Workday/Taleo portal for '%s': %s", candidate.name, url)
+                                logger.info(
+                                    "Found Workday/Taleo portal for '%s': %s", candidate.name, url
+                                )
                                 break
                             else:
                                 logger.debug(
                                     "Workday/Taleo URL %s subdomain '%s' doesn't match '%s', skipping",
-                                    url, subdomain, candidate.name,
+                                    url,
+                                    subdomain,
+                                    candidate.name,
                                 )
 
             # Strategy 3a: Perplexity drill — ask an LLM-grounded search
@@ -1668,12 +1764,15 @@ async def _evaluate_candidate_inner(
                 try:
                     perplexity_results = await asyncio.wait_for(
                         _drill_perplexity_for_job(
-                            candidate.name, effective_guidance, profile_keywords,
-                            locations, min_salary,
+                            candidate.name,
+                            effective_guidance,
+                            profile_keywords,
+                            locations,
+                            min_salary,
                         ),
                         timeout=30,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("Perplexity drill timed out for '%s'", candidate.name)
                     perplexity_results = []
 
@@ -1684,7 +1783,8 @@ async def _evaluate_candidate_inner(
                     if merged_top_jobs:
                         logger.info(
                             "DRILL_STRATEGY: perplexity_drill SUCCESS '%s' n_jobs=%d",
-                            candidate.name, len(merged_top_jobs),
+                            candidate.name,
+                            len(merged_top_jobs),
                         )
                         return CompanyHit(
                             name=candidate.name,
@@ -1712,12 +1812,16 @@ async def _evaluate_candidate_inner(
                 try:
                     agent_results = await asyncio.wait_for(
                         _crawl_careers_page_for_job(
-                            candidate.name, careers_url, effective_guidance,
-                            profile_keywords, locations, min_salary,
+                            candidate.name,
+                            careers_url,
+                            effective_guidance,
+                            profile_keywords,
+                            locations,
+                            min_salary,
                         ),
                         timeout=50,  # 50s budget within the 90s candidate timeout
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     logger.warning("Browser agent timed out for '%s'", candidate.name)
                     agent_results = []
 
@@ -1728,7 +1832,8 @@ async def _evaluate_candidate_inner(
                     if merged_top_jobs:
                         logger.info(
                             "DRILL_STRATEGY: browser_agent SUCCESS '%s' n_jobs=%d",
-                            candidate.name, len(merged_top_jobs),
+                            candidate.name,
+                            len(merged_top_jobs),
                         )
                         return CompanyHit(
                             name=candidate.name,
@@ -1750,12 +1855,16 @@ async def _evaluate_candidate_inner(
             # up in an "AI safety" search just because SearXNG returned it.
             if effective_guidance:
                 is_relevant, desc, reason = await _check_lead_relevance_and_context(
-                    candidate.name, effective_guidance, careers_url,
+                    candidate.name,
+                    effective_guidance,
+                    careers_url,
                 )
                 if not is_relevant:
                     logger.info(
                         "Lead '%s' rejected as irrelevant to '%s': %s",
-                        candidate.name, guidance[:40], reason,
+                        candidate.name,
+                        guidance[:40],
+                        reason,
                     )
                     return None, f"Not relevant to search: {reason}"
             else:
@@ -1765,11 +1874,13 @@ async def _evaluate_candidate_inner(
             # If no careers URL was found, generate a Google search link as fallback
             if not careers_url:
                 from urllib.parse import quote_plus
+
                 careers_url = f"https://www.google.com/search?q={quote_plus(candidate.name + ' careers jobs')}"
 
             logger.info(
                 "Surfacing '%s' as bare lead hit (careers page: %s)",
-                candidate.name, careers_url,
+                candidate.name,
+                careers_url,
             )
             return CompanyHit(
                 name=candidate.name,
@@ -1787,6 +1898,7 @@ async def _evaluate_candidate_inner(
     # ~5-30s of slug-verify + scrape work on companies we know we can't
     # reach. TTL is 24h so transient outages self-heal.
     from app.services.scrape_cache import is_slug_dead, mark_slug_dead
+
     if await is_slug_dead(ats, slug):
         return None, f"ATS slug recently failed (cached, retry in 24h): {ats}/{slug}"
 
@@ -1838,7 +1950,11 @@ async def _evaluate_candidate_inner(
             prefiltered.append(sj)
         logger.info(
             "Prefilter for %s: %d → %d (rejected %d by location, %d by salary)",
-            slug, len(scraped_jobs), len(prefiltered), rejected_loc, rejected_sal,
+            slug,
+            len(scraped_jobs),
+            len(prefiltered),
+            rejected_loc,
+            rejected_sal,
         )
         scraped_jobs = prefiltered
 
@@ -1853,24 +1969,24 @@ async def _evaluate_candidate_inner(
     # Score each job
     job_previews = []
     for sj in scraped_jobs:
-        relevance = (
-            score_job_relevance(sj, profile_keywords) if profile_keywords else 0
-        )
+        relevance = score_job_relevance(sj, profile_keywords) if profile_keywords else 0
         meta = sj.metadata or {}
-        job_previews.append({
-            "title": sj.title,
-            "location": sj.location,
-            "department": meta.get("departments", meta.get("department")),
-            "url": sj.url,
-            "posted_at": sj.posted_at.isoformat() if sj.posted_at else None,
-            "relevance": relevance,
-            "description_html": sj.description_html,
-            "remote": sj.remote,
-            # Surface scraper salary fields so the verification step can do
-            # a cheap numeric check instead of always calling the LLM.
-            "salary_min": sj.salary_min,
-            "salary_max": sj.salary_max,
-        })
+        job_previews.append(
+            {
+                "title": sj.title,
+                "location": sj.location,
+                "department": meta.get("departments", meta.get("department")),
+                "url": sj.url,
+                "posted_at": sj.posted_at.isoformat() if sj.posted_at else None,
+                "relevance": relevance,
+                "description_html": sj.description_html,
+                "remote": sj.remote,
+                # Surface scraper salary fields so the verification step can do
+                # a cheap numeric check instead of always calling the LLM.
+                "salary_min": sj.salary_min,
+                "salary_max": sj.salary_max,
+            }
+        )
 
     job_previews.sort(key=lambda j: j["relevance"], reverse=True)
 
@@ -1882,12 +1998,9 @@ async def _evaluate_candidate_inner(
     # closest") without flooding the result list with noise. Anything
     # below the loose floor is a hard skip.
     loose_threshold = max(0, profile_fit_threshold - 20)
-    strong_jobs = [
-        j for j in job_previews if j["relevance"] >= profile_fit_threshold
-    ]
+    strong_jobs = [j for j in job_previews if j["relevance"] >= profile_fit_threshold]
     near_miss_jobs = [
-        j for j in job_previews
-        if loose_threshold <= j["relevance"] < profile_fit_threshold
+        j for j in job_previews if loose_threshold <= j["relevance"] < profile_fit_threshold
     ]
     is_tentative_match = False
     if strong_jobs:
@@ -1919,7 +2032,10 @@ async def _evaluate_candidate_inner(
     # which one best matches.
     if effective_guidance:
         best_job, rejection_info = await _pick_best_job_for_guidance(
-            relevant_jobs[:10], effective_guidance, locations, min_salary,
+            relevant_jobs[:10],
+            effective_guidance,
+            locations,
+            min_salary,
         )
         if best_job is None:
             # Scraped + profile-filtered but the LLM picker judged no role
@@ -1927,13 +2043,9 @@ async def _evaluate_candidate_inner(
             # relevance floor). Surface a rich skip reason so the activity
             # log shows WHY the company was rejected.
             if rejection_info:
-                reason = rejection_info.get(
-                    "reason", "LLM filter rejected all candidates"
-                )
-                return None, (
-                    f"Considered {len(job_previews)} role(s); {reason}"
-                )
-            return None, f"No jobs matching search criteria (LLM filter)"
+                reason = rejection_info.get("reason", "LLM filter rejected all candidates")
+                return None, (f"Considered {len(job_previews)} role(s); {reason}")
+            return None, "No jobs matching search criteria (LLM filter)"
         relevant_jobs = [best_job]
 
     # LLM verification on the top relevant candidates. Now that the cheap
@@ -1941,7 +2053,9 @@ async def _evaluate_candidate_inner(
     # cases (vague locations, missing salary fields, etc.).
     if locations or min_salary:
         relevant_jobs = await _verify_jobs_with_extraction(
-            relevant_jobs, locations or [], min_salary,
+            relevant_jobs,
+            locations or [],
+            min_salary,
         )
         if not relevant_jobs:
             return None, "No jobs matching location/salary filters (after LLM verification)"
@@ -1963,9 +2077,7 @@ async def _evaluate_candidate_inner(
     # measures "match for this search". A "strong-profile, tentative-topic"
     # company (PI's ML Infra against embodied-robotics search) gets the
     # same dashed-border UI as a "tentative-profile, strong-topic" one.
-    topic_tentative = any(
-        j.get("_topic_tentative") for j in relevant_jobs
-    )
+    topic_tentative = any(j.get("_topic_tentative") for j in relevant_jobs)
     final_is_tentative = is_tentative_match or topic_tentative
 
     # description + match_reason are filled in centrally by _run_eval before
@@ -2002,7 +2114,8 @@ async def _evaluate_tracked_company(
     """
     async with async_session() as session:
         # Find the Company record by name (case-insensitive)
-        from sqlalchemy import func as sql_func, or_
+        from sqlalchemy import func as sql_func
+
         result = await session.execute(
             select(Company).where(sql_func.lower(Company.name) == company_name.lower())
         )
@@ -2043,7 +2156,11 @@ async def _evaluate_tracked_company(
             prefiltered.append(j)
         logger.info(
             "Tracked-company prefilter for %s: %d → %d (rejected %d loc, %d sal)",
-            company_name, total_db_jobs, len(prefiltered), rejected_loc, rejected_sal,
+            company_name,
+            total_db_jobs,
+            len(prefiltered),
+            rejected_loc,
+            rejected_sal,
         )
         db_jobs = prefiltered
 
@@ -2071,12 +2188,12 @@ async def _evaluate_tracked_company(
         ]
         best, _ = await _pick_best_job_for_guidance(job_dicts, guidance, locations, min_salary)
         if best is None:
-            return None, f"No tracked jobs matching search criteria"
+            return None, "No tracked jobs matching search criteria"
         # Find the matching Job ORM object
         best_url = best.get("url")
         relevant = [(s, j) for s, j in relevant if j.url == best_url]
         if not relevant:
-            return None, f"No tracked jobs matching search criteria"
+            return None, "No tracked jobs matching search criteria"
 
     top_jobs = [
         {
@@ -2100,7 +2217,9 @@ async def _evaluate_tracked_company(
     # verifier handles vague locations and JDs whose salary lives in the body.
     if locations or min_salary:
         verified = await _verify_jobs_with_extraction(
-            top_jobs, locations or [], min_salary,
+            top_jobs,
+            locations or [],
+            min_salary,
         )
         if not verified:
             return None, "No tracked-company jobs survived LLM verification"
@@ -2207,6 +2326,7 @@ async def _is_duplicate_company(
     try:
         client = get_openai_client()
         from app.ai.client import EXTRACTION_MODEL
+
         prompt = (
             f'Is "{candidate_name}" the same company as any of these?\n'
             + "\n".join(f"- {n}" for n in near_matches[:10])
@@ -2280,15 +2400,16 @@ async def _batch_check_duplicates(
     try:
         client = get_openai_client()
         from app.ai.client import EXTRACTION_MODEL
+
         lines = []
         for i, (name, nm) in enumerate(needs_llm, 1):
             matches_str = ", ".join(nm[:10])
-            lines.append(f"{i}. \"{name}\"  (compare against: {matches_str})")
+            lines.append(f'{i}. "{name}"  (compare against: {matches_str})')
         prompt = (
             "For each numbered candidate company, decide if it's the SAME "
             "company as any of the known names listed in parentheses. "
-            "Common cases: \"Meta AI\" = \"Meta\", \"Google DeepMind\" = \"DeepMind\", "
-            "\"Anthropic, PBC\" = \"Anthropic\".\n\n"
+            'Common cases: "Meta AI" = "Meta", "Google DeepMind" = "DeepMind", '
+            '"Anthropic, PBC" = "Anthropic".\n\n'
             + "\n".join(lines)
             + "\n\nRespond with ONLY a JSON object mapping each number (as a "
             "string) to either the matching known name OR null. Example:\n"
@@ -2307,6 +2428,7 @@ async def _batch_check_duplicates(
                 text = text[:-3]
             text = text.strip()
         import json as _json
+
         raw = _json.loads(text)
         if not isinstance(raw, dict):
             raise ValueError("non-dict response")
@@ -2326,8 +2448,7 @@ async def _batch_check_duplicates(
                     break
             result[name] = picked
     except Exception:
-        logger.debug("Batched dedup LLM call failed; treating all as unique",
-                     exc_info=True)
+        logger.debug("Batched dedup LLM call failed; treating all as unique", exc_info=True)
         for name, _ in needs_llm:
             result.setdefault(name, None)
 
@@ -2359,24 +2480,26 @@ async def _check_lead_relevance_and_context(
         from app.ai.client import EXTRACTION_MODEL
 
         prompt = (
-            f'The user searched for: "{guidance}"\n\n'
-            f'A company called "{company_name}" was found.'
+            f'The user searched for: "{guidance}"\n\nA company called "{company_name}" was found.'
         )
         if careers_url:
-            prompt += f'\nTheir careers page is: {careers_url}'
+            prompt += f"\nTheir careers page is: {careers_url}"
         prompt += (
-            '\n\nAnswer in JSON:\n'
-            '{\n'
+            "\n\nAnswer in JSON:\n"
+            "{\n"
             '  "relevant": true/false,  // Is this company plausibly relevant to the search?\n'
             '  "description": "1 sentence about what this company does",\n'
             '  "match_reason": "1 sentence why it matches or doesn\'t match the search"\n'
-            '}'
+            "}"
         )
 
         resp = await client.chat.completions.create(
             model=EXTRACTION_MODEL,
             messages=[
-                {"role": "system", "content": "You evaluate whether companies match a job search. Respond with ONLY valid JSON."},
+                {
+                    "role": "system",
+                    "content": "You evaluate whether companies match a job search. Respond with ONLY valid JSON.",
+                },
                 {"role": "user", "content": prompt},
             ],
             max_completion_tokens=200,
@@ -2389,6 +2512,7 @@ async def _check_lead_relevance_and_context(
             raw = raw.strip()
 
         import json
+
         data = json.loads(raw)
         return (
             data.get("relevant", True),
@@ -2447,6 +2571,7 @@ async def _pick_best_job_for_guidance(
     # picker can't pick a reject in the first place.
     if locations or min_salary:
         from types import SimpleNamespace
+
         filtered: list[dict] = []
         for j in jobs:
             fake = SimpleNamespace(
@@ -2476,7 +2601,7 @@ async def _pick_best_job_for_guidance(
         # Build the job list for the prompt
         job_lines = []
         for i, j in enumerate(jobs):
-            parts = [f"{i+1}. {j.get('title', '?')}"]
+            parts = [f"{i + 1}. {j.get('title', '?')}"]
             if j.get("location"):
                 parts.append(f"({j['location']})")
             if j.get("department"):
@@ -2492,9 +2617,7 @@ async def _pick_best_job_for_guidance(
             )
         if min_salary:
             criteria_parts.append(f"Min salary: ${min_salary:,}")
-            constraint_lines.append(
-                f"- REJECT any job whose salary is below ${min_salary:,}"
-            )
+            constraint_lines.append(f"- REJECT any job whose salary is below ${min_salary:,}")
 
         constraint_block = ""
         if constraint_lines:
@@ -2547,7 +2670,8 @@ async def _pick_best_job_for_guidance(
         if not nums:
             logger.info(
                 "LLM picker returned no numbers (response: %r) — rejecting all %d candidates",
-                answer[:80], len(jobs),
+                answer[:80],
+                len(jobs),
             )
             return None, None
 
@@ -2556,8 +2680,7 @@ async def _pick_best_job_for_guidance(
 
         if idx < 0 or idx >= len(jobs):
             logger.info(
-                "LLM picker returned 0 (none match) — rejecting %d candidates; "
-                "first 3 titles: %s",
+                "LLM picker returned 0 (none match) — rejecting %d candidates; first 3 titles: %s",
                 len(jobs),
                 [j.get("title", "?")[:50] for j in jobs[:3]],
             )
@@ -2582,7 +2705,10 @@ async def _pick_best_job_for_guidance(
             logger.info(
                 "LLM picker below loose floor (relevance=%d, loose_floor=%d) — "
                 "rejecting '%s' for search '%s'",
-                relevance, loose_topic_floor, picked_title[:60], guidance[:40],
+                relevance,
+                loose_topic_floor,
+                picked_title[:60],
+                guidance[:40],
             )
             return None, {
                 "best_title": picked_title,
@@ -2597,7 +2723,9 @@ async def _pick_best_job_for_guidance(
 
         logger.info(
             "LLM picked job #%d '%s' (relevance=%d%s) for search '%s'",
-            idx + 1, picked_title[:50], relevance,
+            idx + 1,
+            picked_title[:50],
+            relevance,
             " — TENTATIVE" if is_tentative_topic else "",
             guidance[:40],
         )
@@ -2613,7 +2741,6 @@ async def _pick_best_job_for_guidance(
         return (jobs[0] if jobs else None), None
 
 
-
 # ---------------------------------------------------------------------------
 # Main search loop — extracted to app.services.hot_search.orchestration so
 # this file stays focused on helpers. Re-exported here for backward compat
@@ -2623,5 +2750,3 @@ async def _pick_best_job_for_guidance(
 # ---------------------------------------------------------------------------
 
 from app.services.hot_search.orchestration import run_hot_company_search  # noqa: E402,F401
-
-

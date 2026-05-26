@@ -36,14 +36,18 @@ class ScraperProtocol(Protocol):
     def can_handle(self, company: Company) -> bool: ...
 
     async def scrape_company(
-        self, company: Company, http_client: httpx.AsyncClient,
-        *, known_urls: set[str] | None = None,
+        self,
+        company: Company,
+        http_client: httpx.AsyncClient,
+        *,
+        known_urls: set[str] | None = None,
     ) -> list[ScrapedJob]: ...
 
 
 # ---------------------------------------------------------------------------
 # HTML → plain text (stdlib only, no BeautifulSoup)
 # ---------------------------------------------------------------------------
+
 
 class _HTMLToText(HTMLParser):
     def __init__(self) -> None:
