@@ -157,6 +157,83 @@ what the eval suite proves. The code makes a lot more sense after that.
 - Any feature that sends user data to third parties beyond the configured
   AI / search providers
 
+## Good first issues
+
+If you're new to the codebase and want a well-scoped first
+contribution, these are intentionally sized for a weekend and touch a
+single area — no deep knowledge of the memory layer or pipeline
+required.
+
+### 🎯 Drag-and-drop resume section ordering
+
+**The gap.** Section order in the resume (Summary, Experience,
+Selected Research, Publications, Technical Skills, Education, Awards)
+is hardcoded per layout in `backend/app/ai/docx_builder.py`:
+`_build_layout_banner` (line 1113), `_build_layout_compact` (1124),
+`_build_layout_timeline` (1135), `_build_layout_two_column` (1473).
+An academic candidate may want Publications first; an industry
+candidate may want Experience first. No way to override without
+editing code today.
+
+**The change.** Add a per-document `section_order: string[]` field to
+`ResumeJson` that the editor mutates via drag-and-drop, with both the
+docx builder and the in-app preview consuming it.
+
+**Key things to know going in:**
+
+- The LLM generation pipeline is **already order-agnostic**. Leaf
+  prompts in `backend/app/ai/resume_pipeline.py` don't see section
+  order, and sections are produced by independent parallel calls. You
+  are adding a view-layer feature, not changing how resumes are
+  generated.
+- Two LLM call sites *do* take the full `content_json` as input and
+  would leak `section_order` into prompts if you're not careful:
+  `revise_resume` (`backend/app/ai/resume_builder.py:431`) and
+  `broad_rewrite` (`backend/app/ai/resume_agent.py:911`). Strip
+  `section_order` from the JSON passed to the LLM and re-attach the
+  original value after the response returns — don't trust the prompt
+  to preserve it.
+- The `timeline` layout merges experience + education into a single
+  block. Handle this with a synthetic `experience_education` section
+  ID that only appears in the order array when that layout is active.
+- Use `@dnd-kit/core` + `@dnd-kit/sortable` for the UI — modern,
+  accessible (keyboard navigation built in), ~10 KB gzipped.
+  `react-beautiful-dnd` is unmaintained; avoid.
+- The existing `PATCH /api/documents/{doc_id}/section` endpoint
+  (`backend/app/routers/documents.py:84`) already accepts arbitrary
+  path + value pairs. Reuse it — no new endpoint needed.
+
+**Suggested phases (small first, ship as you go):**
+
+1. Add `section_order` to the `ResumeJson` schema (frontend type +
+   default-order constants mirrored backend ↔ frontend).
+2. Refactor `docx_builder.py` to read section order from
+   `content_json` instead of hardcoding per layout. Default to the
+   layout's historical order when the field is missing
+   (backward-compatible).
+3. Add drag handles + `<DndContext>` wrapping in
+   `frontend/src/components/resume-editor.tsx`. Persist via the
+   existing `updateResumeSection` API client.
+4. Add the strip-and-restore around the two LLM revise sites.
+5. Add a regression test —
+   `backend/tests/test_resume_order_invariance.py` — that generates a
+   resume twice with two different default section orders and asserts
+   the content fields (everything *except* `section_order`) are
+   identical. This is the test that locks the LLM pipeline's
+   order-agnostic property in place forever.
+
+**Out of scope for v1:** per-user "default section order" preferences
+in the profile. Per-document customization is the high-value piece; a
+profile-level default can be added later if demand surfaces.
+
+**Why this is a good first issue.** Real product gap, clear contract
+(one new field), exercises both backend and frontend, and the
+invariance test is a satisfying way to lock the behavior down. Most of
+the work is plumbing rather than ML reasoning, so it's a great way to
+learn the codebase without needing to understand the prompt pipeline.
+
+---
+
 ## Pull request guidelines
 
 1. **Open an issue first** for non-trivial changes. Describe the use case

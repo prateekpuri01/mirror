@@ -249,6 +249,49 @@ publications:
       - LLM evaluation
       - technical writing
 
+  - id: brightline-triage-paper
+    authors: ["Sam Rivera", "Dr. Maya Okafor", "Carlos Mendez"]
+    title: "Safe Triage of Patient Messages with Open-Source LLMs"
+    venue: "AMIA Annual Symposium"
+    year: 2022
+    first_author: true
+    work_history_key: brightline_health
+    impact_summary: |
+      Practitioner-track paper on the clinical-message triage system
+      Brightline shipped in 2021. Cited by two follow-on health-tech
+      papers and referenced in a JAMIA editorial on responsible
+      deployment of generative models in care-coordination workflows.
+    abstract: |
+      We present a deployed triage system for patient inbox messages
+      that uses an open-source LLM behind a hard-rule safety layer.
+      The system routes ~28k messages per month across three specialty
+      clinics. We describe the human-in-the-loop labeling protocol,
+      the audit cadence that kept the false-negative rate below the
+      0.5% target through five model swaps, and the failure modes we
+      encountered.
+    skills_demonstrated:
+      - clinical NLP
+      - LLM safety
+      - human-in-the-loop systems
+      - regulated-domain ML
+
+  - id: berkeley-thesis
+    authors: ["Sam Rivera"]
+    title: "Curriculum Strategies for Learned Code Completion"
+    venue: "UC Berkeley CS undergraduate thesis"
+    year: 2016
+    first_author: true
+    work_history_key: ucb
+    impact_summary: |
+      Senior thesis exploring curriculum learning for character-level
+      code-completion models — predating modern transformer-based
+      autocomplete by several years. Earned the CS departmental
+      citation.
+    skills_demonstrated:
+      - deep learning
+      - curriculum learning
+      - language modeling
+
 
 # ============================================================
 # Awards — short-form recognition entries
