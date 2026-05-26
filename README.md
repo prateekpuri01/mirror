@@ -17,12 +17,17 @@
   <img src="./assets/mirror-demo.gif" alt="Mirror demo — onboarding, hot job search, tailored resume generation, and chat-based revision" width="800">
 </p>
 
-Mirror is a self-hosted, local-first job search and resume-tailoring system.
-Most AI resume tools generate fresh from scratch every time. Mirror **remembers
-the actual phrasings you've hand-tuned** for each accomplishment, employer,
-and skill bucket — and feeds them back to the next generation as grounding
-examples. After a few rounds of edits, generations sound like *you* writing
-about your work, not an LLM imagining how you might.
+Mirror is a self-hosted, local-first job search assistant. It does three
+things most "AI resume builders" don't: **ranks scraped job postings by fit**
+to your profile, **generates resumes that get progressively more in your voice**
+with every edit, and **drafts answers for the open-ended questions** on
+application forms (the "Why do you want to work here?" / "Tell us about a
+time…" prompts). The deepest piece is the voice memory: most AI tools
+generate fresh from scratch every time. Mirror **remembers the actual
+phrasings you've hand-tuned** for each accomplishment, employer, and skill
+bucket — and feeds them back to the next generation as grounding examples.
+After a few rounds of edits, generations sound like *you* writing about your
+work, not an LLM imagining how you might.
 
 > ⚠ Status: pre-1.0. The architecture is stable, but expect rough edges in
 > the UI and ops surface. Designed for local single-user deployment.
