@@ -31,6 +31,8 @@ frontend/next-env.d.ts
 
 # ---- Docker ----
 pgdata/
+# Per-developer compose override (e.g. swap frontend to next dev). Optional.
+docker-compose.override.yml
 
 # ---- Generated output (resumes, docx) ----
 output/
@@ -67,6 +69,7 @@ backend/alembic/versions/__pycache__/
 # ---- Claude Code (project memory is personal) ----
 .claude/memory
 .claude/memory/
+.claude/*.lock
 
 # ---- MCP server config (per-machine paths + secrets — never commit) ----
 .mcp.json
@@ -78,5 +81,10 @@ docs/*.xlsx
 docs/profile.yaml
 docs/profile_complete.yaml
 docs/resume_style.yaml
+docs/*.mine
 docs/TICKETS.local.md
 resume/
+
+# ---- Demo source recordings (huge raw captures — never commit) ----
+screen_recording*.mov
+screen_recording*.gif
