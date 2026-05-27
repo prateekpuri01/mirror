@@ -583,7 +583,12 @@ export interface ProfilePublication {
   type?: string;
   url?: string;
   abstract?: string;
+  citation_count?: number;
   first_author?: boolean;
+  // Deprecated narrative fields (kept for back-compat with old DB rows;
+  // the deterministic publication enricher emits them as empty strings /
+  // empty lists). Don't write to these from new code — the downstream
+  // resume + scoring agents now read ``abstract`` directly.
   impact_summary?: string;
   so_what?: string;
   quantitative_specifics?: string[];
