@@ -928,7 +928,10 @@ async def broad_rewrite(state: AgentState) -> dict:
     """Full resume rewrite for tone/style changes. Reuses the revision flow."""
     system = RESUME_REVISION_SYSTEM
 
-    resume_json_str = json.dumps(state["resume_json"], indent=2)
+    resume_json = dict(state["resume_json"])
+    saved_order = resume_json.pop("section_order", None)
+
+    resume_json_str = json.dumps(resume_json, indent=2)
 
     # Build chat context
     history_text = ""
@@ -974,6 +977,9 @@ async def broad_rewrite(state: AgentState) -> dict:
 Apply the revision instruction. Output the COMPLETE updated resume as valid JSON."""
 
     result = await _call_openai_json(system, user_content, max_tokens=4000)
+    # Restore section_order — re-attach the user's custom ordering
+    if saved_order is not None:
+        result["section_order"] = saved_order
     return {
         "updated_json": result,
         "updated_section_path": None,
