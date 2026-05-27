@@ -123,7 +123,12 @@ def _build_compact_profile(data: dict) -> str:
                 lines.append(f"    Related pubs: {', '.join(related_pubs)}")
         lines.append("")
 
-    # Key publications (top 6)
+    # Key publications (top 6 by deterministic relevance_weight — recency
+    # × log(citations) × first-author bonus, computed in publication_enricher).
+    # Include the abstract so the scoring agent actually understands the
+    # user's research subject, not just the title — a "low-compute AI
+    # safety" paper looks very different from a "low-cost ML at scale"
+    # paper if you only have the title.
     publications = complete.get("publications", [])
     top_pubs = sorted(publications, key=lambda p: p.get("relevance_weight", 0), reverse=True)[:6]
     if top_pubs:
@@ -133,6 +138,9 @@ def _build_compact_profile(data: dict) -> str:
             lines.append(
                 f'  - "{p.get("title", "")}" ({p.get("venue", "")}, {p.get("year", "")}){fa}'
             )
+            abstract = (p.get("abstract") or "").strip().replace("\n", " ")
+            if abstract:
+                lines.append(f"    Abstract: {abstract[:400]}")
         lines.append("")
 
     # Search preferences — prefer new free-text fields, fall back to legacy

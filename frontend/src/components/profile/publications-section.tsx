@@ -8,7 +8,6 @@ import {
   Plus,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import type {
   ProfileAccomplishment,
@@ -110,13 +109,13 @@ function PublicationLookup({
             {(result.authors || []).join(", ")} — {result.venue},{" "}
             {result.year}
           </div>
-          {result.impact_summary && (
-            <div className="text-[10px] text-gray-600">
-              {result.impact_summary}
+          {result.abstract && (
+            <div className="text-[10px] text-gray-600 line-clamp-3">
+              {result.abstract}
             </div>
           )}
-          <span className="text-[9px] bg-amber-200 text-amber-800 px-1 py-0.5 rounded">
-            AI-generated
+          <span className="text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">
+            From Semantic Scholar
           </span>
           <div className="flex gap-2 mt-1">
             <button
@@ -249,47 +248,9 @@ function PublicationCard({
   onRemove: (index: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
-  const [quantInput, setQuantInput] = useState("");
 
   const update = (field: keyof ProfilePublication, value: unknown) => {
     onChange(index, { ...pub, [field]: value });
-  };
-
-  const addSkill = () => {
-    const trimmed = skillInput.trim();
-    if (trimmed) {
-      update("skills_demonstrated", [
-        ...(pub.skills_demonstrated || []),
-        trimmed,
-      ]);
-      setSkillInput("");
-    }
-  };
-
-  const removeSkill = (i: number) => {
-    update(
-      "skills_demonstrated",
-      (pub.skills_demonstrated || []).filter((_, idx) => idx !== i)
-    );
-  };
-
-  const addQuant = () => {
-    const trimmed = quantInput.trim();
-    if (trimmed) {
-      update("quantitative_specifics", [
-        ...(pub.quantitative_specifics || []),
-        trimmed,
-      ]);
-      setQuantInput("");
-    }
-  };
-
-  const removeQuant = (i: number) => {
-    update(
-      "quantitative_specifics",
-      (pub.quantitative_specifics || []).filter((_, idx) => idx !== i)
-    );
   };
 
   // Find accomplishments that reference this pub
@@ -462,140 +423,15 @@ function PublicationCard({
 
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">
-              Your Contribution
+              Abstract
             </label>
             <textarea
               value={pub.abstract || ""}
               onChange={(e) => update("abstract", e.target.value)}
               className="w-full rounded border px-2 py-1 text-sm resize-none"
-              rows={3}
-              placeholder="What was your role and contribution to this work?"
+              rows={5}
+              placeholder="Pulled from Semantic Scholar — edit if needed. The resume agent reads this to understand the work."
             />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Impact Summary
-            </label>
-            <textarea
-              value={pub.impact_summary || ""}
-              onChange={(e) => update("impact_summary", e.target.value)}
-              className="w-full rounded border px-2 py-1 text-sm resize-none"
-              rows={2}
-              placeholder="Job-search-relevant description of this publication's impact"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              So What?
-            </label>
-            <textarea
-              value={pub.so_what || ""}
-              onChange={(e) => update("so_what", e.target.value)}
-              className="w-full rounded border px-2 py-1 text-sm resize-none"
-              rows={2}
-              placeholder="Why does this publication matter for your target roles?"
-            />
-          </div>
-
-          {/* Quantitative Specifics */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Quantitative Specifics
-            </label>
-            <div className="space-y-1 mb-1">
-              {(pub.quantitative_specifics || []).map((q, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={q}
-                    onChange={(e) => {
-                      const updated = [...(pub.quantitative_specifics || [])];
-                      updated[i] = e.target.value;
-                      update("quantitative_specifics", updated);
-                    }}
-                    className="flex-1 rounded border px-2 py-0.5 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeQuant(i)}
-                    className="text-gray-400 hover:text-red-500"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={quantInput}
-                onChange={(e) => setQuantInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addQuant();
-                  }
-                }}
-                className="flex-1 rounded border px-2 py-0.5 text-xs"
-                placeholder="Add metric..."
-              />
-              <button
-                type="button"
-                onClick={addQuant}
-                disabled={!quantInput.trim()}
-                className="text-xs text-blue-600 disabled:opacity-50"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Skills Demonstrated
-            </label>
-            <div className="flex flex-wrap gap-1 mb-1">
-              {(pub.skills_demonstrated || []).map((s, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-0.5 bg-gray-200 text-gray-700 text-[10px] px-1.5 py-0.5 rounded-full"
-                >
-                  {s}
-                  <button
-                    type="button"
-                    onClick={() => removeSkill(i)}
-                    className="hover:text-red-500"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={skillInput}
-                onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addSkill();
-                  }
-                }}
-                className="flex-1 rounded border px-2 py-0.5 text-xs"
-                placeholder="Add skill..."
-              />
-              <button
-                type="button"
-                onClick={addSkill}
-                disabled={!skillInput.trim()}
-                className="text-xs text-blue-600 disabled:opacity-50"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
           </div>
 
           {/* Linked accomplishments (read-only) */}
@@ -686,7 +522,6 @@ export function PublicationsSection({
         abstract: "",
         first_author: false,
         relevance_weight: 0.5,
-        skills_demonstrated: [],
       },
     ]);
   };

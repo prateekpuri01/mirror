@@ -1791,17 +1791,19 @@ def build_full_profile_for_resume(data: dict) -> str:
                 f"  {', '.join(p.get('authors', []))}. "
                 f'"{p.get("title", "")}" {p.get("venue", "")}, {p.get("year", "")}.{fa}'
             )
-            if p.get("impact_summary"):
-                impact = p["impact_summary"].strip().replace("\n", " ")[:200]
-                lines.append(f"  Impact: {impact}")
+            # Abstract is the ground-truth context — bullet generation and
+            # skill bucket inference work strictly better with the real
+            # abstract than with an LLM-paraphrased "impact_summary" or
+            # speculative "skills_demonstrated" list. Older DB rows may
+            # still carry those legacy fields; we ignore them in favor of
+            # the abstract, which is now always populated by the
+            # deterministic publication enricher.
             if p.get("full_text"):
                 full = p["full_text"].strip().replace("\n", " ")[:2000]
                 lines.append(f"  Full text: {full}")
             elif p.get("abstract"):
-                abstract = p["abstract"].strip().replace("\n", " ")[:1000]
+                abstract = p["abstract"].strip().replace("\n", " ")[:1500]
                 lines.append(f"  Abstract: {abstract}")
-            if p.get("skills_demonstrated"):
-                lines.append(f"  Skills: {', '.join(p['skills_demonstrated'])}")
             lines.append("")
 
     return "\n".join(lines)
