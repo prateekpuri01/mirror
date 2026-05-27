@@ -46,7 +46,7 @@ export function TargetRolesSection({ data, onChange }: TargetRolesSectionProps) 
         <div key={i} className="flex items-center gap-2">
           <input
             type="text"
-            value={role.title}
+            value={role.title ?? ""}
             onChange={(e) => update(i, "title", e.target.value)}
             className="flex-1 rounded border px-2.5 py-1.5 text-sm"
             placeholder="Role title"

@@ -153,14 +153,14 @@ export function WritingStyleSection() {
             className="flex-1 border border-gray-300 rounded px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-blue-300"
             rows={2}
             placeholder='e.g. "Avoid the word \"leveraged\" — use \"used\" or \"applied\" instead."'
-            value={draft.rule_text}
+            value={draft.rule_text ?? ""}
             onChange={(e) => setDraft({ ...draft, rule_text: e.target.value })}
             disabled={busy === "__new__"}
           />
           <div className="flex flex-col gap-1.5 items-stretch">
             <select
               className="border border-gray-300 rounded px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-300"
-              value={draft.category}
+              value={draft.category ?? ""}
               onChange={(e) =>
                 setDraft({ ...draft, category: e.target.value as WritingMemoryCategory })
               }
@@ -309,7 +309,7 @@ function RuleRow({
         />
         <select
           className="text-[10px] border border-gray-200 rounded px-1.5 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-blue-300 shrink-0"
-          value={rule.category}
+          value={rule.category ?? ""}
           onChange={(e) => onEditCategory(e.target.value)}
           disabled={isBusy}
         >
