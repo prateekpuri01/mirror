@@ -228,9 +228,7 @@ async def assemble_profile(request: AssembleProfileRequest):
         )
         if "error" not in looking:
             search_prefs = profile.setdefault("search_preferences", {})
-            if not (search_prefs.get("looking_for") or "").strip() and looking.get(
-                "looking_for"
-            ):
+            if not (search_prefs.get("looking_for") or "").strip() and looking.get("looking_for"):
                 search_prefs["looking_for"] = looking["looking_for"]
                 search_prefs["looking_for_ai_generated"] = True
             if not (search_prefs.get("not_looking_for") or "").strip() and looking.get(
@@ -238,8 +236,10 @@ async def assemble_profile(request: AssembleProfileRequest):
             ):
                 search_prefs["not_looking_for"] = looking["not_looking_for"]
                 search_prefs["not_looking_for_ai_generated"] = True
-    except asyncio.TimeoutError:
-        logger.warning("Auto-suggest of looking_for timed out after 20s — on-mount fallback will handle")
+    except TimeoutError:
+        logger.warning(
+            "Auto-suggest of looking_for timed out after 20s — on-mount fallback will handle"
+        )
     except Exception:
         logger.warning("Auto-suggest of looking_for during assembly failed", exc_info=True)
 

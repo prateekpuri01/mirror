@@ -67,7 +67,11 @@ def _match_work_history_key(paper_year: int | None, work_history: list[dict]) ->
     for wh in work_history:
         start = _parse_year(wh.get("start"))
         end_raw = wh.get("end")
-        end = current_year if end_raw is None or str(end_raw).lower() == "present" else _parse_year(end_raw)
+        end = (
+            current_year
+            if end_raw is None or str(end_raw).lower() == "present"
+            else _parse_year(end_raw)
+        )
         if start is None or end is None:
             continue
         if start <= paper_year <= end:
@@ -162,16 +166,12 @@ async def enrich_publication(paper_metadata: dict, profile_data: dict) -> dict:
     """
     authors = paper_metadata.get("authors") or []
     user_name = (profile_data.get("personal") or {}).get("name") or ""
-    first_author = bool(
-        authors and user_name and user_name.lower() in (authors[0] or "").lower()
-    )
+    first_author = bool(authors and user_name and user_name.lower() in (authors[0] or "").lower())
 
     year = _parse_year(paper_metadata.get("year"))
     citation_count = int(paper_metadata.get("citation_count") or 0)
 
-    work_history_key = _match_work_history_key(
-        year, profile_data.get("work_history") or []
-    )
+    work_history_key = _match_work_history_key(year, profile_data.get("work_history") or [])
 
     relevance_weight = _compute_relevance_weight(
         year=year,

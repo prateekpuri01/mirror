@@ -31,7 +31,7 @@ async def extract_text_from_docx(file_bytes: bytes) -> str:
     from docx import Document
     from docx.document import Document as _Document
     from docx.oxml.ns import qn
-    from docx.table import _Cell, Table
+    from docx.table import Table, _Cell
     from docx.text.paragraph import Paragraph
 
     doc = Document(BytesIO(file_bytes))

@@ -107,8 +107,7 @@ async def scrape_scholar_publications(
             # automation signal. Done via init script so it runs before
             # any Scholar JS executes.
             await page.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', "
-                "{get: () => undefined});"
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
             )
 
             try:
