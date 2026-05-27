@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { Plus, Trash2, GripVertical, Loader2, Sparkles } from "lucide-react";
 import type { ProfileSearchPreferences } from "@/lib/types";
-import { generateKeywords, suggestProfileSection } from "@/lib/api";
+import { generateKeywords } from "@/lib/api";
 
 interface SearchPreferencesSectionProps {
   data: ProfileSearchPreferences;
@@ -101,11 +101,6 @@ export function SearchPreferencesSection({
   onChange,
 }: SearchPreferencesSectionProps) {
   const [generating, setGenerating] = useState(false);
-  const [autoSuggesting, setAutoSuggesting] = useState(false);
-  // Tracks whether we've already attempted an auto-suggest in this mount —
-  // we only run it once per session to avoid re-firing if the user manually
-  // clears both fields. Cleared fields are a valid state we should respect.
-  const autoTriedRef = useRef(false);
 
   // Migrate legacy fields on first render if new fields absent
   const migrated = useMemo(() => {
@@ -143,48 +138,6 @@ export function SearchPreferencesSection({
 
   const current = migrated;
 
-  // Auto-suggest "looking_for" / "not_looking_for" on first mount when both
-  // fields are empty. Fires once per session — if the user clears both, we
-  // don't re-suggest (the cleared state is intentional, not absence of data).
-  useEffect(() => {
-    if (autoTriedRef.current) return;
-    if (current.looking_for?.trim() || current.not_looking_for?.trim()) return;
-    autoTriedRef.current = true;
-
-    let cancelled = false;
-    (async () => {
-      setAutoSuggesting(true);
-      try {
-        const result = (await suggestProfileSection("looking_for")) as {
-          looking_for?: string;
-          not_looking_for?: string;
-          error?: string;
-        };
-        if (cancelled) return;
-        if (result?.error) return;
-        if (result?.looking_for || result?.not_looking_for) {
-          onChange({
-            ...current,
-            looking_for: result.looking_for || "",
-            not_looking_for: result.not_looking_for || "",
-            looking_for_ai_generated: !!result.looking_for,
-            not_looking_for_ai_generated: !!result.not_looking_for,
-          });
-        }
-      } catch {
-        // Suggestion failed silently — user can still write their own.
-      } finally {
-        if (!cancelled) setAutoSuggesting(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // Intentional: fire only once on mount; we gate on autoTriedRef above.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const handleGenerateKeywords = async () => {
     setGenerating(true);
     try {
@@ -208,12 +161,6 @@ export function SearchPreferencesSection({
 
   return (
     <div className="space-y-5">
-      {autoSuggesting && (
-        <div className="flex items-center gap-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
-          <Loader2 className="h-3 w-3 animate-spin" />
-          AI is drafting your &ldquo;what I&apos;m looking for&rdquo; based on your background — should take ~15 sec
-        </div>
-      )}
       <div>
         <label className="text-xs font-medium text-gray-600 mb-0.5 flex items-center gap-1.5">
           <span>What I&apos;m Looking For</span>
@@ -238,13 +185,8 @@ export function SearchPreferencesSection({
               looking_for_ai_generated: false,
             })
           }
-          disabled={autoSuggesting}
-          className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y disabled:bg-gray-50 disabled:text-gray-400"
-          placeholder={
-            autoSuggesting
-              ? "Drafting from your profile…"
-              : "e.g., Research-heavy roles at mission-driven orgs working on AI safety, computational social science, or public interest tech..."
-          }
+          className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y"
+          placeholder="e.g., Research-heavy roles at mission-driven orgs working on AI safety, computational social science, or public interest tech..."
         />
       </div>
 
@@ -271,13 +213,8 @@ export function SearchPreferencesSection({
               not_looking_for_ai_generated: false,
             })
           }
-          disabled={autoSuggesting}
-          className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y disabled:bg-gray-50 disabled:text-gray-400"
-          placeholder={
-            autoSuggesting
-              ? "Drafting from your profile…"
-              : "e.g., Defense contractors, surveillance tech, companies with no remote flexibility, pure frontend roles..."
-          }
+          className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y"
+          placeholder="e.g., Defense contractors, surveillance tech, companies with no remote flexibility, pure frontend roles..."
         />
       </div>
 
