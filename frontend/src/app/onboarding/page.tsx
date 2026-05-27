@@ -565,15 +565,16 @@ function StepReview({
     setProfile((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Auto-start the Scholar import once on review entry. Fires if we have
+  // Auto-start the Scholar import on review entry. Fires if we have
   // EITHER a Scholar URL or an author name (backend falls back to author
-  // search on Semantic Scholar when no URL is present). Skips if pubs were
-  // already extracted from the resume or if the importer is busy.
+  // search on Semantic Scholar when no URL is present). Always fires
+  // even when the resume already lists some pubs — Scholar typically has
+  // many more than what's on a resume, and the dedup-by-title pass in
+  // profile/page.tsx prevents double-adding the overlap.
   useEffect(() => {
     const url = profile.personal?.google_scholar;
     const name = profile.personal?.name;
-    const hasExistingPubs = (initialComplete?.publications?.length || 0) > 0;
-    if ((url || name) && !hasExistingPubs && pubImport.phase === "idle") {
+    if ((url || name) && pubImport.phase === "idle") {
       pubImport.start(profile, url || undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -780,14 +781,14 @@ export default function OnboardingPage() {
 
       // Kick off the streaming Scholar import on a brand-new profile.
       // Triggers on EITHER a Scholar URL or an author name (backend
-      // falls back to name-based Semantic Scholar lookup). Stream state
-      // lives in PublicationsImportContext at app root, so navigation
-      // away from /onboarding doesn't abort it — the /profile page
-      // picks it up and shows the verify banner.
+      // falls back to name-based Semantic Scholar lookup). We fire even
+      // when the resume already lists some pubs — Scholar typically has
+      // many more, and dedup-by-title in profile/page.tsx prevents
+      // doubling. Stream state lives in PublicationsImportContext at
+      // app root, so navigation away doesn't abort the stream.
       const scholarUrl = profile.personal?.google_scholar;
       const authorName = profile.personal?.name;
-      const hasPubs = (complete?.publications?.length || 0) > 0;
-      if ((scholarUrl || authorName) && !hasPubs && pubImport.phase === "idle") {
+      if ((scholarUrl || authorName) && pubImport.phase === "idle") {
         pubImport.start(profile, scholarUrl || undefined);
       }
 
