@@ -439,7 +439,8 @@ export type ResumeLayoutId =
   | "banner"
   | "compact"
   | "two_column"
-  | "timeline";
+  | "timeline"
+  | "centered_clean";
 
 export type ResumeColorSchemeId =
   | "navy"
@@ -519,6 +520,11 @@ export const LAYOUT_PRESETS: LayoutPresetMeta[] = [
     id: "timeline",
     label: "Timeline",
     description: "Date gutter on the left with a vertical accent rule; experience flows to the right. Editorial / contemporary.",
+  },
+  {
+    id: "centered_clean",
+    label: "Centered Clean",
+    description: "Two-tone centered name (light first / dark last), tagline with hairline rule, separate Experience and Education sections. Academic / policy-CV aesthetic.",
   },
 ];
 
