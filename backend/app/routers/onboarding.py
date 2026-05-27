@@ -215,11 +215,18 @@ async def assemble_profile(request: AssembleProfileRequest):
         logger.exception("Profile assembly failed")
         raise HTTPException(status_code=422, detail=f"Profile assembly failed: {str(e)}")
 
-    # Auto-draft search-preferences text from the assembled profile. Silent
-    # fallback if it fails — the user can still write their own.
+    # Auto-draft search-preferences text from the assembled profile. Bounded
+    # by a 20s timeout — if the LLM is slow, we don't want to block the
+    # onboarding flow. The on-mount fallback in search-preferences-section
+    # will re-attempt when the user lands on /profile.
+    import asyncio
+
     try:
         full_data = {**profile, "complete_profile": complete}
-        looking = await suggest_profile_section("looking_for", full_data)
+        looking = await asyncio.wait_for(
+            suggest_profile_section("looking_for", full_data),
+            timeout=20.0,
+        )
         if "error" not in looking:
             search_prefs = profile.setdefault("search_preferences", {})
             if not (search_prefs.get("looking_for") or "").strip() and looking.get(
@@ -232,6 +239,8 @@ async def assemble_profile(request: AssembleProfileRequest):
             ):
                 search_prefs["not_looking_for"] = looking["not_looking_for"]
                 search_prefs["not_looking_for_ai_generated"] = True
+    except asyncio.TimeoutError:
+        logger.warning("Auto-suggest of looking_for timed out after 20s — on-mount fallback will handle")
     except Exception:
         logger.warning("Auto-suggest of looking_for during assembly failed", exc_info=True)
 
