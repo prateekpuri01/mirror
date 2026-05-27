@@ -29,6 +29,7 @@ import {
 import type { CompanyResearch } from "@/lib/types";
 import { JobStatusSelect } from "./job-status-select";
 import { JobThumbs } from "./job-thumbs";
+import { SectionOrderPanel } from "./section-order-panel";
 import { ResumeEditor } from "./resume-editor";
 import { ChatPanel } from "./chat-panel";
 import { CompanyResearchPanel } from "./company-research-panel";
@@ -900,6 +901,13 @@ function ResumeTab({ job }: { job: Job }) {
         <div className="flex gap-3">
           {/* Left: Resume Editor (60%) */}
           <div className="flex-[3] min-w-0 border rounded-lg p-4 bg-white max-h-[600px] overflow-y-auto">
+            <div className="mb-3">
+              <SectionOrderPanel
+                layout={profile?.resume_design?.layout ?? "banner"}
+                order={(resumeJson || doc?.content_json as ResumeJson)?.section_order}
+                onChange={(newOrder) => handleSectionEdit("section_order", newOrder)}
+              />
+            </div>
             <ResumeEditor
               docId={doc!.id}
               resumeJson={resumeJson || (doc!.content_json as ResumeJson)}
