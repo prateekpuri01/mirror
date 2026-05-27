@@ -1,8 +1,10 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useSetupStatus } from "@/hooks/use-setup";
 import {
   ResumeGenerationContext,
   useResumeGenerationProvider,
@@ -108,6 +110,26 @@ function PublicationsImportProvider({ children }: { children: React.ReactNode })
   );
 }
 
+/**
+ * Redirects the user to /setup if no LLM provider key is configured.
+ * Skips the redirect when the user is already on /setup so the page can
+ * load. All other pages route here until setup is complete.
+ */
+function SetupGate({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { data, isLoading } = useSetupStatus();
+
+  useEffect(() => {
+    if (isLoading || !data) return;
+    if (data.needs_setup && pathname !== "/setup") {
+      router.replace("/setup");
+    }
+  }, [data, isLoading, pathname, router]);
+
+  return <>{children}</>;
+}
+
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
     () =>
@@ -124,23 +146,25 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <ResumeGenerationProvider>
-          <JobProcessingProvider>
-            <DiscoverFlowProvider>
-              <HotSearchProvider>
-                <RefreshFlowProvider>
-                  <ExtractionTrackingProvider>
-                    <JobSelectionProvider>
-                      <PublicationsImportProvider>
-                        {children}
-                      </PublicationsImportProvider>
-                    </JobSelectionProvider>
-                  </ExtractionTrackingProvider>
-                </RefreshFlowProvider>
-              </HotSearchProvider>
-            </DiscoverFlowProvider>
-          </JobProcessingProvider>
-        </ResumeGenerationProvider>
+        <SetupGate>
+          <ResumeGenerationProvider>
+            <JobProcessingProvider>
+              <DiscoverFlowProvider>
+                <HotSearchProvider>
+                  <RefreshFlowProvider>
+                    <ExtractionTrackingProvider>
+                      <JobSelectionProvider>
+                        <PublicationsImportProvider>
+                          {children}
+                        </PublicationsImportProvider>
+                      </JobSelectionProvider>
+                    </ExtractionTrackingProvider>
+                  </RefreshFlowProvider>
+                </HotSearchProvider>
+              </DiscoverFlowProvider>
+            </JobProcessingProvider>
+          </ResumeGenerationProvider>
+        </SetupGate>
       </TooltipProvider>
     </QueryClientProvider>
   );
