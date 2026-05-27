@@ -27,8 +27,6 @@ interface ResumeEditorProps {
   onAddResearch?: (accomplishmentId: string) => Promise<void> | void;
   // True while an add-research request is in flight (dim/disable the picker).
   addingResearch?: boolean;
-  // Delete the research entry at the given index from the resume.
-  onRemoveResearch?: (index: number) => Promise<void> | void;
   // When set, the bullet section gets an "Add from accomplishment ▼"
   // dropdown alongside the manual "+ Add bullet" button. The handler
   // takes the employer_key + accomplishment_id and is expected to call
@@ -240,7 +238,6 @@ export function ResumeEditor({
   swappingIndex,
   onAddResearch,
   addingResearch,
-  onRemoveResearch,
   onGenerateBullet,
   generatingBullet,
   workHistory,
@@ -360,8 +357,9 @@ export function ResumeEditor({
               );
               const isSwapping = swappingIndex === i;
 
+              const allEntries = resumeJson.selected_research || [];
               return (
-                <div key={i} className="space-y-0.5">
+                <div key={i} className="space-y-0.5 group/research">
                   <div className="flex items-baseline gap-1">
                     <EditableText
                       value={entry.category_label}
@@ -383,22 +381,56 @@ export function ResumeEditor({
                       onSave={handleSave}
                       className="text-xs flex-1"
                     />
-                    {onRemoveResearch && (
+                    {/* Reorder + delete controls, hover-revealed to match the
+                        bullet UX. Moves swap adjacent entries; delete drops
+                        the entry. All three operate by setting the whole
+                        selected_research array via onSectionEdit. */}
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover/research:opacity-100 transition-opacity shrink-0">
+                      <div className="flex flex-col">
+                        {i > 0 && (
+                          <button
+                            type="button"
+                            className="text-gray-400 hover:text-gray-700 p-0 leading-none text-[10px]"
+                            title="Move up"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const next = [...allEntries];
+                              [next[i - 1], next[i]] = [next[i], next[i - 1]];
+                              onSectionEdit("selected_research", next);
+                            }}
+                          >
+                            ▲
+                          </button>
+                        )}
+                        {i < allEntries.length - 1 && (
+                          <button
+                            type="button"
+                            className="text-gray-400 hover:text-gray-700 p-0 leading-none text-[10px]"
+                            title="Move down"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const next = [...allEntries];
+                              [next[i], next[i + 1]] = [next[i + 1], next[i]];
+                              onSectionEdit("selected_research", next);
+                            }}
+                          >
+                            ▼
+                          </button>
+                        )}
+                      </div>
                       <button
                         type="button"
+                        className="text-gray-400 hover:text-red-500 p-0 leading-none text-[10px] ml-0.5"
+                        title="Delete entry"
                         onClick={(e) => {
                           e.stopPropagation();
-                          if (confirm("Remove this research entry from the resume?")) {
-                            onRemoveResearch(i);
-                          }
+                          const next = allEntries.filter((_, idx) => idx !== i);
+                          onSectionEdit("selected_research", next);
                         }}
-                        className="text-gray-300 hover:text-red-500 transition-colors text-sm leading-none px-1"
-                        title="Remove entry"
-                        aria-label="Remove research entry"
                       >
-                        ×
+                        ✕
                       </button>
-                    )}
+                    </div>
                   </div>
                   <EditableText
                     value={entry.description}

@@ -745,28 +745,6 @@ function ResumeTab({ job }: { job: Job }) {
     [doc, flashUpdatedPath]
   );
 
-  // Remove a research entry from the resume — purely client-side array
-  // filter then PATCHing the whole `selected_research` array.
-  const handleRemoveResearch = useCallback(
-    async (index: number) => {
-      if (!doc || !resumeJson) return;
-      const current = resumeJson.selected_research || [];
-      const next = current.filter((_, i) => i !== index);
-      setGenError(null);
-      try {
-        const updated = await updateResumeSection(doc.id, "selected_research", next);
-        setDoc(updated);
-        if (updated.content_json) {
-          setResumeJson(updated.content_json as ResumeJson);
-        }
-      } catch (err) {
-        setGenError(
-          err instanceof Error ? err.message : "Failed to remove research entry",
-        );
-      }
-    },
-    [doc, resumeJson]
-  );
 
   // Generate a bullet from an accomplishment for a specific employer.
   const handleGenerateBullet = useCallback(
@@ -959,7 +937,6 @@ function ResumeTab({ job }: { job: Job }) {
               swappingIndex={swappingIndex}
               onAddResearch={handleAddResearch}
               addingResearch={addingResearch}
-              onRemoveResearch={handleRemoveResearch}
               onGenerateBullet={handleGenerateBullet}
               generatingBullet={generatingBullet}
               workHistory={profile?.work_history}
