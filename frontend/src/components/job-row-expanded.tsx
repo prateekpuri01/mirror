@@ -17,6 +17,7 @@ import {
   draftSingleAnswer,
   fetchDocument,
   fetchRequirements,
+  addResearchEntry,
   generateBullet,
   generateResearchEntry,
   generateResume,
@@ -720,6 +721,53 @@ function ResumeTab({ job }: { job: Job }) {
     [doc, flashUpdatedPath]
   );
 
+  // Append a new research entry generated from an accomplishment.
+  const [addingResearch, setAddingResearch] = useState(false);
+  const handleAddResearch = useCallback(
+    async (accomplishmentId: string) => {
+      if (!doc) return;
+      setAddingResearch(true);
+      setGenError(null);
+      try {
+        const updated = await addResearchEntry(doc.id, accomplishmentId);
+        setDoc(updated);
+        if (updated.content_json) {
+          setResumeJson(updated.content_json as ResumeJson);
+          const newIndex = (updated.content_json as ResumeJson).selected_research?.length;
+          if (newIndex) flashUpdatedPath(`selected_research.${newIndex - 1}`);
+        }
+      } catch (err) {
+        setGenError(err instanceof Error ? err.message : "Failed to add research entry");
+      } finally {
+        setAddingResearch(false);
+      }
+    },
+    [doc, flashUpdatedPath]
+  );
+
+  // Remove a research entry from the resume — purely client-side array
+  // filter then PATCHing the whole `selected_research` array.
+  const handleRemoveResearch = useCallback(
+    async (index: number) => {
+      if (!doc || !resumeJson) return;
+      const current = resumeJson.selected_research || [];
+      const next = current.filter((_, i) => i !== index);
+      setGenError(null);
+      try {
+        const updated = await updateResumeSection(doc.id, "selected_research", next);
+        setDoc(updated);
+        if (updated.content_json) {
+          setResumeJson(updated.content_json as ResumeJson);
+        }
+      } catch (err) {
+        setGenError(
+          err instanceof Error ? err.message : "Failed to remove research entry",
+        );
+      }
+    },
+    [doc, resumeJson]
+  );
+
   // Generate a bullet from an accomplishment for a specific employer.
   const handleGenerateBullet = useCallback(
     async (employerKey: string, accomplishmentId: string) => {
@@ -909,6 +957,9 @@ function ResumeTab({ job }: { job: Job }) {
               onSectionEdit={handleSectionEdit}
               onSwapResearch={handleSwapResearch}
               swappingIndex={swappingIndex}
+              onAddResearch={handleAddResearch}
+              addingResearch={addingResearch}
+              onRemoveResearch={handleRemoveResearch}
               onGenerateBullet={handleGenerateBullet}
               generatingBullet={generatingBullet}
               workHistory={profile?.work_history}

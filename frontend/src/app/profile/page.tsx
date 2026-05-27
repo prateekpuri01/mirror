@@ -318,16 +318,6 @@ function ProfileContent() {
 
         {activeTab === "skills" && (
           <>
-            <ProfileSection title="Target Roles" saveStatus={targetRolesStatus}>
-              <TargetRolesSection
-                data={p.target_roles || []}
-                onChange={(data) => {
-                  setLocalProfile({ ...p, target_roles: data });
-                  saveTargetRoles(data);
-                }}
-              />
-            </ProfileSection>
-
             <ProfileSection title="Domains" saveStatus={domainsStatus}>
               <DomainsSection
                 data={p.domains || []}
@@ -347,20 +337,31 @@ function ProfileContent() {
                 }}
               />
             </ProfileSection>
-
           </>
         )}
 
         {activeTab === "preferences" && (
-          <ProfileSection title="Search Preferences" saveStatus={prefsStatus}>
-            <SearchPreferencesSection
-              data={p.search_preferences || {}}
-              onChange={(data) => {
-                setLocalProfile({ ...p, search_preferences: data });
-                savePrefs(data);
-              }}
-            />
-          </ProfileSection>
+          <>
+            <ProfileSection title="Target Roles" saveStatus={targetRolesStatus}>
+              <TargetRolesSection
+                data={p.target_roles || []}
+                onChange={(data) => {
+                  setLocalProfile({ ...p, target_roles: data });
+                  saveTargetRoles(data);
+                }}
+              />
+            </ProfileSection>
+
+            <ProfileSection title="Search Preferences" saveStatus={prefsStatus}>
+              <SearchPreferencesSection
+                data={p.search_preferences || {}}
+                onChange={(data) => {
+                  setLocalProfile({ ...p, search_preferences: data });
+                  savePrefs(data);
+                }}
+              />
+            </ProfileSection>
+          </>
         )}
 
         {activeTab === "publications" && (

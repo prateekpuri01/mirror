@@ -23,6 +23,12 @@ interface ResumeEditorProps {
   onSectionEdit: (path: string, value: unknown) => void;
   onSwapResearch?: (index: number, accomplishmentId: string) => void;
   swappingIndex?: number | null;
+  // Append a new research entry generated from the given accomplishment.
+  onAddResearch?: (accomplishmentId: string) => Promise<void> | void;
+  // True while an add-research request is in flight (dim/disable the picker).
+  addingResearch?: boolean;
+  // Delete the research entry at the given index from the resume.
+  onRemoveResearch?: (index: number) => Promise<void> | void;
   // When set, the bullet section gets an "Add from accomplishment ▼"
   // dropdown alongside the manual "+ Add bullet" button. The handler
   // takes the employer_key + accomplishment_id and is expected to call
@@ -232,6 +238,9 @@ export function ResumeEditor({
   onSectionEdit,
   onSwapResearch,
   swappingIndex,
+  onAddResearch,
+  addingResearch,
+  onRemoveResearch,
   onGenerateBullet,
   generatingBullet,
   workHistory,
@@ -336,12 +345,14 @@ export function ResumeEditor({
         />
       </div>
 
-      {/* Selected Research */}
-      {resumeJson.selected_research?.length > 0 && (
+      {/* Selected Research — section visible if there are entries OR the
+          parent wired up an add handler (so users can add a first entry from
+          an empty state). */}
+      {(resumeJson.selected_research?.length > 0 || onAddResearch) && (
         <>
           <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Selected Research</SectionHeader>
           <div className="space-y-2">
-            {resumeJson.selected_research.map((entry, i) => {
+            {(resumeJson.selected_research || []).map((entry, i) => {
               // Build options: current accomplishments in resume + all from profile
               const currentIds = new Set(resumeJson.selected_research.map((r) => r.accomplishment_id));
               const availableAccomplishments = (accomplishments || []).filter(
@@ -372,6 +383,22 @@ export function ResumeEditor({
                       onSave={handleSave}
                       className="text-xs flex-1"
                     />
+                    {onRemoveResearch && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm("Remove this research entry from the resume?")) {
+                            onRemoveResearch(i);
+                          }
+                        }}
+                        className="text-gray-300 hover:text-red-500 transition-colors text-sm leading-none px-1"
+                        title="Remove entry"
+                        aria-label="Remove research entry"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                   <EditableText
                     value={entry.description}
@@ -427,6 +454,44 @@ export function ResumeEditor({
                 </div>
               );
             })}
+            {/* Add new research entry from an accomplishment not yet on the
+                resume. Hidden if every available accomplishment is already
+                used or if no add handler was wired. */}
+            {onAddResearch && (() => {
+              const currentIds = new Set(
+                (resumeJson.selected_research || []).map((r) => r.accomplishment_id),
+              );
+              const available = (accomplishments || []).filter(
+                (a) => a.id && !currentIds.has(a.id),
+              );
+              if (available.length === 0) return null;
+              return (
+                <div className="pt-1" onClick={(e) => e.stopPropagation()}>
+                  <select
+                    className="text-[11px] text-blue-600 bg-transparent border border-dashed border-blue-300 rounded px-2 py-1 cursor-pointer hover:bg-blue-50 focus:outline-none focus:ring-1 focus:ring-blue-300 max-w-[340px] truncate disabled:opacity-50 disabled:cursor-not-allowed"
+                    value=""
+                    disabled={!!addingResearch}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      if (id && onAddResearch) onAddResearch(id);
+                      e.target.value = "";
+                    }}
+                  >
+                    <option value="">
+                      {addingResearch
+                        ? "Generating new entry…"
+                        : "+ Add research from accomplishment"}
+                    </option>
+                    {available.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.title}
+                        {a.employer ? ` (${a.employer})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              );
+            })()}
           </div>
         </>
       )}

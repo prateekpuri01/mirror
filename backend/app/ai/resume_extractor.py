@@ -151,6 +151,28 @@ async def extract_profile_from_resume(resume_text: str) -> dict:
             employer = wh.get("employer") or ""
             wh["key"] = employer.lower().replace(" ", "_").replace("—", "_").replace("-", "_")
 
+    # Fallback: if the LLM missed the name (often happens when the resume's
+    # name is in a styled header / text-box that the python-docx extractor
+    # returns out of order), grab the first plausible line of the resume
+    # text. Heuristic: 2-5 words, no @ / digit, ≤ 50 chars.
+    personal = profile.setdefault("personal", {})
+    if not (personal.get("name") or "").strip():
+        for line in resume_text.split("\n")[:10]:
+            candidate = line.strip()
+            if not candidate or len(candidate) > 50:
+                continue
+            words = candidate.split()
+            if not (2 <= len(words) <= 5):
+                continue
+            if "@" in candidate or any(ch.isdigit() for ch in candidate):
+                continue
+            # Most names will have at least one uppercase letter
+            if not any(ch.isupper() for ch in candidate):
+                continue
+            personal["name"] = candidate
+            logger.info("Resume name fallback: extracted %r from header line", candidate)
+            break
+
     return profile
 
 

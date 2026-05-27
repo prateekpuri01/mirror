@@ -257,6 +257,23 @@ export async function generateResearchEntry(
   return res.document;
 }
 
+export async function addResearchEntry(
+  docId: string,
+  accomplishmentId: string,
+): Promise<DocumentFull> {
+  // Mirrors generateResearchEntry but appends instead of swapping. The
+  // backend ignores `index` for this endpoint — passed as 0 to satisfy
+  // the shared ResearchEntryRequest schema.
+  const res = await apiFetch<{ entry: unknown; document: DocumentFull }>(
+    `/api/documents/${docId}/add-research-entry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accomplishment_id: accomplishmentId, index: 0 }),
+    },
+  );
+  return res.document;
+}
+
 export async function generateBullet(
   docId: string,
   employerKey: string,
