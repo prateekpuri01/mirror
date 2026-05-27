@@ -334,15 +334,18 @@ function StepProcessing({
   const [waitingForPaste, setWaitingForPaste] = useState(false);
   const linkedinUrl = urls.find((u) => u.type === "linkedin")?.url;
 
-  // Start crawl on mount
+  // Start crawl on mount. If there are no URLs (or kicking off the crawl
+  // itself fails), fall through to doAssembly() instead of onSkip — assemble
+  // now has a critical side effect (looking_for auto-suggest) we always
+  // want to run, even with no URL data to merge.
   useEffect(() => {
     if (urls.length === 0) {
-      onSkip();
+      doAssembly();
       return;
     }
     crawlMutation.mutate(urls, {
       onSuccess: (data) => setTaskId(data.task_id),
-      onError: () => onSkip(),
+      onError: () => doAssembly(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -376,10 +379,10 @@ function StepProcessing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crawlStatus?.status]);
 
-  // If crawl failed entirely
+  // If crawl failed entirely, still run assemble (its side effects matter).
   useEffect(() => {
     if (crawlStatus?.status === "failed") {
-      onSkip();
+      doAssembly();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crawlStatus?.status]);
