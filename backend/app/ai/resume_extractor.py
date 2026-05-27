@@ -264,6 +264,10 @@ _PUB_INSTRUCTION_EXTRACT = """\
   Science and Nature Chemistry"), create individual entries for each distinct publication \
   you can identify, using the details available. If you cannot distinguish individual \
   papers, create one entry per distinct venue/topic mentioned.
+- **Set the abstract field to an empty string.** Do NOT summarize or invent an abstract \
+  from the resume text. Real abstracts are fetched from Semantic Scholar after the resume \
+  parse, and an LLM-generated paraphrase here gets discarded — but if it survives a title \
+  collision in the merge step, it displaces the real abstract. Empty string is correct here.
 - If no publications are mentioned, return an empty publications array."""
 
 

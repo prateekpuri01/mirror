@@ -176,26 +176,83 @@ function ProfileContent() {
 
   // Streaming Scholar import: when the onboarding flow kicked one off and
   // the user landed here mid-stream, fold each newly-arrived publication
-  // into localPublications + trigger the debounced save. Dedup by title so
-  // pubs the resume already extracted aren't doubled. Once the stream is
-  // done, reset() so subsequent visits to /profile don't replay stale
-  // state from context.
+  // into localPublications + trigger the debounced save.
+  //
+  // Merge semantics on title collision (instead of "first-wins" skip):
+  //   - resume-extracted pubs often have empty or speculative abstracts
+  //     ("Analyzes safety challenges...") because the LLM was paraphrasing
+  //     the resume text, not the real paper.
+  //   - Scholar/Semantic-Scholar pubs carry the real abstract.
+  //   - First-wins skip kept the resume's bad version. So instead, when a
+  //     streamed pub matches an existing title, we prefer the streamed
+  //     values for fields where source data is authoritative — abstract
+  //     (longer wins), citation_count, doi, url — and keep the existing
+  //     for anything the user may have edited (id, relevance_weight,
+  //     skills_demonstrated, related_publication_ids, etc.).
+  //
+  // Once the stream is done, reset() so subsequent visits to /profile
+  // don't replay stale state from context.
   const pubImport = usePublicationsImport();
   useEffect(() => {
     if (pubImport.publications.length === 0) return;
     if (localPublications === null) return; // still loading from DB
     setLocalPublications((prev) => {
       const prevList = prev || [];
-      const prevTitles = new Set(
-        prevList.map((p) => (p.title || "").toLowerCase().trim()),
+      const prevByTitle = new Map(
+        prevList.map((p) => [(p.title || "").toLowerCase().trim(), p] as const),
       );
-      const fresh = pubImport.publications.filter(
-        (p) => !prevTitles.has((p.title || "").toLowerCase().trim()),
+      let touched = false;
+
+      // First pass: walk prev pubs, merge in streamed values when a streamed
+      // pub matches by title. Preserves order and any user-only entries.
+      const streamedByTitle = new Map(
+        pubImport.publications.map(
+          (p) => [(p.title || "").toLowerCase().trim(), p] as const,
+        ),
       );
-      if (fresh.length === 0) return prevList;
-      const merged = [...prevList, ...fresh];
-      savePublications(merged);
-      return merged;
+      const next = prevList.map((existing) => {
+        const key = (existing.title || "").toLowerCase().trim();
+        const streamed = streamedByTitle.get(key);
+        if (!streamed) return existing;
+
+        const existingAbs = existing.abstract || "";
+        const streamedAbs = streamed.abstract || "";
+        const newAbs =
+          streamedAbs.length > existingAbs.length ? streamedAbs : existingAbs;
+        const merged = {
+          ...existing,
+          abstract: newAbs,
+          // Source-of-truth fields from Semantic Scholar always overwrite.
+          citation_count: streamed.citation_count ?? existing.citation_count,
+          doi: streamed.doi || existing.doi,
+          url: streamed.url || existing.url,
+        };
+        // Note: returning a fresh object even when nothing materially
+        // changed is fine — React.memo isn't in this path.
+        if (
+          merged.abstract !== existing.abstract
+          || merged.citation_count !== existing.citation_count
+          || merged.doi !== existing.doi
+          || merged.url !== existing.url
+        ) {
+          touched = true;
+        }
+        return merged;
+      });
+
+      // Second pass: append streamed pubs whose titles weren't in prev at all.
+      const prevTitles = new Set(prevByTitle.keys());
+      for (const streamed of pubImport.publications) {
+        const key = (streamed.title || "").toLowerCase().trim();
+        if (!prevTitles.has(key)) {
+          next.push(streamed);
+          touched = true;
+        }
+      }
+
+      if (!touched) return prevList;
+      savePublications(next);
+      return next;
     });
   }, [pubImport.publications, localPublications, savePublications]);
 
