@@ -19,12 +19,62 @@ async def extract_text_from_pdf(file_bytes: bytes) -> str:
 
 
 async def extract_text_from_docx(file_bytes: bytes) -> str:
-    """Extract text from DOCX bytes using python-docx."""
+    """Extract text from DOCX bytes using python-docx.
+
+    Walks both top-level paragraphs AND every table cell (recursively, since
+    cells can contain nested tables). Two-column resumes and Mirror's own
+    ``two_column``/``banner`` presets put most content inside tables — a
+    paragraphs-only pass would return ~empty text and fail the extractor
+    threshold. Also pulls header paragraphs since stylized designs sometimes
+    place the name there.
+    """
     from docx import Document
+    from docx.document import Document as _Document
+    from docx.oxml.ns import qn
+    from docx.table import _Cell, Table
+    from docx.text.paragraph import Paragraph
 
     doc = Document(BytesIO(file_bytes))
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-    return "\n".join(paragraphs)
+
+    def iter_block_items(parent):
+        if isinstance(parent, _Document):
+            parent_elm = parent.element.body
+        elif isinstance(parent, _Cell):
+            parent_elm = parent._tc
+        else:
+            return
+        for child in parent_elm.iterchildren():
+            if child.tag == qn("w:p"):
+                yield Paragraph(child, parent)
+            elif child.tag == qn("w:tbl"):
+                yield Table(child, parent)
+
+    def extract_from(parent) -> list[str]:
+        lines: list[str] = []
+        for block in iter_block_items(parent):
+            if isinstance(block, Paragraph):
+                txt = block.text.strip()
+                if txt:
+                    lines.append(txt)
+            elif isinstance(block, Table):
+                for row in block.rows:
+                    for cell in row.cells:
+                        lines.extend(extract_from(cell))
+        return lines
+
+    body_lines = extract_from(doc)
+
+    # Header paragraphs (where styled designs sometimes place the name).
+    # Prepend so the name surfaces near the top of the extracted text and
+    # the name-fallback heuristic can find it.
+    header_lines: list[str] = []
+    for section in doc.sections:
+        for hdr_para in section.header.paragraphs:
+            txt = hdr_para.text.strip()
+            if txt:
+                header_lines.append(txt)
+
+    return "\n".join(header_lines + body_lines)
 
 
 async def extract_text(filename: str, file_bytes: bytes) -> str:
