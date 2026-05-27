@@ -1,5 +1,6 @@
 """Onboarding API: resume upload, URL crawling, and profile assembly."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -219,8 +220,6 @@ async def assemble_profile(request: AssembleProfileRequest):
     # by a 20s timeout — if the LLM is slow, we don't want to block the
     # onboarding flow. The on-mount fallback in search-preferences-section
     # will re-attempt when the user lands on /profile.
-    import asyncio
-
     try:
         full_data = {**profile, "complete_profile": complete}
         looking = await asyncio.wait_for(
@@ -315,29 +314,46 @@ async def import_publications_stream(
             total_data = json.dumps({"total": len(papers)})
             yield f"event: total\ndata: {total_data}\n\n"
 
+            # Enrich up to N papers concurrently. Each enrichment is a
+            # single LLM call (~10-50s depending on backend load) — running
+            # them sequentially makes a 28-paper author take 20+ minutes
+            # and SSE connections often drop mid-stream. Parallelism
+            # cuts wall-clock 4-5x while staying under provider rate limits.
+            CONCURRENCY = 4
+            sem = asyncio.Semaphore(CONCURRENCY)
+
+            async def enrich_one(idx: int, paper: dict):
+                async with sem:
+                    try:
+                        pub = await enrich_publication(paper, body.profile)
+                        pub["auto_populated"] = True
+                        return ("ok", idx, paper, pub)
+                    except Exception:
+                        logger.warning(
+                            "Failed to enrich Scholar paper '%s' during streaming import",
+                            paper.get("title", ""),
+                        )
+                        return ("skip", idx, paper, None)
+
+            tasks = [asyncio.create_task(enrich_one(i, p)) for i, p in enumerate(papers)]
             imported = 0
-            for i, paper in enumerate(papers):
-                try:
-                    pub = await enrich_publication(paper, body.profile)
-                    pub["auto_populated"] = True
+            for coro in asyncio.as_completed(tasks):
+                kind, idx, paper, pub = await coro
+                if kind == "ok":
                     payload = json.dumps(
                         {
                             "publication": pub,
-                            "index": i,
+                            "index": idx,
                             "total": len(papers),
                         }
                     )
                     yield f"event: publication\ndata: {payload}\n\n"
                     imported += 1
-                except Exception:
-                    logger.warning(
-                        "Failed to enrich Scholar paper '%s' during streaming import",
-                        paper.get("title", ""),
-                    )
+                else:
                     skip = json.dumps(
                         {
                             "title": paper.get("title", "unknown"),
-                            "index": i,
+                            "index": idx,
                             "total": len(papers),
                             "reason": "Enrichment failed",
                         }

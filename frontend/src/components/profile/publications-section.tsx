@@ -173,7 +173,10 @@ function ScholarImportPanel({
   const [drafts, setDrafts] = useState<ProfilePublication[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  if (!hasScholarUrl) return null;
+  // We used to gate the button on hasScholarUrl, but the backend now
+  // falls back to author-name search on Semantic Scholar when no URL is
+  // provided — so we always show the button. The label adapts to set
+  // the right expectation.
 
   const doImport = async () => {
     setLoading(true);
@@ -259,7 +262,11 @@ function ScholarImportPanel({
         ) : (
           <Plus className="h-3 w-3" />
         )}
-        {loading ? "Searching Semantic Scholar..." : "Import from Google Scholar"}
+        {loading
+          ? "Searching Semantic Scholar..."
+          : hasScholarUrl
+            ? "Import from Google Scholar"
+            : "Find publications by name"}
       </button>
       {error && <span className="text-[10px] text-red-500">{error}</span>}
     </div>
