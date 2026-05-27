@@ -415,6 +415,12 @@ export interface ProfileWorkHistory {
 export interface ProfileSearchPreferences {
   looking_for?: string;
   not_looking_for?: string;
+  // Set true when the corresponding field was auto-drafted by the AI
+  // (during onboarding assembly or the on-mount fallback). Cleared the
+  // moment the user edits the text, so the "AI" badge fades after the
+  // first character change.
+  looking_for_ai_generated?: boolean;
+  not_looking_for_ai_generated?: boolean;
   positive_signals?: string[];
   exclusions?: string[];
   salary_minimum?: number | null;

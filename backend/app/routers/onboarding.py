@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.profile_suggester import suggest_profile_section
 from app.ai.publication_enricher import enrich_publication
 from app.ai.resume_extractor import (
     assemble_profile_from_sources,
@@ -195,7 +196,14 @@ async def crawl_status(task_id: str):
 
 @router.post("/assemble-profile")
 async def assemble_profile(request: AssembleProfileRequest):
-    """Merge resume extraction + URL crawl results via LLM."""
+    """Merge resume extraction + URL crawl results via LLM.
+
+    Also auto-drafts ``looking_for`` / ``not_looking_for`` paragraphs from
+    the assembled profile so the user lands on a populated Search
+    Preferences section. The two fields are flagged with
+    ``*_ai_generated: true`` so the UI can show an "AI" badge that clears
+    when the user edits the text.
+    """
     try:
         profile, complete = await assemble_profile_from_sources(
             resume_text=request.resume_text,
@@ -206,6 +214,26 @@ async def assemble_profile(request: AssembleProfileRequest):
     except Exception as e:
         logger.exception("Profile assembly failed")
         raise HTTPException(status_code=422, detail=f"Profile assembly failed: {str(e)}")
+
+    # Auto-draft search-preferences text from the assembled profile. Silent
+    # fallback if it fails — the user can still write their own.
+    try:
+        full_data = {**profile, "complete_profile": complete}
+        looking = await suggest_profile_section("looking_for", full_data)
+        if "error" not in looking:
+            search_prefs = profile.setdefault("search_preferences", {})
+            if not (search_prefs.get("looking_for") or "").strip() and looking.get(
+                "looking_for"
+            ):
+                search_prefs["looking_for"] = looking["looking_for"]
+                search_prefs["looking_for_ai_generated"] = True
+            if not (search_prefs.get("not_looking_for") or "").strip() and looking.get(
+                "not_looking_for"
+            ):
+                search_prefs["not_looking_for"] = looking["not_looking_for"]
+                search_prefs["not_looking_for_ai_generated"] = True
+    except Exception:
+        logger.warning("Auto-suggest of looking_for during assembly failed", exc_info=True)
 
     return {"profile": profile, "complete_profile": complete}
 

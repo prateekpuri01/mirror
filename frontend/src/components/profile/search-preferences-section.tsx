@@ -167,6 +167,8 @@ export function SearchPreferencesSection({
             ...current,
             looking_for: result.looking_for || "",
             not_looking_for: result.not_looking_for || "",
+            looking_for_ai_generated: !!result.looking_for,
+            not_looking_for_ai_generated: !!result.not_looking_for,
           });
         }
       } catch {
@@ -213,8 +215,14 @@ export function SearchPreferencesSection({
         </div>
       )}
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-0.5">
-          What I&apos;m Looking For
+        <label className="text-xs font-medium text-gray-600 mb-0.5 flex items-center gap-1.5">
+          <span>What I&apos;m Looking For</span>
+          {current.looking_for_ai_generated && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
+              <Sparkles className="h-2.5 w-2.5" />
+              AI-drafted
+            </span>
+          )}
         </label>
         <p className="text-[11px] text-gray-400 mb-1.5">
           Describe the kind of role, org, and work that excites you. This goes
@@ -222,7 +230,14 @@ export function SearchPreferencesSection({
         </p>
         <textarea
           value={current.looking_for || ""}
-          onChange={(e) => onChange({ ...current, looking_for: e.target.value })}
+          onChange={(e) =>
+            onChange({
+              ...current,
+              looking_for: e.target.value,
+              // Any user edit clears the AI flag for this field.
+              looking_for_ai_generated: false,
+            })
+          }
           disabled={autoSuggesting}
           className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y disabled:bg-gray-50 disabled:text-gray-400"
           placeholder={
@@ -234,8 +249,14 @@ export function SearchPreferencesSection({
       </div>
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-0.5">
-          What I&apos;m NOT Looking For
+        <label className="text-xs font-medium text-gray-600 mb-0.5 flex items-center gap-1.5">
+          <span>What I&apos;m NOT Looking For</span>
+          {current.not_looking_for_ai_generated && (
+            <span className="inline-flex items-center gap-0.5 text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded font-semibold">
+              <Sparkles className="h-2.5 w-2.5" />
+              AI-drafted
+            </span>
+          )}
         </label>
         <p className="text-[11px] text-gray-400 mb-1.5">
           Describe what to avoid. The AI uses this to filter out bad matches and
@@ -244,7 +265,11 @@ export function SearchPreferencesSection({
         <textarea
           value={current.not_looking_for || ""}
           onChange={(e) =>
-            onChange({ ...current, not_looking_for: e.target.value })
+            onChange({
+              ...current,
+              not_looking_for: e.target.value,
+              not_looking_for_ai_generated: false,
+            })
           }
           disabled={autoSuggesting}
           className="w-full rounded border px-2 py-1.5 text-sm min-h-[140px] resize-y disabled:bg-gray-50 disabled:text-gray-400"
