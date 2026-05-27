@@ -397,11 +397,10 @@ function StepProcessing({
       }
     }
 
-    if (Object.keys(urlTexts).length === 0) {
-      onSkip();
-      return;
-    }
-
+    // Always call assemble even when there's no URL text to merge in.
+    // Assembly is no longer a pure URL-merge step — it also runs the
+    // looking_for auto-suggester against the resume data alone, so
+    // short-circuiting on empty urlTexts would skip that whole feature.
     assembleMutation.mutate(
       {
         resume_text: resumeText,
