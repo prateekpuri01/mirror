@@ -54,6 +54,35 @@ Rules:
 - Consider both tech and policy/research tracks if their background spans both
 - If the user already has target roles listed, keep well-supported ones and add missing ones
 - Output ONLY valid JSON, no markdown fences""",
+    "looking_for": """\
+You are a career profile assistant. Given the user's professional background, \
+draft two short first-person paragraphs that capture what kind of work the user \
+should target.
+
+Output valid JSON:
+{
+  "looking_for": "free-text paragraph in first person",
+  "not_looking_for": "free-text paragraph in first person"
+}
+
+Guidelines for "looking_for":
+- 3-5 sentences, written first person ("Roles at...", not "User wants...")
+- Name specific role types, organization types, and problem domains drawn
+  from the user's actual work
+- Mention team properties they seem to thrive in (research-heavy, applied,
+  individual contributor, etc.) based on their accomplishments
+- Concrete, not generic. Avoid platitudes like "growth opportunities" or
+  "great culture"
+
+Guidelines for "not_looking_for":
+- 2-3 sentences, also first person
+- Areas that seem orthogonal to or in tension with their demonstrated strengths
+- Examples: "Pure frontend work", "Roles requiring 24/7 on-call rotations",
+  "Defense-contractor environments"
+- Be conservative — only include avoidances clearly suggested by what's missing
+  from their background, not assumptions about the person
+
+Output ONLY valid JSON, no markdown fences""",
 }
 
 

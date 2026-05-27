@@ -738,7 +738,7 @@ export async function generateKeywords(
 }
 
 export async function suggestProfileSection(
-  section: "domains" | "skills" | "target_roles",
+  section: "domains" | "skills" | "target_roles" | "looking_for",
 ): Promise<Record<string, unknown>> {
   return apiFetch("/api/profile/suggest", {
     method: "POST",
