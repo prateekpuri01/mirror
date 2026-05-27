@@ -1218,6 +1218,28 @@ def _build_layout_compact(ctx: BuildContext, doc, resume_data: dict, profile_dat
     _render_awards(ctx, doc, resume_data.get("awards", ""))
 
 
+def _build_layout_centered_clean(
+    ctx: BuildContext, doc, resume_data: dict, profile_data: dict
+) -> None:
+    """Clean centered layout — no colored band, no date gutter.
+
+    Pairs the two-tone centered header (``_render_centered_header``: light-gray
+    first name + dark last name + orange tagline with hairline underline) with
+    the banner's body structure (separate Experience and Education sections).
+    Good fit for academic / policy CVs where the designer band feels too
+    heavy and the timeline's combined experience+education table doesn't
+    match the user's intent.
+    """
+    _render_centered_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
+    _render_summary(ctx, doc, resume_data.get("summary", ""))
+    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
+    _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
+    _render_publications(ctx, doc, resume_data.get("publications", []))
+    _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
+    _render_education(ctx, doc, profile_data)
+    _render_awards(ctx, doc, resume_data.get("awards", ""))
+
+
 def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
     # V1 ordering: header → summary → combined timeline (work + education,
     # sub-grouped on one continuous vertical rule) → research → skills →
@@ -1692,6 +1714,7 @@ _LAYOUT_DISPATCH = {
     "compact": _build_layout_compact,
     "two_column": _build_layout_two_column,
     "timeline": _build_layout_timeline,
+    "centered_clean": _build_layout_centered_clean,
 }
 
 
