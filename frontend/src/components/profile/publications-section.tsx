@@ -12,10 +12,12 @@ import {
 } from "lucide-react";
 import type {
   ProfileAccomplishment,
+  ProfileData,
   ProfilePublication,
   ProfileWorkHistory,
 } from "@/lib/types";
-import { lookupPublication, importScholarPublications } from "@/lib/api";
+import { lookupPublication } from "@/lib/api";
+import { usePublicationsImport } from "@/hooks/use-publications-import";
 
 // ---------------------------------------------------------------------------
 // Publication Lookup Modal (inline)
@@ -163,90 +165,39 @@ function PublicationLookup({
 // ---------------------------------------------------------------------------
 
 function ScholarImportPanel({
-  onAdd,
+  profile,
   hasScholarUrl,
 }: {
-  onAdd: (pubs: ProfilePublication[]) => void;
+  profile: ProfileData | null;
   hasScholarUrl: boolean;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [drafts, setDrafts] = useState<ProfilePublication[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Uses the streaming PublicationsImportContext (same one used during
+  // onboarding) so the import runs as a background task — the user can
+  // navigate to other tabs / pages and pubs continue streaming in. The
+  // verify banner on /profile's Publications tab handles confirmation
+  // after streaming completes. Auto-save into localPublications happens
+  // in the Profile page's useEffect (see profile/page.tsx:185).
+  const pubImport = usePublicationsImport();
+  const isRunning =
+    pubImport.phase === "fetching" || pubImport.phase === "enriching";
 
-  // We used to gate the button on hasScholarUrl, but the backend now
-  // falls back to author-name search on Semantic Scholar when no URL is
-  // provided — so we always show the button. The label adapts to set
-  // the right expectation.
-
-  const doImport = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await importScholarPublications();
-      if (resp.success && resp.publications.length > 0) {
-        setDrafts(resp.publications);
-      } else {
-        setError(
-          resp.error ||
-            "Could not find your publications — try looking up individual titles instead"
-        );
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
-    } finally {
-      setLoading(false);
-    }
+  const doImport = () => {
+    if (!profile || isRunning) return;
+    // Reset any previous stream state before kicking off a new one.
+    pubImport.reset();
+    pubImport.start(profile);
   };
 
-  if (drafts && drafts.length > 0) {
-    return (
-      <div className="border rounded p-3 bg-amber-50 space-y-2">
-        <div className="text-xs font-semibold text-amber-800">
-          Scholar Import: {drafts.length} publication
-          {drafts.length !== 1 ? "s" : ""} found
-        </div>
-        {drafts.map((d, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between bg-white border border-amber-200 rounded px-2 py-1.5"
-          >
-            <div className="text-xs min-w-0 truncate">
-              <span className="font-medium">{d.title}</span>
-              <span className="text-gray-500"> ({d.year || "?"})</span>
-            </div>
-            <div className="flex gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  onAdd([d]);
-                  setDrafts(drafts.filter((_, idx) => idx !== i));
-                }}
-                className="text-[10px] text-green-600 hover:text-green-800 font-medium"
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                onClick={() => setDrafts(drafts.filter((_, idx) => idx !== i))}
-                className="text-[10px] text-gray-400 hover:text-gray-600"
-              >
-                Skip
-              </button>
-            </div>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            onAdd(drafts);
-            setDrafts(null);
-          }}
-          className="text-[10px] text-green-600 hover:text-green-800 font-medium"
-        >
-          Add All
-        </button>
-      </div>
-    );
+  let label: string;
+  if (isRunning) {
+    label =
+      pubImport.total > 0
+        ? `Importing… ${pubImport.publications.length} / ${pubImport.total}`
+        : "Starting import…";
+  } else if (hasScholarUrl) {
+    label = "Import from Google Scholar";
+  } else {
+    label = "Find publications by name";
   }
 
   return (
@@ -254,21 +205,26 @@ function ScholarImportPanel({
       <button
         type="button"
         onClick={doImport}
-        disabled={loading}
-        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+        disabled={isRunning || !profile}
+        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+        title={
+          isRunning
+            ? "Import is running in the background — feel free to navigate away"
+            : ""
+        }
       >
-        {loading ? (
+        {isRunning ? (
           <Loader2 className="h-3 w-3 animate-spin" />
         ) : (
           <Plus className="h-3 w-3" />
         )}
-        {loading
-          ? "Searching Semantic Scholar..."
-          : hasScholarUrl
-            ? "Import from Google Scholar"
-            : "Find publications by name"}
+        {label}
       </button>
-      {error && <span className="text-[10px] text-red-500">{error}</span>}
+      {pubImport.phase === "error" && pubImport.errorMessage && (
+        <span className="text-[10px] text-red-500">
+          {pubImport.errorMessage}
+        </span>
+      )}
     </div>
   );
 }
@@ -695,6 +651,9 @@ interface PublicationsSectionProps {
   accomplishments: ProfileAccomplishment[];
   workHistory: ProfileWorkHistory[];
   hasScholarUrl: boolean;
+  // Full profile (needed by the streaming import — passed straight through
+  // to pubImport.start()).
+  profile: ProfileData | null;
   onChange: (data: ProfilePublication[]) => void;
 }
 
@@ -702,6 +661,7 @@ export function PublicationsSection({
   data,
   accomplishments,
   workHistory,
+  profile,
   hasScholarUrl,
   onChange,
 }: PublicationsSectionProps) {
@@ -747,7 +707,7 @@ export function PublicationsSection({
       <div className="flex items-center gap-3 flex-wrap">
         <PublicationLookup onAdd={(pub) => handleAddPubs([pub])} />
         <ScholarImportPanel
-          onAdd={handleAddPubs}
+          profile={profile}
           hasScholarUrl={hasScholarUrl}
         />
       </div>

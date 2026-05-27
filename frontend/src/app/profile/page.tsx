@@ -454,6 +454,7 @@ function ProfileContent() {
               accomplishments={localAccomplishments || []}
               workHistory={p.work_history || []}
               hasScholarUrl={!!p.personal?.google_scholar}
+              profile={p}
               onChange={(data) => {
                 setLocalPublications(data);
                 savePublications(data);
