@@ -200,14 +200,19 @@ function ProfileContent() {
   }, [pubImport.publications, localPublications, savePublications]);
 
   useEffect(() => {
-    if (pubImport.phase === "done" || pubImport.phase === "error") {
-      // Give the debounced save a beat to flush, then drop the context
-      // state. Without this, navigating back to /profile after a previous
-      // import would re-merge old streamed entries.
+    // Errors auto-reset (no banner shown).
+    if (pubImport.phase === "error") {
       const t = setTimeout(() => pubImport.reset(), 1500);
       return () => clearTimeout(t);
     }
-  }, [pubImport.phase, pubImport]);
+    // On "done" we DELAY the reset until the user has acknowledged the
+    // verify banner. Once acknowledged, drop the context state so the
+    // banner doesn't reappear on the next visit.
+    if (pubImport.phase === "done" && pubImport.acknowledged) {
+      const t = setTimeout(() => pubImport.reset(), 500);
+      return () => clearTimeout(t);
+    }
+  }, [pubImport.phase, pubImport.acknowledged, pubImport]);
 
   if (isLoading || completeLoading) {
     return (
@@ -388,6 +393,60 @@ function ProfileContent() {
             {pubImport.phase === "error" && pubImport.errorMessage && (
               <div className="text-xs bg-red-50 border border-red-200 rounded-md px-3 py-2 mb-2 text-red-700">
                 Scholar import failed: {pubImport.errorMessage}
+              </div>
+            )}
+            {/* Verify banner: shown after the streaming import completes,
+                until the user explicitly keeps or clears. Lets the user
+                catch a wrong-person match (common with common names). */}
+            {pubImport.phase === "done"
+              && !pubImport.acknowledged
+              && pubImport.publications.length > 0 && (
+              <div className="flex items-start gap-3 text-xs bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 mb-2">
+                <div className="flex-1 text-amber-900">
+                  <div className="font-medium">
+                    Found {pubImport.publications.length} publication
+                    {pubImport.publications.length === 1 ? "" : "s"}
+                    {pubImport.authorQueried ? ` attributed to "${pubImport.authorQueried}"` : ""}.
+                    Are these yours?
+                  </div>
+                  <div className="text-amber-700/90 mt-0.5">
+                    Common names can match multiple authors — confirm or clear
+                    if these don&apos;t look right.
+                  </div>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => pubImport.acknowledge()}
+                    className="text-[11px] font-medium bg-amber-600 text-white hover:bg-amber-700 rounded px-2.5 py-1"
+                  >
+                    Keep them
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Drop just the imported titles from localPublications;
+                      // other (manually-added or resume-extracted) pubs stay.
+                      const importedTitles = new Set(
+                        pubImport.publications.map((p) =>
+                          (p.title || "").toLowerCase().trim(),
+                        ),
+                      );
+                      const filtered = (localPublications || []).filter(
+                        (p) =>
+                          !importedTitles.has(
+                            (p.title || "").toLowerCase().trim(),
+                          ),
+                      );
+                      setLocalPublications(filtered);
+                      savePublications(filtered);
+                      pubImport.acknowledge();
+                    }}
+                    className="text-[11px] font-medium bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 rounded px-2.5 py-1"
+                  >
+                    Clear all
+                  </button>
+                </div>
               </div>
             )}
             <PublicationsSection

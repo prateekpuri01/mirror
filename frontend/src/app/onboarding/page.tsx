@@ -563,15 +563,16 @@ function StepReview({
     setProfile((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Auto-start the Scholar import once on review entry if conditions are
-  // right (URL present, no existing pubs, importer idle, profile name set).
-  // Re-mount on tab-switch-back is harmless: state lives in the context
-  // provider at app root, so phase != idle on return and start() is a noop.
+  // Auto-start the Scholar import once on review entry. Fires if we have
+  // EITHER a Scholar URL or an author name (backend falls back to author
+  // search on Semantic Scholar when no URL is present). Skips if pubs were
+  // already extracted from the resume or if the importer is busy.
   useEffect(() => {
     const url = profile.personal?.google_scholar;
+    const name = profile.personal?.name;
     const hasExistingPubs = (initialComplete?.publications?.length || 0) > 0;
-    if (url && !hasExistingPubs && pubImport.phase === "idle") {
-      pubImport.start(profile, url);
+    if ((url || name) && !hasExistingPubs && pubImport.phase === "idle") {
+      pubImport.start(profile, url || undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -775,14 +776,17 @@ export default function OnboardingPage() {
       queryClient.invalidateQueries({ queryKey: ["profile-complete"] });
       queryClient.invalidateQueries({ queryKey: ["onboarding-status"] });
 
-      // If the assembled profile has a Scholar URL and no publications
-      // yet, kick off the streaming Scholar import. Stream state lives in
-      // PublicationsImportContext at app root, so navigation away from
-      // /onboarding doesn't abort it — the /profile page picks it up.
+      // Kick off the streaming Scholar import on a brand-new profile.
+      // Triggers on EITHER a Scholar URL or an author name (backend
+      // falls back to name-based Semantic Scholar lookup). Stream state
+      // lives in PublicationsImportContext at app root, so navigation
+      // away from /onboarding doesn't abort it — the /profile page
+      // picks it up and shows the verify banner.
       const scholarUrl = profile.personal?.google_scholar;
+      const authorName = profile.personal?.name;
       const hasPubs = (complete?.publications?.length || 0) > 0;
-      if (scholarUrl && !hasPubs && pubImport.phase === "idle") {
-        pubImport.start(profile, scholarUrl);
+      if ((scholarUrl || authorName) && !hasPubs && pubImport.phase === "idle") {
+        pubImport.start(profile, scholarUrl || undefined);
       }
 
       router.push("/profile");
