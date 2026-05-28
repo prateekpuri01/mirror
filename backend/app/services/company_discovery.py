@@ -23,9 +23,8 @@ import logging
 import re
 import time
 from dataclasses import dataclass
-from urllib.parse import unquote
 from datetime import UTC, datetime
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import httpx
 from sqlalchemy import select, update

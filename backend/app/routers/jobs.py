@@ -122,8 +122,8 @@ async def import_job_from_url(
     # we won't auto-create a junk Company row from a URL the resolver
     # couldn't classify.
     try:
-        from app.services.company_discovery import _find_company_by_slug, resolve_job_url
         from app.services import company_service
+        from app.services.company_discovery import _find_company_by_slug, resolve_job_url
 
         resolution = await resolve_job_url(body.url)
         if resolution.ats and resolution.slug:
