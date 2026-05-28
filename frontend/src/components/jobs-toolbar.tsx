@@ -421,7 +421,7 @@ export function JobsToolbar() {
         />
 
         <Select
-          value={currentStatus || undefined}
+          value={currentStatus || "all"}
           onValueChange={(v) => updateParams({ status: v === "all" ? "" : (v ?? "") })}
         >
           <SelectTrigger className="w-[130px]">
@@ -721,7 +721,7 @@ export function JobsToolbar() {
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Source</label>
                 <Select
-                  value={currentSource || undefined}
+                  value={currentSource || "all"}
                   onValueChange={(v) => updateParams({ source: v === "all" ? "" : (v ?? "") })}
                 >
                   <SelectTrigger className="w-full">
