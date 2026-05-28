@@ -23,6 +23,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from urllib.parse import unquote
 from datetime import UTC, datetime
 from urllib.parse import parse_qs, urlparse
 
@@ -189,13 +190,21 @@ _EIGHTFOLD_PATTERNS = [
 
 
 def _regex_match(url: str) -> URLResolution | None:
-    """Step 1b: Try regex patterns against known ATS domains."""
+    """Step 1b: Try regex patterns against known ATS domains.
+
+    The captured slug is URL-decoded before being returned — Ashby and (less
+    commonly) Lever boards can have spaces or other escaped characters in the
+    org slug (e.g. ``jobs.ashbyhq.com/Edison%20Scientific/...`` for
+    "Edison Scientific"). The downstream verification call uses the slug
+    verbatim as the GraphQL ``organizationHostedJobsPageName``, which
+    expects the decoded form.
+    """
     for pattern in _GREENHOUSE_PATTERNS:
         m = pattern.search(url)
         if m:
             return URLResolution(
                 ats="greenhouse",
-                slug=m.group("slug"),
+                slug=unquote(m.group("slug")),
                 job_url=url,
                 method="regex",
                 confidence="high",
@@ -206,7 +215,7 @@ def _regex_match(url: str) -> URLResolution | None:
         if m:
             return URLResolution(
                 ats="lever",
-                slug=m.group("slug"),
+                slug=unquote(m.group("slug")),
                 job_url=url,
                 method="regex",
                 confidence="high",
@@ -217,7 +226,7 @@ def _regex_match(url: str) -> URLResolution | None:
         if m:
             return URLResolution(
                 ats="ashby",
-                slug=m.group("slug"),
+                slug=unquote(m.group("slug")),
                 job_url=url,
                 method="regex",
                 confidence="high",

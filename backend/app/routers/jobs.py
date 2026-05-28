@@ -115,6 +115,42 @@ async def import_job_from_url(
 
     job = await job_service.create_job(session, job_data)
 
+    # Upsert the Company row + link the job to it. The /jobs/import-from-url
+    # flow used to create only a Job row (with the company name as a text
+    # field), so the Companies page never reflected jobs added this way.
+    # Resolving the URL to an ATS+slug also doubles as a sanity check that
+    # we won't auto-create a junk Company row from a URL the resolver
+    # couldn't classify.
+    try:
+        from app.services.company_discovery import _find_company_by_slug, resolve_job_url
+        from app.services import company_service
+
+        resolution = await resolve_job_url(body.url)
+        if resolution.ats and resolution.slug:
+            company_row = await _find_company_by_slug(session, resolution.ats, resolution.slug)
+            if company_row is None:
+                # New company — create with the best name we have. The LLM-
+                # extracted job_data["company"] is more readable than the slug
+                # (e.g. "Edison Scientific" vs "Edison%20Scientific"), so use
+                # it as the display name.
+                company_row = await company_service.create_company(
+                    session,
+                    {
+                        "name": (job_data.get("company") or resolution.slug).strip(),
+                        f"{resolution.ats}_slug": resolution.slug,
+                    },
+                )
+            # Link the job back to the company so the Companies page join finds it.
+            if job.company_id != company_row.id:
+                job.company_id = company_row.id
+                await session.commit()
+                await session.refresh(job)
+    except Exception:
+        # Don't block the import on the company-row side effect. The job
+        # is already saved; worst case the Companies page just won't see
+        # this addition until the next manual discover/refresh.
+        logger.exception("Company upsert during import-from-url failed (job created OK)")
+
     # Trigger pipeline processing in background (catches this job + any stragglers)
     from app.routers.pipeline import _run_process
 
