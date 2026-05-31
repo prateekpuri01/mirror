@@ -347,7 +347,7 @@ export function ResumeEditor({
           an empty state). */}
       {(resumeJson.selected_research?.length > 0 || onAddResearch) && (
         <>
-          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Selected Research</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>{resumeJson.selected_research_section_title || "Selected Research"}</SectionHeader>
           <div className="space-y-2">
             {(resumeJson.selected_research || []).map((entry, i) => {
               // Build options: current accomplishments in resume + all from profile
