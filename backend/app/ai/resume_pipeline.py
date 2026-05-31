@@ -261,6 +261,23 @@ async def run_pipeline(
         bucket: text for bucket, text in zip(SKILL_BUCKETS, skill_results, strict=False) if text
     }
 
+    # Research entries are generated in parallel, so opening verbs can collide
+    # (e.g. two entries both opening "Built"). Deterministic single-pass retry:
+    # detect duplicates, re-run later occurrences with the colliding verb(s)
+    # banned via critic_notes. Bounded — no recursion if the retry collides.
+    selected_research = await _enforce_research_opening_diversity(
+        selected_research,
+        accomplishment_lookup=accomplishment_lookup,
+        plan_text=plan_text,
+        plan_research_lookup=plan_research_lookup,
+        job_text=job_text,
+        research_grounding=research_grounding,
+        profile_data=profile_data,
+        writing_memory_text=writing_memory_text,
+        call_llm=call_llm,
+        trace_id=trace_id,
+    )
+
     # ----- [4] Parallel: bullets per employer ------------------------------
     update_status("generating", "bullets", "Writing experience bullets...", 4)
 
@@ -600,6 +617,94 @@ async def _generate_bullet_set(
         elif isinstance(b, str) and b.strip():
             cleaned.append({"text": b.strip(), "accomplishment_ids": []})
     return cleaned or None
+
+
+# ---------------------------------------------------------------------------
+# Opening-verb diversity across Selected Research entries
+# ---------------------------------------------------------------------------
+
+
+def _opening_word(text: str) -> str:
+    """Return the first word of a description, lowercased and stripped of punctuation."""
+    if not text:
+        return ""
+    first = text.strip().split(None, 1)[0] if text.strip() else ""
+    return first.lower().strip(",.;:!?\"'()[]{}")
+
+
+async def _enforce_research_opening_diversity(
+    selected_research: list[dict],
+    *,
+    accomplishment_lookup: dict[str, dict],
+    plan_text: str,
+    plan_research_lookup: dict[str, dict],
+    job_text: str,
+    research_grounding: dict[str, list],
+    profile_data: dict,
+    writing_memory_text: str,
+    call_llm,
+    trace_id: str | None,
+) -> list[dict]:
+    """If two research descriptions open with the same word, re-run the later
+    ones with the colliding verb(s) banned via critic_notes. Single-pass, no
+    recursion if the retry also collides — we accept it rather than loop.
+    """
+    if len(selected_research) < 2:
+        return selected_research
+
+    seen: dict[str, int] = {}
+    retry_indices: list[tuple[int, list[str]]] = []
+    for i, entry in enumerate(selected_research):
+        word = _opening_word(entry.get("description", ""))
+        if not word:
+            continue
+        if word in seen:
+            # Ban every verb already seen so the retry doesn't pick another collision.
+            retry_indices.append((i, list(seen.keys())))
+        else:
+            seen[word] = i
+
+    if not retry_indices:
+        return selected_research
+
+    logger.info(
+        "Opening-verb collisions in selected_research: re-rolling indices=%s",
+        [i for i, _ in retry_indices],
+    )
+
+    async def _reroll(i: int, banned: list[str]) -> dict | None:
+        entry = selected_research[i]
+        aid = entry.get("accomplishment_id")
+        accomplishment = accomplishment_lookup.get(aid)
+        if not accomplishment:
+            return None
+        notes = (
+            f"[opening_verb] Another selected_research entry already opens with "
+            f"\"{banned[0]}\". Open this entry with a different verb. "
+            f"Do NOT start with: {', '.join(banned)}."
+        )
+        return await _generate_research_entry(
+            call_llm=call_llm,
+            accomplishment=accomplishment,
+            plan_text=plan_text,
+            plan_entry=plan_research_lookup.get(aid),
+            job_text=job_text,
+            grounding_rows=research_grounding.get(aid, []),
+            profile_data=profile_data,
+            writing_memory_text=writing_memory_text,
+            trace_id=trace_id,
+            stage_label=f"03b_research_dedup_{aid}",
+            critic_notes=notes,
+        )
+
+    rerolls = await asyncio.gather(
+        *(_reroll(i, banned) for i, banned in retry_indices),
+        return_exceptions=False,
+    )
+    for (i, _), new_entry in zip(retry_indices, rerolls, strict=False):
+        if new_entry:
+            selected_research[i] = new_entry
+    return selected_research
 
 
 # ---------------------------------------------------------------------------
