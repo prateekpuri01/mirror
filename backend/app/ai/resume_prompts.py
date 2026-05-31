@@ -2431,6 +2431,22 @@ prescribed sentence order — write what flows.
 """
 
 _RESEARCH_ENTRY_V4_TAIL = """\
+## Anti-redundancy with the other Selected Research entries
+If the user message contains an "Other Selected Research Entries Already \
+in This Resume" block, those entries are locked in. Your entry MUST take \
+a distinctly different angle from each of them:
+
+- Open with a different verb than any prior entry.
+- Don't reuse narrative framings or recurring phrasing chunks ("The hard \
+part was…", "What made this difficult…", "That gave us…", "Built X as a Y \
+where the hard part was…"). If a chunk like that appears in a prior entry, \
+yours must not use it or any close paraphrase.
+- Pick a different facet of the work — if a prior entry centered on \
+validation rigor, lead this one with what shipped, who used it, or the \
+problem that was unsolvable before. Cumulatively the three entries should \
+read like three different angles on the candidate, not three variations \
+of the same template.
+
 ## ⚠️ Voice — match the past versions when present
 If a "Your past hand-tuned versions" block appears in the user message, those \
 are the candidate's own prior phrasings of THIS SAME accomplishment. Treat \
@@ -2469,8 +2485,14 @@ def build_research_entry_v4_prompt(
     job_text: str,
     grounding_text: str = "",
     critic_notes: str = "",
+    prior_entries: list[dict] | None = None,
 ) -> list[dict]:
-    """Build user message for a single research entry in the staged pipeline."""
+    """Build user message for a single research entry in the staged pipeline.
+
+    ``prior_entries`` is the other Selected Research entries already finalized
+    for this resume. When non-empty, they're shown as anti-redundancy context
+    so the model can take a distinctly different angle.
+    """
     parts = ["## Accomplishment to Describe"]
     parts.append(f"ID: {accomplishment.get('id', '?')}")
     parts.append(f"Title: {accomplishment.get('title', '?')}")
@@ -2495,6 +2517,24 @@ def build_research_entry_v4_prompt(
 
     parts.append(f"\n## Strategic Plan\n{plan_text}")
     parts.append(f"\n## Target Job\n{job_text}")
+
+    if prior_entries:
+        parts.append(
+            "\n## Other Selected Research Entries Already in This Resume"
+            "\nThese descriptions are already written and locked in. Your entry "
+            "must take a DISTINCTLY DIFFERENT angle — don't echo their opening "
+            "verb, their narrative framing, or recurring phrasing chunks like "
+            "\"The hard part was…\", \"What made this difficult…\", \"That "
+            "gave us…\". Each entry should feel like a different facet of "
+            "the candidate's work, not a variation on the same template."
+        )
+        for j, prior in enumerate(prior_entries, start=1):
+            label = prior.get("category_label", "")
+            title = prior.get("title", "")
+            description = (prior.get("description") or "").strip()
+            parts.append(
+                f"\n### Entry {j}: {label} — {title}\n{description}"
+            )
 
     if grounding_text:
         parts.append("\n" + grounding_text)
