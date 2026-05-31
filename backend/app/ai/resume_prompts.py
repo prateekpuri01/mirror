@@ -2431,37 +2431,42 @@ prescribed sentence order — write what flows.
 """
 
 _RESEARCH_ENTRY_V4_TAIL = """\
+## ⚠️ Voice — the ★ Most recent past version is your PRIMARY TARGET
+This is the dominant rule. If a "Your accepted versions of this content" \
+block appears in the user message, the entry marked ★ Most recent is the \
+structural target your output should resemble. Your job is RETARGETING \
+EMPHASIS for the new role, not rewriting voice:
+
+- MIRROR the opening verb. If the most-recent version starts with "Built", \
+yours starts with "Built" (or a tight Built-family verb like "Designed", \
+"Shipped", "Engineered"). Do NOT switch to passive transformation framings \
+like "X moved from Y to Z", "Y was designed", "the project turned A into B".
+- Mirror sentence count, length, and clause rhythm — same number of sentences, \
+same shape.
+- Mirror metric framing. If past version says "matched trained human coders \
+(kappa 0.71)", don't strip the parenthetical or invert the framing. If it \
+quotes "450+ researchers across 700+ projects", yours uses the same shape.
+- Mirror first-person posture — implied first person ("Built X to do Y") vs \
+explicit first person ("I designed X") — whichever the most-recent version uses.
+- The ONLY thing you should adapt is which job-relevant aspects to foreground. \
+If the target role and the past version's job were similar, your output may \
+end up only slightly different from the most-recent version. That's the goal.
+
 ## Anti-redundancy with the other Selected Research entries
-If the user message contains an "Other Selected Research Entries Already \
-in This Resume" block, those entries are locked in. Your entry MUST take \
-a distinctly different angle from each of them:
+If the user message contains an "Other Selected Research Entries Already in \
+This Resume" block, those entries are locked in. Take a distinctly different \
+angle, but the Voice rule above OVERRIDES this where they conflict:
 
-- Open with a different verb than any prior entry.
-- Don't reuse narrative framings or recurring phrasing chunks ("The hard \
-part was…", "What made this difficult…", "That gave us…", "Built X as a Y \
-where the hard part was…"). If a chunk like that appears in a prior entry, \
-yours must not use it or any close paraphrase.
-- Pick a different facet of the work — if a prior entry centered on \
-validation rigor, lead this one with what shipped, who used it, or the \
-problem that was unsolvable before. Cumulatively the three entries should \
-read like three different angles on the candidate, not three variations \
-of the same template.
-
-## ⚠️ Voice — match the past versions when present
-If a "Your past hand-tuned versions" block appears in the user message, those \
-are the candidate's own prior phrasings of THIS SAME accomplishment. Treat \
-them as the source of TRUTH for voice and style:
-
-- MIRROR the opening verb structure. If past versions start with "Designed", \
-"Replaced", "Built", "Shipped", "Discovered" — yours MUST start with a verb \
-of the same kind. Do NOT switch to passive transformation framings like \
-"X moved from Y to Z", "Y was designed", "the project turned A into B" — \
-that is not the candidate's voice and will be rejected.
-- Mirror sentence rhythm, length, and concreteness.
-- Adapt CONTENT (which job-relevant aspects to emphasize) to the new role; \
-do NOT rewrite STYLE. Your job is reframing emphasis, not voice.
-- If past versions use "first-person implied" (no subject — "Built X to do Y"), \
-yours must too.
+- Don't reuse recurring narrative framings or phrasing chunks ("The hard part \
+was…", "What made this difficult…", "That gave us…", "Built X as a Y where \
+the hard part was…"). If a chunk like that appears in a prior entry, yours \
+must not use it or any close paraphrase. This rule is hard.
+- Pick a different facet of the work — if a prior entry centered on validation \
+rigor, lead this one with what shipped, who used it, or the problem that was \
+unsolvable before.
+- Opening verbs SHOULD differ across entries when possible, but if the Voice \
+target requires "Built" and another entry already opens with "Built", mirror \
+the past version. Voice match wins for opening-verb conflicts.
 
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
