@@ -66,6 +66,17 @@ logger = logging.getLogger(__name__)
 SKILL_BUCKETS = ("ai_systems", "data_science", "engineering")
 
 
+# Section heading for "Selected Research" varies by the lane the strategic plan
+# identifies. Anything the plan doesn't classify falls back to "Selected Research".
+SECTION_TITLE_BY_LANE: dict[str, str] = {
+    "evals_safety": "Selected AI Evaluation & Research Engineering Projects",
+    "human_data": "Selected Human-AI Systems & Evaluation Projects",
+    "applied_ai_eng": "Selected Applied AI Projects",
+    "research_engineer": "Selected Research Engineering Projects",
+    "generalist": "Selected Research",
+}
+
+
 # Trace logging — every leaf LLM call dumps its assembled system + user + response
 # to a flat directory so debugging "what did the agent see" becomes a file diff.
 _TRACE_ROOT = Path(os.environ.get("RESUME_TRACE_DIR", "/app/output/traces"))
@@ -393,11 +404,13 @@ async def run_pipeline(
         technical_skills=technical_skills,
         employer_label_map=employer_label_map,
     )
+    role_lane = (plan.get("role_lane") or "generalist").strip()
     summary_messages = build_summary_tagline_prompt(
         plan_text,
         assembled_draft,
         job_text,
         grounding_text=grounding_text,
+        role_lane=role_lane,
     )
     summary_result = await call_llm(
         SUMMARY_TAGLINE_SYSTEM,
@@ -412,10 +425,15 @@ async def run_pipeline(
     tagline = (summary_result.get("tagline") or "").strip()
 
     # ----- Assemble final content_json ------------------------------------
+    selected_research_section_title = SECTION_TITLE_BY_LANE.get(
+        role_lane, SECTION_TITLE_BY_LANE["generalist"]
+    )
     resume_data = {
         "tagline": tagline,
         "summary": summary,
         "selected_research": selected_research,
+        "selected_research_section_title": selected_research_section_title,
+        "role_lane": role_lane,
         "experience": experience,
         "publications": publications,
         "technical_skills": technical_skills,
