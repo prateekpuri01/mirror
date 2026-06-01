@@ -48,6 +48,74 @@ sensitive simulation framework"), stop and split — each idea gets its \
 own clause. The test: would a peer scanning this in 5 seconds ask \
 "what does that mean?" If yes, rewrite as one or two shorter sentences \
 in ordinary words.
+
+## Concrete beats abstract — the second-biggest AI tell
+
+The model's instinct under pressure is to reach for impressive-sounding \
+abstract phrasing. This is the second-biggest AI tell after participial \
+tails, and it's the family of "the prose looks fine at a glance but \
+doesn't actually flow when read aloud." The principle: at every choice \
+point, prefer the concrete and specific over the abstract and \
+comprehensive. One concrete thing beats two abstract things. The \
+family of symptoms to catch:
+
+- **Abstract subjects.** When a sentence opens with "The work…", "The \
+project…", "The contribution…", "This effort…", "The findings…", \
+rewrite. The subject should be a person, a system, a dataset, a \
+measurement, a team — or the implied first person. ("Validated against \
+human coders" beats "The work validated against human coders".)
+- **Hedged claims.** "Made it possible to X" / "could distinguish X \
+from Y" / "X enough to Y" / "made X legible" — these are hedges that \
+sound careful but mostly add air. Just state what was done. ("Validated \
+against human coders" beats "made it possible to validate against \
+human coders".)
+- **Stacked abstract noun phrases.** Each abstract NP past the first \
+roughly halves how many readers parse the sentence. "Methodological \
+judgment paired with systems that people actually rely on" — two heavy \
+abstract NPs jammed together. Pick one concrete thing instead, or \
+restructure as two simple sentences.
+- **Mismatched series.** Three-item comma series ("A, B, and C") only \
+read as a list when items are roughly parallel in length AND grammatical \
+shape. If they aren't, drop one or rewrite as coordination.
+  - BAD (item lengths 2 / 2 / 9, mismatched shapes): "with attention to \
+failure modes, misuse potential, and the gap between raw benchmark \
+performance and real-world assurance"
+  - BETTER: "with attention to failure modes and misuse potential" — or \
+just commit: "by treating evaluation as a safety problem, not a \
+benchmark game"
+- **Meta-significance commentary.** "The work mattered because X", \
+"This contribution matters for Y work because Z", "The project \
+connected X with Y rather than Z" — telling the reader what to \
+conclude instead of letting the work speak. Make the claim directly, \
+then stop.
+- **Defensive intensification.** This is the family of "I know this \
+might sound generic so let me intensify it." Two specific symptoms:
+  - "Actually" / "really" / "just" as intensifiers — "AI assistance \
+they could *actually* trust", "researchers *actually* rely on", \
+"models that *really* hold up". Drop the adverb; if the claim isn't \
+strong without it, the claim isn't strong with it either.
+  - "Rather than X" / "instead of Y" / "not just Z" tails where the \
+contrast item isn't on the same dimension as the main claim. The model \
+appends these to add force, but they read as defensive padding when \
+they don't parallel.
+  - BAD (capability claim contrasted with an opacity claim — different \
+dimensions): "AI assistance they could actually trust for coding and \
+synthesis, rather than another black-box text tool"
+  - GOOD (both sides describe what the AI is doing on the same \
+dimension): "a system that could be trusted to handle real coding work, \
+not just generate plausible labels"
+  - The test: read the contrast tail without the main clause. If it \
+describes the same kind of thing the main clause describes, keep it. \
+If it describes a different kind of thing, drop it or restructure.
+- **Purpose-clause openers** ("Built X to give Y Z", "Built X to make \
+Y possible") are clunkier than relative-clause openers ("Built X that \
+does Y") for the same content. Prefer the relative clause.
+
+The one-line test: read the sentence aloud. If it sounds like a press \
+release, a grant abstract, or a teacher explaining significance — \
+rewrite it as something a person would actually say to a colleague \
+describing what they did. The fix is almost always: concrete subject, \
+named verb, specific object, no air.
 """
 
 # Back-compat aliases. The two old constants used to be embedded
@@ -2418,7 +2486,10 @@ write about their own work. No staccato fragments. No metric inflation.
 
 ## Ground rules
 - Only use facts from the provided accomplishment. Never fabricate.
-- 75-100 words. Under 70 will be rejected — add technical detail or impact.
+- Aim for ~75 words; 60-100 is fine. Don't pad with abstract phrasing \
+("the work mattered because…", hedged claims, stacked noun phrases) to \
+hit a floor. If the natural concrete version is 60 words, ship that — \
+60 concrete words beat 90 padded ones.
 - Open with what's different now because the work exists. Lead with an \
 active, verb-led construction (Built, Designed, Replaced, Shipped, \
 Discovered, Automated, Eliminated, Reimagined). Don't flip into passive \
@@ -2467,6 +2538,40 @@ unsolvable before.
 - Opening verbs SHOULD differ across entries when possible, but if the Voice \
 target requires "Built" and another entry already opens with "Built", mirror \
 the past version. Voice match wins for opening-verb conflicts.
+
+## ⚠️ Anti-redundancy with the experience bullets — different facet, \
+SAME concreteness
+
+The same accomplishment almost always appears as an experience bullet \
+too. The bullet carries the punchy adoption + features ("Shipped MUSE, \
+used by 400+ researchers across 600+ projects"). Your research \
+description should land on a DIFFERENT facet of the same work — but \
+without going abstract. Concrete-and-different beats abstract-and- \
+significant every time.
+
+Concretely:
+- The bullet carries the system name + capability list + adoption count. \
+Don't duplicate those. If the bullet says "Shipped MUSE, used by 400+ \
+researchers", your description doesn't need "MUSE was adopted by 400+ \
+researchers across 600+ projects".
+- The facet to lean into is the MEASUREMENT and EVIDENCE story: what \
+specifically was measured (Cohen's kappa against trained coders, expert \
+agreement, IRR), against what baseline (trained human coders, expert \
+elicitation, hand-coded ground truth), what the number was, what it \
+proved. Name the specific thing, not the abstract notion of "validation \
+rigor".
+- BAD (abstract significance): "Designed the measurement approach around \
+expert judgment, which meant defining task criteria and validation \
+procedures carefully enough that performance claims would hold up in a \
+high-stakes defense setting."
+- GOOD (concrete evidence): "Measured each system against expert-graded \
+task completions instead of generic benchmark scores, and used \
+inter-rater agreement among program reviewers to set a defensible \
+threshold for what counted as a passing model."
+- If you find yourself reaching for "the work mattered because…", "the \
+contribution matters for…", "made X enough to Y", or any of the \
+abstract-subject / hedge-claim shapes in VOICE_RULES, STOP. Name the \
+specific measurement, the specific baseline, the specific number.
 
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
