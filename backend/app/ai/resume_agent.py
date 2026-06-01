@@ -13,7 +13,7 @@ from langgraph.graph import END, StateGraph
 
 from app.ai.agent_state import AgentState
 from app.ai.client import RESUME_MODEL, get_openai_client
-from app.ai.resume_prompts import RESUME_REVISION_SYSTEM
+from app.ai.resume_prompts import RESUME_REVISION_SYSTEM, VOICE_RULES
 from app.services.document_service import _get_nested, _set_nested
 
 logger = logging.getLogger(__name__)
@@ -211,7 +211,7 @@ Section path:"""
     return {"target_section_path": path, "target_section_value": value}
 
 
-_EDIT_SECTION_SYSTEM_BASE = """\
+_EDIT_SECTION_SYSTEM_BASE = f"""\
 You edit ONE resume section per turn. Output the updated section value as JSON \
 matching the input shape (string→string, array→array, object→object).
 
@@ -223,11 +223,11 @@ skills, or outcomes.
 section, do NOT repeat it.
 
 ## Voice (match the section type)
-- summary: confident pitch, 50–80 words, makes an argument. No pronouns. No metrics. \
+- summary: confident pitch, 50–80 words, makes an argument. No metrics. \
 No "Research scientist with N years…" openings.
-- selected_research description: 2–3 sentences, 75–100 words. Lead with an action \
-verb. State what's different now because of this work. Don't repeat the experience \
-bullet for the same accomplishment.
+- selected_research description: 75–100 words. Open with what's different now \
+because of this work; earn technical credibility in the next sentence or two. \
+Don't repeat the experience bullet for the same accomplishment.
 - experience bullet: 1–2 lines, punchy, outcome-led. Lead with what changed. \
 Include a metric only if it self-explains to someone outside the field.
 - skills bucket: comma-separated, job-relevant first, no skill in more than one bucket.
@@ -238,56 +238,7 @@ Include a metric only if it self-explains to someone outside the field.
 "passionate about", "proven track record". Use direct verbs (built, shipped, \
 designed, replaced, reduced, discovered).
 
-## Sentence form
-- One idea per sentence. No participial tails (", demonstrating X", ", enabling Y").
-- Active voice. Subject–verb–object.
-- Read it aloud — if no human would say it, rewrite it.
-- Translate jargon metrics ("kappa 0.71" → "matched trained human coders (kappa 0.71)").
-
-## No buzzword-stacking — the #1 way this output reads as AI-generated
-
-The accomplishment data you receive often contains insider jargon
-("instantiated", "operationalized", "digital clone", "framework",
-"language-sensitive simulation"). DO NOT echo those terms in your
-output. **Translate them into ordinary language a non-specialist reader
-would understand on first read.**
-
-Two specific failure modes to avoid:
-
-1. **Echoing jargon from the source.** If the impact_summary says
-   "Built a digital clone of an actual misinformation network", do NOT
-   write "instantiated a digital clone of a misinformation community."
-   Write what it actually means: "trained the simulation on behavior
-   data from real users so it matched real-world dynamics."
-
-2. **Stacking 2+ modifiers on a single noun.** When you find yourself
-   writing a noun phrase with multiple nested modifiers — e.g.
-   "a digital clone of a misinformation community built from 10,000+
-   real users" — STOP and split into two sentences. Each idea gets
-   its own.
-
-### Concrete example
-
-BAD (this is the kind of sentence you're producing and we want to stop):
-> "Built a language-sensitive simulation framework that emulated how
->  misinformation moves through real online networks, then instantiated
->  it as a digital clone of a misinformation community built from
->  10,000+ real users."
-
-GOOD (translates the jargon, splits the stacked noun phrase):
-> "Built a simulation that mimics how misinformation spreads through
->  real online networks. Trained it on behavior data from 10,000+ real
->  users so the simulated patterns matched what we observed in the wild."
-
-### The "what does that even mean?" test
-
-Read your output line by line. For each sentence, ask: "Would a peer
-scanning this in 5 seconds ask what does that mean?" If yes — REWRITE
-as two shorter sentences, each saying one thing in ordinary words.
-
-A resume reader has 30 seconds. They don't have time to parse a noun
-phrase with three modifiers. Two short, clear sentences always beat
-one dense one.
+{VOICE_RULES}
 
 ## Use the instruction's intent, not the instruction's phrasing
 

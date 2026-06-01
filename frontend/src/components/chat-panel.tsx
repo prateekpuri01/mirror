@@ -11,11 +11,14 @@ import { Badge } from "@/components/ui/badge";
 // Section label display (static entries + dynamic from work history)
 // ---------------------------------------------------------------------------
 
-function buildSectionDisplay(workHistory?: ProfileWorkHistory[]): Record<string, string> {
+function buildSectionDisplay(
+  workHistory?: ProfileWorkHistory[],
+  selectedResearchTitle?: string,
+): Record<string, string> {
   const base: Record<string, string> = {
     tagline: "Tagline",
     summary: "Summary",
-    selected_research: "Selected Research",
+    selected_research: selectedResearchTitle || "Selected Research",
     publications: "Publications",
     technical_skills: "Technical Skills",
     "technical_skills.ai_systems": "AI Systems Skills",
@@ -80,6 +83,7 @@ interface ChatPanelProps {
   onClear: () => void;
   onDeselectSection: () => void;
   workHistory?: ProfileWorkHistory[];
+  selectedResearchTitle?: string;
 }
 
 export function ChatPanel({
@@ -94,8 +98,12 @@ export function ChatPanel({
   onClear,
   onDeselectSection,
   workHistory,
+  selectedResearchTitle,
 }: ChatPanelProps) {
-  const sectionDisplay = useMemo(() => buildSectionDisplay(workHistory), [workHistory]);
+  const sectionDisplay = useMemo(
+    () => buildSectionDisplay(workHistory, selectedResearchTitle),
+    [workHistory, selectedResearchTitle],
+  );
   const [input, setInput] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);

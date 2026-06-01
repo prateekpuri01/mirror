@@ -9,71 +9,122 @@ RESUME_PROMPT_VERSION = "resume_v3"
 # Shared writing quality rules (used by all generation + editing prompts)
 # ---------------------------------------------------------------------------
 
-WRITING_QUALITY_RULES = """\
-## Writing quality
-- Write like a human talking to a smart colleague. If it sounds robotic, rewrite it simpler.
-- Active voice. No trailing participial tails (", demonstrating X", ", enabling Y").
-- Translate jargon metrics into plain language or drop them.
-- No pronouns (implied first person).
-- Use standard American English. Avoid archaic or formal words: "amongst" → "among", \
-"whilst" → "while", "utilise" → "use".
-- Vary sentence patterns. If 3+ bullets follow "[Verb] [thing] for [stakeholder] using \
-[tool]", rewrite at least half to show WHY something was hard, what tradeoff was \
-navigated, or what judgment was exercised.
-- Use verbs that convey judgment, not just action: "identified", "diagnosed", \
-"reconciled", "surfaced", "advocated" — not just "built", "deployed", "analyzed", "reduced".
+VOICE_RULES = """\
+## How this should read
+
+Write like a person explaining their own work to a smart colleague over \
+coffee. The single most important property is that a real human would \
+actually say this out loud.
+
+- Active voice. Verb-led. "Built X" — not "X was built."
+- One idea per sentence by default. A longer sentence is fine when it \
+reads naturally — don't fracture clean prose just to obey a word count.
+- Most sentences land under ~25 words; longer is fine when it breathes.
+- Implied first person — drop the "I" from the start of sentences. \
+"Designed X" beats "I designed X". A stray "we" or "my team" is fine \
+when the work was actually collaborative and the sentence reads more \
+naturally with it; never use "I/me/my".
+- No trailing participial tails: ", demonstrating X", ", enabling Y", \
+", achieving Z", ", resulting in W". This is the #1 tell of AI prose — \
+split into a new sentence or delete.
+- Vary sentence shape. If three bullets in a row open with "[Verb] \
+[thing] for [stakeholder] using [tool]", rewrite at least one to show \
+what was hard, what tradeoff was navigated, or what judgment was exercised.
+- Verbs with judgment ("identified", "diagnosed", "reconciled", \
+"surfaced", "advocated") beat generic action verbs ("built", "deployed", \
+"analyzed", "reduced") when the work involved making a call.
+- Standard American English: "among" not "amongst", "while" not "whilst", \
+"use" not "utilise".
+
+## Translate jargon — don't echo it
+
+Source material often contains insider terms ("instantiated", \
+"operationalized", "digital clone", "framework", "language-sensitive"). \
+Don't echo them. Translate to what a smart non-specialist would \
+understand on first read.
+
+If you find yourself stacking 2+ modifiers on one noun ("language-\
+sensitive simulation framework"), stop and split — each idea gets its \
+own clause. The test: would a peer scanning this in 5 seconds ask \
+"what does that mean?" If yes, rewrite as one or two shorter sentences \
+in ordinary words.
+
+## Concrete beats abstract — the second-biggest AI tell
+
+The model's instinct under pressure is to reach for impressive-sounding \
+abstract phrasing. This is the second-biggest AI tell after participial \
+tails, and it's the family of "the prose looks fine at a glance but \
+doesn't actually flow when read aloud." The principle: at every choice \
+point, prefer the concrete and specific over the abstract and \
+comprehensive. One concrete thing beats two abstract things. The \
+family of symptoms to catch:
+
+- **Abstract subjects.** When a sentence opens with "The work…", "The \
+project…", "The contribution…", "This effort…", "The findings…", \
+rewrite. The subject should be a person, a system, a dataset, a \
+measurement, a team — or the implied first person. ("Validated against \
+human coders" beats "The work validated against human coders".)
+- **Hedged claims.** "Made it possible to X" / "could distinguish X \
+from Y" / "X enough to Y" / "made X legible" — these are hedges that \
+sound careful but mostly add air. Just state what was done. ("Validated \
+against human coders" beats "made it possible to validate against \
+human coders".)
+- **Stacked abstract noun phrases.** Each abstract NP past the first \
+roughly halves how many readers parse the sentence. "Methodological \
+judgment paired with systems that people actually rely on" — two heavy \
+abstract NPs jammed together. Pick one concrete thing instead, or \
+restructure as two simple sentences.
+- **Mismatched series.** Three-item comma series ("A, B, and C") only \
+read as a list when items are roughly parallel in length AND grammatical \
+shape. If they aren't, drop one or rewrite as coordination.
+  - BAD (item lengths 2 / 2 / 9, mismatched shapes): "with attention to \
+failure modes, misuse potential, and the gap between raw benchmark \
+performance and real-world assurance"
+  - BETTER: "with attention to failure modes and misuse potential" — or \
+just commit: "by treating evaluation as a safety problem, not a \
+benchmark game"
+- **Meta-significance commentary.** "The work mattered because X", \
+"This contribution matters for Y work because Z", "The project \
+connected X with Y rather than Z" — telling the reader what to \
+conclude instead of letting the work speak. Make the claim directly, \
+then stop.
+- **Defensive intensification.** This is the family of "I know this \
+might sound generic so let me intensify it." Two specific symptoms:
+  - "Actually" / "really" / "just" as intensifiers — "AI assistance \
+they could *actually* trust", "researchers *actually* rely on", \
+"models that *really* hold up". Drop the adverb; if the claim isn't \
+strong without it, the claim isn't strong with it either.
+  - "Rather than X" / "instead of Y" / "not just Z" tails where the \
+contrast item isn't on the same dimension as the main claim. The model \
+appends these to add force, but they read as defensive padding when \
+they don't parallel.
+  - BAD (capability claim contrasted with an opacity claim — different \
+dimensions): "AI assistance they could actually trust for coding and \
+synthesis, rather than another black-box text tool"
+  - GOOD (both sides describe what the AI is doing on the same \
+dimension): "a system that could be trusted to handle real coding work, \
+not just generate plausible labels"
+  - The test: read the contrast tail without the main clause. If it \
+describes the same kind of thing the main clause describes, keep it. \
+If it describes a different kind of thing, drop it or restructure.
+- **Purpose-clause openers** ("Built X to give Y Z", "Built X to make \
+Y possible") are clunkier than relative-clause openers ("Built X that \
+does Y") for the same content. Prefer the relative clause.
+
+The one-line test: read the sentence aloud. If it sounds like a press \
+release, a grant abstract, or a teacher explaining significance — \
+rewrite it as something a person would actually say to a colleague \
+describing what they did. The fix is almost always: concrete subject, \
+named verb, specific object, no air.
 """
 
-
-# Anti-buzzword block — shared across every v4 generation prompt and the
-# critic. Catches the #1 "AI tell" failure mode the user flagged: dense
-# noun phrases with multiple modifiers, plus echoed-from-source jargon
-# like "instantiated"/"operationalized"/"digital clone". Added as a
-# standalone constant so a future tweak only happens in one place.
-NO_BUZZWORD_RULES = """\
-## No buzzword-stacking — the #1 way this output reads as AI-generated
-
-The accomplishment data you receive often contains insider jargon
-("instantiated", "operationalized", "digital clone", "framework",
-"language-sensitive simulation"). DO NOT echo those terms in your
-output. **Translate them into ordinary language a non-specialist reader
-would understand on first read.**
-
-Two specific failure modes to avoid:
-
-1. **Echoing jargon from the source.** If the impact_summary says
-   "Built a digital clone of an actual misinformation network", do NOT
-   write "instantiated a digital clone of a misinformation community."
-   Write what it actually means: "trained the simulation on behavior
-   data from real users so it matched real-world dynamics."
-
-2. **Stacking 2+ modifiers on a single noun.** When you find yourself
-   writing a noun phrase with multiple nested modifiers — e.g.
-   "a digital clone of a misinformation community built from 10,000+
-   real users" — STOP and split into two sentences. Each idea gets
-   its own.
-
-### Concrete example
-
-BAD (this is the kind of sentence we want to stop producing):
-> "Built a language-sensitive simulation framework that emulated how
->  misinformation moves through real online networks, then instantiated
->  it as a digital clone of a misinformation community built from
->  10,000+ real users."
-
-GOOD (translates the jargon, splits the stacked noun phrase):
-> "Built a simulation that mimics how misinformation spreads through
->  real online networks. Trained it on behavior data from 10,000+ real
->  users so the simulated patterns matched what we observed in the wild."
-
-### The "what does that even mean?" test
-
-For each sentence, ask: "Would a peer scanning this in 5 seconds ask
-what does that mean?" If yes — REWRITE as two shorter sentences, each
-saying one thing in ordinary words. A resume reader has 30 seconds;
-they will not parse a noun phrase with three modifiers. Two short,
-clear sentences always beat one dense one.
-"""
+# Back-compat aliases. The two old constants used to be embedded
+# separately into ~6 prompt sites; the consolidated content now lives
+# in VOICE_RULES. We keep WRITING_QUALITY_RULES as an alias and reduce
+# NO_BUZZWORD_RULES to empty so existing call sites stay working
+# without duplicating content. Prefer VOICE_RULES in new code.
+WRITING_QUALITY_RULES = VOICE_RULES
+NO_BUZZWORD_RULES = ""
 
 
 # ===========================================================================
@@ -304,6 +355,15 @@ experimental rigor.
 If the candidate has used these products or tools (even in adjacent work), plan to \
 foreground that experience. De-emphasize mentions of direct competitor products unless \
 showing breadth is strategically valuable.
+1d. Identify the role lane — what kind of work the team is really hiring for. Pick exactly one:
+   - "evals_safety" — AI evaluation, model behavior analysis, safety, governance, red-team
+   - "human_data" — annotation, expert feedback, RLHF, data quality, labeling workflows
+   - "applied_ai_eng" — applied AI/ML eng, LLM apps, agentic workflows, integration
+   - "research_engineer" — research engineering, infrastructure for ML research, eval infra
+   - "generalist" — none of the above is a clear fit
+   The lane shapes the Selected-Research section heading and the summary's framing — \
+pick the one a hiring manager would say describes the team most accurately, not the \
+broadest fit.
 2. Pick exactly 3 accomplishments for the Selected Research section. For each, explain:
    - WHY this accomplishment (what job requirement does it address?)
    - HOW to frame the description (the angle, not the text)
@@ -319,6 +379,7 @@ how to differentiate them.
 Respond with ONLY valid JSON (no markdown fences) using this exact schema:
 {
   "role_archetype": "builder | customer-facing | research | leadership | hybrid",
+  "role_lane": "evals_safety | human_data | applied_ai_eng | research_engineer | generalist",
   "company_stack_overlap": ["product/tool the candidate has used that matches target company"],
   "core_argument": "1-2 sentences: why this person gets an interview for THIS role",
   "selected_accomplishments": [
@@ -1906,7 +1967,7 @@ Respond with ONLY valid JSON (no markdown fences) in this exact structure:
 # Revision prompt
 # ---------------------------------------------------------------------------
 
-RESUME_REVISION_SYSTEM = """\
+RESUME_REVISION_SYSTEM = f"""\
 You are an expert resume strategist revising a tailored resume based on user feedback.
 
 ## CRITICAL RULES
@@ -1918,17 +1979,7 @@ preserve everything else.
 4. Maintain the same JSON output schema as the original resume.
 5. The resume MUST still fit 2 pages after revisions.
 
-## Writing Quality (apply even when not explicitly asked)
-While making the requested changes, also fix any writing quality issues you encounter \
-in the sections you touch. Follow these rules from The Elements of Style:
-- One idea per sentence. Split compound clauses.
-- NEVER use trailing participial tails: ", demonstrating X", ", enabling Y", \
-", achieving Z", ", resulting in W". These are the #1 tell of AI-generated text. \
-Split into a new sentence or delete.
-- Active voice. "Built X" not "X was built."
-- Omit needless words. "In order to" → "to". "Utilized" → "used".
-- Max 25 words per bullet sentence.
-- Read it aloud — if no human would say it, rewrite it.
+{VOICE_RULES}
 
 ## Output Format
 Respond with ONLY valid JSON (no markdown fences) using the same schema as the original resume.
@@ -1974,11 +2025,7 @@ def build_revision_prompt(
 
 Apply the revision instruction to the current resume. Output the COMPLETE updated resume \
 as valid JSON (no markdown fences) using the exact same schema. Only change what the \
-instruction asks for — preserve everything else.
-
-WRITING QUALITY: Regardless of the instruction, also fix any compound clauses you notice \
-(sentences with ", demonstrating/achieving/enabling..." tails). Split them into separate \
-sentences. One idea per sentence.""")
+instruction asks for — preserve everything else.""")
 
     return [{"role": "user", "content": "\n".join(parts)}]
 
@@ -2287,10 +2334,10 @@ same schema as the input resume.""")
 # Research entry generation — for swapping individual selected_research items
 # ---------------------------------------------------------------------------
 
-RESEARCH_ENTRY_SYSTEM = """\
+RESEARCH_ENTRY_SYSTEM = f"""\
 You generate a single selected_research entry for a tailored resume. \
 You receive one accomplishment from the candidate's profile and the target job posting. \
-Your job is to write a compelling 2-3 sentence description that highlights the most \
+Your job is to write a compelling 75-100 word description that highlights the most \
 job-relevant aspects of this accomplishment, and a short category label.
 
 ## CRITICAL RULES
@@ -2300,14 +2347,16 @@ or skills not present in the accomplishment data.
 3. Do NOT include sentences explaining why the work is relevant to the company — \
 that is implicit from its presence on the resume.
 
+{VOICE_RULES}
+
 ## Output Format
 Respond with ONLY valid JSON (no markdown fences):
-{
+{{
   "category_label": "2-4 WORD LABEL",
   "title": "The accomplishment title (use exactly as provided)",
-  "description": "2-3 sentences describing the work and its results",
+  "description": "75-100 words describing the work and its results",
   "accomplishment_id": "the accomplishment id (use exactly as provided)"
-}\
+}}\
 """
 
 
@@ -2430,38 +2479,99 @@ Pick the accomplishment IDs and employer anchors. Output valid JSON.
 _RESEARCH_ENTRY_V4_HEAD = """\
 You generate ONE selected_research entry for a tailored resume.
 
-Write a 75-100 word paragraph (2-3 sentences) that sounds like a confident \
-person describing their most interesting work to a smart colleague. The #1 \
-priority is that it sounds NATURAL — something a human would actually write \
-about their own work. No staccato fragments. No metric inflation.
+Write a 75-100 word paragraph that sounds like a confident person \
+describing their most interesting work to a smart colleague. The #1 \
+priority is that it sounds NATURAL — something a human would actually \
+write about their own work. No staccato fragments. No metric inflation.
 
 ## Ground rules
 - Only use facts from the provided accomplishment. Never fabricate.
-- 75-100 words. Under 70 will be rejected — add technical detail or impact.
-- No pronouns (implied first person).
-- Sentence 1: lead with an action verb (Built, Designed, Replaced, Shipped, \
-Discovered, Automated, Eliminated, Reimagined). The transformation IS the \
-result of that action — describe it that way, not the other way around.
-- Sentence 2-3: technical approach and validation — enough for a technical reader to respect it.
+- Aim for ~75 words; 60-100 is fine. Don't pad with abstract phrasing \
+("the work mattered because…", hedged claims, stacked noun phrases) to \
+hit a floor. If the natural concrete version is 60 words, ship that — \
+60 concrete words beat 90 padded ones.
+- Open with what's different now because the work exists. Lead with an \
+active, verb-led construction (Built, Designed, Replaced, Shipped, \
+Discovered, Automated, Eliminated, Reimagined). Don't flip into passive \
+transformation framings like "X moved from Y to Z" or "the project \
+turned A into B."
+- Earn technical credibility somewhere in the next sentence or two: how \
+it was approached, what was non-trivial, how it was validated. No \
+prescribed sentence order — write what flows.
 - Do NOT copy impact_summary verbatim from the catalog. Rewrite completely.
 """
 
 _RESEARCH_ENTRY_V4_TAIL = """\
-## ⚠️ Voice — match the past versions when present
-If a "Your past hand-tuned versions" block appears in the user message, those \
-are the candidate's own prior phrasings of THIS SAME accomplishment. Treat \
-them as the source of TRUTH for voice and style:
+## ⚠️ Voice — the ★ Most recent past version is your PRIMARY TARGET
+This is the dominant rule. If a "Your accepted versions of this content" \
+block appears in the user message, the entry marked ★ Most recent is the \
+structural target your output should resemble. Your job is RETARGETING \
+EMPHASIS for the new role, not rewriting voice:
 
-- MIRROR the opening verb structure. If past versions start with "Designed", \
-"Replaced", "Built", "Shipped", "Discovered" — yours MUST start with a verb \
-of the same kind. Do NOT switch to passive transformation framings like \
-"X moved from Y to Z", "Y was designed", "the project turned A into B" — \
-that is not the candidate's voice and will be rejected.
-- Mirror sentence rhythm, length, and concreteness.
-- Adapt CONTENT (which job-relevant aspects to emphasize) to the new role; \
-do NOT rewrite STYLE. Your job is reframing emphasis, not voice.
-- If past versions use "first-person implied" (no subject — "Built X to do Y"), \
-yours must too.
+- MIRROR the opening verb. If the most-recent version starts with "Built", \
+yours starts with "Built" (or a tight Built-family verb like "Designed", \
+"Shipped", "Engineered"). Do NOT switch to passive transformation framings \
+like "X moved from Y to Z", "Y was designed", "the project turned A into B".
+- Mirror sentence count, length, and clause rhythm — same number of sentences, \
+same shape.
+- Mirror metric framing. If past version says "matched trained human coders \
+(kappa 0.71)", don't strip the parenthetical or invert the framing. If it \
+quotes "450+ researchers across 700+ projects", yours uses the same shape.
+- Mirror first-person posture — implied first person ("Built X to do Y") vs \
+explicit first person ("I designed X") — whichever the most-recent version uses.
+- The ONLY thing you should adapt is which job-relevant aspects to foreground. \
+If the target role and the past version's job were similar, your output may \
+end up only slightly different from the most-recent version. That's the goal.
+
+## Anti-redundancy with the other Selected Research entries
+If the user message contains an "Other Selected Research Entries Already in \
+This Resume" block, those entries are locked in. Take a distinctly different \
+angle, but the Voice rule above OVERRIDES this where they conflict:
+
+- Don't reuse recurring narrative framings or phrasing chunks ("The hard part \
+was…", "What made this difficult…", "That gave us…", "Built X as a Y where \
+the hard part was…"). If a chunk like that appears in a prior entry, yours \
+must not use it or any close paraphrase. This rule is hard.
+- Pick a different facet of the work — if a prior entry centered on validation \
+rigor, lead this one with what shipped, who used it, or the problem that was \
+unsolvable before.
+- Opening verbs SHOULD differ across entries when possible, but if the Voice \
+target requires "Built" and another entry already opens with "Built", mirror \
+the past version. Voice match wins for opening-verb conflicts.
+
+## ⚠️ Anti-redundancy with the experience bullets — different facet, \
+SAME concreteness
+
+The same accomplishment almost always appears as an experience bullet \
+too. The bullet carries the punchy adoption + features ("Shipped MUSE, \
+used by 400+ researchers across 600+ projects"). Your research \
+description should land on a DIFFERENT facet of the same work — but \
+without going abstract. Concrete-and-different beats abstract-and- \
+significant every time.
+
+Concretely:
+- The bullet carries the system name + capability list + adoption count. \
+Don't duplicate those. If the bullet says "Shipped MUSE, used by 400+ \
+researchers", your description doesn't need "MUSE was adopted by 400+ \
+researchers across 600+ projects".
+- The facet to lean into is the MEASUREMENT and EVIDENCE story: what \
+specifically was measured (Cohen's kappa against trained coders, expert \
+agreement, IRR), against what baseline (trained human coders, expert \
+elicitation, hand-coded ground truth), what the number was, what it \
+proved. Name the specific thing, not the abstract notion of "validation \
+rigor".
+- BAD (abstract significance): "Designed the measurement approach around \
+expert judgment, which meant defining task criteria and validation \
+procedures carefully enough that performance claims would hold up in a \
+high-stakes defense setting."
+- GOOD (concrete evidence): "Measured each system against expert-graded \
+task completions instead of generic benchmark scores, and used \
+inter-rater agreement among program reviewers to set a defensible \
+threshold for what counted as a passing model."
+- If you find yourself reaching for "the work mattered because…", "the \
+contribution matters for…", "made X enough to Y", or any of the \
+abstract-subject / hedge-claim shapes in VOICE_RULES, STOP. Name the \
+specific measurement, the specific baseline, the specific number.
 
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
@@ -2474,7 +2584,7 @@ Respond with ONLY valid JSON (no markdown fences):
 """
 
 RESEARCH_ENTRY_V4_SYSTEM = (
-    _RESEARCH_ENTRY_V4_HEAD + "\n" + NO_BUZZWORD_RULES + "\n" + _RESEARCH_ENTRY_V4_TAIL
+    _RESEARCH_ENTRY_V4_HEAD + "\n" + VOICE_RULES + "\n" + _RESEARCH_ENTRY_V4_TAIL
 )
 
 
@@ -2485,8 +2595,14 @@ def build_research_entry_v4_prompt(
     job_text: str,
     grounding_text: str = "",
     critic_notes: str = "",
+    prior_entries: list[dict] | None = None,
 ) -> list[dict]:
-    """Build user message for a single research entry in the staged pipeline."""
+    """Build user message for a single research entry in the staged pipeline.
+
+    ``prior_entries`` is the other Selected Research entries already finalized
+    for this resume. When non-empty, they're shown as anti-redundancy context
+    so the model can take a distinctly different angle.
+    """
     parts = ["## Accomplishment to Describe"]
     parts.append(f"ID: {accomplishment.get('id', '?')}")
     parts.append(f"Title: {accomplishment.get('title', '?')}")
@@ -2511,6 +2627,22 @@ def build_research_entry_v4_prompt(
 
     parts.append(f"\n## Strategic Plan\n{plan_text}")
     parts.append(f"\n## Target Job\n{job_text}")
+
+    if prior_entries:
+        parts.append(
+            "\n## Other Selected Research Entries Already in This Resume"
+            "\nThese descriptions are already written and locked in. Your entry "
+            "must take a DISTINCTLY DIFFERENT angle — don't echo their opening "
+            "verb, their narrative framing, or recurring phrasing chunks like "
+            '"The hard part was…", "What made this difficult…", "That '
+            'gave us…". Each entry should feel like a different facet of '
+            "the candidate's work, not a variation on the same template."
+        )
+        for j, prior in enumerate(prior_entries, start=1):
+            label = prior.get("category_label", "")
+            title = prior.get("title", "")
+            description = (prior.get("description") or "").strip()
+            parts.append(f"\n### Entry {j}: {label} — {title}\n{description}")
 
     if grounding_text:
         parts.append("\n" + grounding_text)
@@ -2620,14 +2752,13 @@ the simple sentence.
 ## Ground rules
 - Only use facts from the provided accomplishments. Never fabricate.
 - Skills whitelist for any tools mentioned: {skills_whitelist}
-- ONE accomplishment per bullet. ONE idea per sentence. A bullet can be 1-3 \
-sentences.
-- Lead with an action verb (Shipped, Built, Cut, Replaced, Discovered, \
-Designed, Improved). The CHANGE is the result of that action.
+- ONE accomplishment per bullet. A bullet is typically 1-2 sentences (3 \
+only if the work genuinely needs it).
+- Lead with an active, verb-led construction (Shipped, Built, Cut, \
+Replaced, Discovered, Designed, Improved). The CHANGE is the result of \
+that action — describe it that way, not the other way around.
 - Translate jargon metrics into plain language ("Cohen's kappa = 0.71" → \
 "matched trained human coders (kappa 0.71)").
-- Max 25 words per sentence. 1-2 lines per bullet.
-- No pronouns. No "I", "my", "we".
 - Each bullet must include ``accomplishment_ids`` for audit.
 
 ## ⚠️ Voice — match the past versions when present
@@ -2653,9 +2784,7 @@ something COMPLETELY DIFFERENT. Research = transformation story; bullet = \
 punchy outcome or different angle. Read the research description first; do \
 not paraphrase it.
 
-{WRITING_QUALITY_RULES}
-
-{NO_BUZZWORD_RULES}
+{VOICE_RULES}
 
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
@@ -2756,27 +2885,47 @@ after all other content has been generated. They are the connective tissue: \
 they should reflect the case the rest of the resume actually makes.
 
 ## tagline
-3-4 keywords separated by " · " mirroring the target job's domain language.
+3-4 keywords separated by " · ". Mirror the target job's domain language. If a \
+`Role lane` is named in the user message, lead with the lane's vocabulary:
+  - evals_safety → lead with "AI Evaluation"
+  - human_data → lead with "Human-AI Systems" or "Human Data Workflows"
+  - applied_ai_eng → lead with "Applied AI" or "LLM Systems"
+  - research_engineer → lead with "Research Engineering"
 
 ## summary
 2-4 sentences, 50-80 words. Makes the hiring manager think "I need to meet \
 this person."
 
 Rules:
-- No pronouns. No company names. No metrics. No disclaimers.
+- No company names. No metrics. No disclaimers.
 - Each sentence must parse independently. Do NOT merge unrelated ideas.
 - Does NOT start with "Research scientist with N years..." — that's the most \
 boring opening possible.
 - Make an ARGUMENT, not a list.
+- If a `Role lane` is named in the user message, the summary's vocabulary \
+should sit naturally inside that lane — describe the work the candidate \
+actually does using the lane's framing. Lane vocabulary cues:
+  - evals_safety: "eval infrastructure", "model behavior", "human feedback", \
+    "benchmark design", "expert validation"
+  - human_data: "annotation workflows", "expert feedback loops", \
+    "dataset quality", "scalable labeling", "human-in-the-loop"
+  - applied_ai_eng: "LLM applications", "agentic workflows", "production AI"
+  - research_engineer: "research infrastructure", "eval harnesses", \
+    "experimentation tooling"
+Weave these into how the work is described. Do NOT add a separate \
+"Strongest fit on teams that...", "Best for teams building...", or \
+"Now focused on..." closing sentence keyed off the lane — that's the \
+meta-pitch shape banned below and the #1 way the model leaks the prompt.
 - **No meta-pitch / interview-pitch language.** Do NOT write FROM THE \
 PERSPECTIVE OF A RECRUITER. The summary describes the candidate's work; \
-it does NOT instruct the reader how to evaluate the candidate. Bans \
-on phrases like: "Strong interview case for...", "Brings exactly what \
-teams need when...", "An ideal candidate for...", "Hiring managers will \
-appreciate...", "Best suited for teams that...". These are the LLM \
-shortcutting to a sales-pitch register that real candidates never use. \
-Write the summary as a tight first-person-implied description of the \
-work itself.
+it does NOT instruct the reader how to evaluate the candidate. Banned \
+phrase shapes — these are HARD bans, including subtle variants: \
+"Strongest fit on teams...", "Strong interview case for...", "Brings \
+exactly what teams need when...", "An ideal candidate for...", "Hiring \
+managers will appreciate...", "Best suited for teams that...", "Best \
+for teams building...". If your draft contains any phrase that names \
+the kind of team this person would join, delete that sentence. The \
+reader draws the fit conclusion from the work description itself.
 
 Good: "Builds AI tools that domain experts actually adopt — the last one \
 replaced manual research workflows across a 2,000-person organization and \
@@ -2799,9 +2948,7 @@ Respond with ONLY valid JSON (no markdown fences):
 }\
 """
 
-SUMMARY_TAGLINE_SYSTEM = (
-    _SUMMARY_TAGLINE_HEAD + "\n" + NO_BUZZWORD_RULES + "\n" + _SUMMARY_TAGLINE_TAIL
-)
+SUMMARY_TAGLINE_SYSTEM = _SUMMARY_TAGLINE_HEAD + "\n" + VOICE_RULES + "\n" + _SUMMARY_TAGLINE_TAIL
 
 
 # ---------------------------------------------------------------------------
@@ -2957,15 +3104,22 @@ def build_summary_tagline_prompt(
     assembled_draft: str,
     job_text: str,
     grounding_text: str = "",
+    role_lane: str = "",
 ) -> list[dict]:
     parts = [
         "## Strategic Plan",
         plan_text,
-        "\n## Resume Content (everything else, already finalized)",
-        assembled_draft,
-        "\n## Target Job",
-        job_text,
     ]
+    if role_lane:
+        parts.append(f"\n## Role lane\n{role_lane}")
+    parts.extend(
+        [
+            "\n## Resume Content (everything else, already finalized)",
+            assembled_draft,
+            "\n## Target Job",
+            job_text,
+        ]
+    )
     if grounding_text:
         parts.append("\n" + grounding_text)
     parts.append(

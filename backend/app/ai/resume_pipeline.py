@@ -66,6 +66,17 @@ logger = logging.getLogger(__name__)
 SKILL_BUCKETS = ("ai_systems", "data_science", "engineering")
 
 
+# Section heading for "Selected Research" varies by the lane the strategic plan
+# identifies. Anything the plan doesn't classify falls back to "Selected Research".
+SECTION_TITLE_BY_LANE: dict[str, str] = {
+    "evals_safety": "Selected AI Evaluation & Research Engineering Projects",
+    "human_data": "Selected Human-AI Systems & Evaluation Projects",
+    "applied_ai_eng": "Selected Applied AI Projects",
+    "research_engineer": "Selected Research Engineering Projects",
+    "generalist": "Selected Research",
+}
+
+
 # Trace logging — every leaf LLM call dumps its assembled system + user + response
 # to a flat directory so debugging "what did the agent see" becomes a file diff.
 _TRACE_ROOT = Path(os.environ.get("RESUME_TRACE_DIR", "/app/output/traces"))
@@ -202,21 +213,31 @@ async def run_pipeline(
 
     plan_research_lookup = _build_plan_research_lookup(plan)
 
-    research_tasks = [
-        _generate_research_entry(
-            call_llm=call_llm,
-            accomplishment=accomplishment_lookup[aid],
-            plan_text=plan_text,
-            plan_entry=plan_research_lookup.get(aid),
-            job_text=job_text,
-            grounding_rows=research_grounding.get(aid, []),
-            profile_data=profile_data,
-            writing_memory_text=writing_memory_text,
-            trace_id=trace_id,
-            stage_label=f"03_research_{aid}",
-        )
-        for aid in research_ids
-    ]
+    # Research entries are generated SEQUENTIALLY so each later entry sees
+    # the prior entries as anti-redundancy context (and won't echo opening
+    # verbs or framings like "The hard part was..."). Skill buckets and the
+    # publications pick still run in parallel with the research sequence,
+    # so the only added latency is N-1 research round-trips (~20-30s).
+    async def _generate_research_sequence() -> list[dict]:
+        completed: list[dict] = []
+        for aid in research_ids:
+            entry = await _generate_research_entry(
+                call_llm=call_llm,
+                accomplishment=accomplishment_lookup[aid],
+                plan_text=plan_text,
+                plan_entry=plan_research_lookup.get(aid),
+                job_text=job_text,
+                grounding_rows=research_grounding.get(aid, []),
+                profile_data=profile_data,
+                writing_memory_text=writing_memory_text,
+                trace_id=trace_id,
+                stage_label=f"03_research_{aid}",
+                prior_entries=list(completed),
+            )
+            if entry:
+                completed.append(entry)
+        return completed
+
     skill_tasks = [
         _generate_skill_bucket(
             call_llm=call_llm,
@@ -239,13 +260,12 @@ async def run_pipeline(
         trace_id=trace_id,
     )
 
-    research_results, skill_results, publications = await asyncio.gather(
-        asyncio.gather(*research_tasks, return_exceptions=False),
+    selected_research, skill_results, publications = await asyncio.gather(
+        _generate_research_sequence(),
         asyncio.gather(*skill_tasks, return_exceptions=False),
         publications_task,
     )
 
-    selected_research = [r for r in research_results if r]
     technical_skills = {
         bucket: text for bucket, text in zip(SKILL_BUCKETS, skill_results, strict=False) if text
     }
@@ -393,11 +413,13 @@ async def run_pipeline(
         technical_skills=technical_skills,
         employer_label_map=employer_label_map,
     )
+    role_lane = (plan.get("role_lane") or "generalist").strip()
     summary_messages = build_summary_tagline_prompt(
         plan_text,
         assembled_draft,
         job_text,
         grounding_text=grounding_text,
+        role_lane=role_lane,
     )
     summary_result = await call_llm(
         SUMMARY_TAGLINE_SYSTEM,
@@ -412,10 +434,15 @@ async def run_pipeline(
     tagline = (summary_result.get("tagline") or "").strip()
 
     # ----- Assemble final content_json ------------------------------------
+    selected_research_section_title = SECTION_TITLE_BY_LANE.get(
+        role_lane, SECTION_TITLE_BY_LANE["generalist"]
+    )
     resume_data = {
         "tagline": tagline,
         "summary": summary,
         "selected_research": selected_research,
+        "selected_research_section_title": selected_research_section_title,
+        "role_lane": role_lane,
         "experience": experience,
         "publications": publications,
         "technical_skills": technical_skills,
@@ -448,6 +475,7 @@ async def _generate_research_entry(
     trace_id: str | None = None,
     stage_label: str = "research_entry",
     critic_notes: str = "",
+    prior_entries: list[dict] | None = None,
 ) -> dict | None:
     grounding_text = format_grounding_block(grounding_rows, profile_data=profile_data)
     grounding_text = _augment_with_writing_memory(grounding_text, writing_memory_text)
@@ -458,6 +486,7 @@ async def _generate_research_entry(
         job_text,
         grounding_text=grounding_text,
         critic_notes=critic_notes,
+        prior_entries=prior_entries,
     )
     try:
         entry = await call_llm(
@@ -666,6 +695,10 @@ async def _run_refiner(
             accomplishment = accomplishment_lookup.get(aid)
             if not accomplishment:
                 continue
+            # When refining one research entry, feed the OTHER two as
+            # anti-redundancy context so the rewrite doesn't drift back into
+            # framings/phrasing chunks they already use.
+            other_entries = [e for j, e in enumerate(selected_research) if j != idx and e]
             tasks.append(
                 (
                     target,
@@ -682,6 +715,7 @@ async def _run_refiner(
                             trace_id=trace_id,
                             stage_label=f"06_refiner_research_{aid}",
                             critic_notes=notes,
+                            prior_entries=other_entries,
                         )
                     ),
                 )

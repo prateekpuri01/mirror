@@ -15,9 +15,14 @@ from app.models import ContentMemory
 from app.services import content_memory_service as svc
 
 _HEADER = (
-    "## Your past hand-tuned versions for this content\n"
-    "Use these as grounding for tone, phrasing, and emphasis. Do NOT copy "
-    "verbatim — adapt to the current job context."
+    "## Your accepted versions of this content — PRIMARY TARGET below\n"
+    "The version marked ★ Most recent is your STRUCTURAL TARGET. Keep its "
+    "opening verb family, sentence count, rhythm, and metric framing. Adapt "
+    "ONLY the job-relevant emphasis (which aspects of the work to foreground "
+    "for the new role). Earlier versions are supporting voice context, not "
+    "targets.\n\n"
+    "If a past version is already shaped for a similar role, your output "
+    "should be only slightly different from it — that's the goal."
 )
 
 _EMPTY = ""
@@ -40,7 +45,7 @@ def format_grounding_block(
 
     parts = [label or _HEADER]
     for i, row in enumerate(rows[:3]):
-        recency = "Most recent" if i == 0 else "Earlier"
+        recency = "★ Most recent — PRIMARY TARGET" if i == 0 else "Earlier (voice context)"
         ctx = _format_job_context(row.job_context)
         stale = svc.is_stale(row, profile_data)
         stale_note = (
@@ -73,7 +78,7 @@ def format_multi_entity_block(
         title = title_for_key.get(key, key)
         parts.append(f"\n### {title}")
         for i, row in enumerate(rows[:3]):
-            recency = "Most recent" if i == 0 else "Earlier"
+            recency = "★ Most recent — PRIMARY TARGET" if i == 0 else "Earlier (voice context)"
             ctx = _format_job_context(row.job_context)
             stale = svc.is_stale(row, profile_data)
             stale_note = (
