@@ -698,9 +698,7 @@ async def _run_refiner(
             # When refining one research entry, feed the OTHER two as
             # anti-redundancy context so the rewrite doesn't drift back into
             # framings/phrasing chunks they already use.
-            other_entries = [
-                e for j, e in enumerate(selected_research) if j != idx and e
-            ]
+            other_entries = [e for j, e in enumerate(selected_research) if j != idx and e]
             tasks.append(
                 (
                     target,

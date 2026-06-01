@@ -2634,17 +2634,15 @@ def build_research_entry_v4_prompt(
             "\nThese descriptions are already written and locked in. Your entry "
             "must take a DISTINCTLY DIFFERENT angle — don't echo their opening "
             "verb, their narrative framing, or recurring phrasing chunks like "
-            "\"The hard part was…\", \"What made this difficult…\", \"That "
-            "gave us…\". Each entry should feel like a different facet of "
+            '"The hard part was…", "What made this difficult…", "That '
+            'gave us…". Each entry should feel like a different facet of '
             "the candidate's work, not a variation on the same template."
         )
         for j, prior in enumerate(prior_entries, start=1):
             label = prior.get("category_label", "")
             title = prior.get("title", "")
             description = (prior.get("description") or "").strip()
-            parts.append(
-                f"\n### Entry {j}: {label} — {title}\n{description}"
-            )
+            parts.append(f"\n### Entry {j}: {label} — {title}\n{description}")
 
     if grounding_text:
         parts.append("\n" + grounding_text)
@@ -2950,9 +2948,7 @@ Respond with ONLY valid JSON (no markdown fences):
 }\
 """
 
-SUMMARY_TAGLINE_SYSTEM = (
-    _SUMMARY_TAGLINE_HEAD + "\n" + VOICE_RULES + "\n" + _SUMMARY_TAGLINE_TAIL
-)
+SUMMARY_TAGLINE_SYSTEM = _SUMMARY_TAGLINE_HEAD + "\n" + VOICE_RULES + "\n" + _SUMMARY_TAGLINE_TAIL
 
 
 # ---------------------------------------------------------------------------

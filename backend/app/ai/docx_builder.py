@@ -1208,9 +1208,7 @@ def _build_layout_banner(ctx: BuildContext, doc, resume_data: dict, profile_data
         ctx,
         doc,
         resume_data.get("selected_research", []),
-        section_title=resume_data.get(
-            "selected_research_section_title", "Selected Research"
-        ),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
     )
     _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
     _render_publications(ctx, doc, resume_data.get("publications", []))
@@ -1226,9 +1224,7 @@ def _build_layout_compact(ctx: BuildContext, doc, resume_data: dict, profile_dat
         ctx,
         doc,
         resume_data.get("selected_research", []),
-        section_title=resume_data.get(
-            "selected_research_section_title", "Selected Research"
-        ),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
     )
     _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
     _render_publications(ctx, doc, resume_data.get("publications", []))
@@ -1255,9 +1251,7 @@ def _build_layout_centered_clean(
         ctx,
         doc,
         resume_data.get("selected_research", []),
-        section_title=resume_data.get(
-            "selected_research_section_title", "Selected Research"
-        ),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
     )
     _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
     _render_publications(ctx, doc, resume_data.get("publications", []))
@@ -1283,9 +1277,7 @@ def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_da
         ctx,
         doc,
         resume_data.get("selected_research", []),
-        section_title=resume_data.get(
-            "selected_research_section_title", "Selected Research"
-        ),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
     )
     _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
     _render_publications(ctx, doc, resume_data.get("publications", []))
@@ -1741,9 +1733,7 @@ def _build_layout_two_column(ctx: BuildContext, doc, resume_data: dict, profile_
         ctx,
         main_cell,
         resume_data.get("selected_research", []),
-        section_title=resume_data.get(
-            "selected_research_section_title", "Selected Research"
-        ),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
     )
     _render_publications(ctx, main_cell, resume_data.get("publications", []))
     _render_awards(ctx, main_cell, resume_data.get("awards", ""))
