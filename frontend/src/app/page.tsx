@@ -21,7 +21,7 @@ function JobsPageInner() {
     status: (searchParams.get("status") as JobStatus) || undefined,
     source: (searchParams.get("source") as JobSource) || undefined,
     tag: searchParams.get("tag") || undefined,
-    sort_by: searchParams.get("sort_by") || "relevance_score",
+    sort_by: searchParams.get("sort_by") || "scraped_at",
     sort_dir: (searchParams.get("sort_dir") as "asc" | "desc") || "desc",
     location: searchParams.get("location") || undefined,
     work_model: searchParams.get("work_model") || undefined,
