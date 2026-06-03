@@ -1196,13 +1196,15 @@ def _render_awards(ctx: BuildContext, doc, awards_text: str) -> None:
 # ---------------------------------------------------------------------------
 
 LAYOUT_DEFAULT_ORDER: dict[str, list[str]] = {
-    "banner":     ["summary", "selected_research", "experience", "publications",
-                   "technical_skills", "education", "awards"],
-    "compact":    ["summary", "selected_research", "experience", "publications",
-                   "technical_skills", "education", "awards"],
-    "timeline":   ["summary", "experience_education", "selected_research",
-                   "technical_skills", "publications", "awards"],
-    "two_column": ["summary", "experience", "selected_research", "publications", "awards"],
+    "banner":         ["summary", "selected_research", "experience", "publications",
+                       "technical_skills", "education", "awards"],
+    "compact":        ["summary", "selected_research", "experience", "publications",
+                       "technical_skills", "education", "awards"],
+    "centered_clean": ["summary", "selected_research", "experience", "publications",
+                       "technical_skills", "education", "awards"],
+    "timeline":       ["summary", "experience_education", "selected_research",
+                       "technical_skills", "publications", "awards"],
+    "two_column":     ["summary", "experience", "selected_research", "publications", "awards"],
 }
 
 
@@ -1216,7 +1218,17 @@ def _render_ordered_sections(ctx, container, resume_data, profile_data, layout):
         elif section_id == "experience_education":
             _render_experience_education_timeline(ctx, container, resume_data.get("experience", {}), profile_data)
         elif section_id == "selected_research":
-            _render_selected_research(ctx, container, resume_data.get("selected_research", []))
+            # Pass section_title so per-resume custom headers (e.g. "AI Evaluation")
+            # aren't silently dropped — main adds `selected_research_section_title`
+            # on top of the base resume schema.
+            _render_selected_research(
+                ctx,
+                container,
+                resume_data.get("selected_research", []),
+                section_title=resume_data.get(
+                    "selected_research_section_title", "Selected Research"
+                ),
+            )
         elif section_id == "publications":
             _render_publications(ctx, container, resume_data.get("publications", []))
         elif section_id == "technical_skills":
