@@ -170,6 +170,7 @@ export interface ExperienceBlock {
 export interface ResumeJson {
   tagline: string;
   summary: string;
+  section_order?: string[];        // user-defined section ordering
   selected_research: ResearchEntry[];
   selected_research_section_title?: string;
   role_lane?: string;
@@ -186,6 +187,27 @@ export interface ResumeJson {
   _critique?: Record<string, unknown>;
   _research?: CompanyResearch;
 }
+
+export const LAYOUT_DEFAULT_ORDER: Record<string, string[]> = {
+  banner:     ["summary", "selected_research", "experience", "publications",
+               "technical_skills", "education", "awards"],
+  compact:    ["summary", "selected_research", "experience", "publications",
+               "technical_skills", "education", "awards"],
+  timeline:   ["summary", "experience_education", "selected_research",
+               "technical_skills", "publications", "awards"],
+  two_column: ["summary", "experience", "selected_research", "publications", "awards"],
+};
+
+export const SECTION_LABELS: Record<string, string> = {
+  summary:              "Summary",
+  experience:           "Experience",
+  experience_education: "Experience & Education",
+  selected_research:    "Selected Research",
+  publications:         "Publications",
+  technical_skills:     "Technical Skills",
+  education:            "Education",
+  awards:               "Awards",
+};
 
 // ---------------------------------------------------------------------------
 // Chat messages

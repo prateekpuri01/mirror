@@ -1321,7 +1321,10 @@ async def broad_rewrite(state: AgentState) -> dict:
     """Full resume rewrite for tone/style changes. Reuses the revision flow."""
     system = RESUME_REVISION_SYSTEM
 
-    resume_json_str = json.dumps(state["resume_json"], indent=2)
+    resume_json = dict(state["resume_json"])
+    saved_order = resume_json.pop("section_order", None)
+
+    resume_json_str = json.dumps(resume_json, indent=2)
 
     # Build chat context
     history_text = ""
@@ -1367,10 +1370,12 @@ async def broad_rewrite(state: AgentState) -> dict:
 Apply the revision instruction. Output the COMPLETE updated resume as valid JSON."""
 
     # Resume JSON for a 2-page resume regularly exceeds 4K tokens. Give it
-    # enough headroom to finish the JSON output without truncation. Tracked
-    # by a pre-existing bug surfaced under the unified-chat classifier when
-    # broad_rewrite is picked more reliably than before.
+    # enough headroom to finish the JSON output without truncation.
     result = await _call_openai_json(system, user_content, max_tokens=8000)
+    # Restore section_order — re-attach the user's custom ordering (stripped
+    # before the LLM call so it can't be hallucinated/rewritten).
+    if saved_order is not None:
+        result["section_order"] = saved_order
     return {
         "updated_json": result,
         "updated_section_path": None,
