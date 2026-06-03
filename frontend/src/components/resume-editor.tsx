@@ -11,8 +11,26 @@ import {
   ProfileAccomplishment,
   ProfileEducation,
   ProfilePublication,
+  LAYOUT_DEFAULT_ORDER,
 } from "@/lib/types";
 import { PastVersionsDropdown } from "./past-versions-dropdown";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 interface ResumeEditorProps {
   docId: string;
@@ -23,35 +41,14 @@ interface ResumeEditorProps {
   onSectionEdit: (path: string, value: unknown) => void;
   onSwapResearch?: (index: number, accomplishmentId: string) => void;
   swappingIndex?: number | null;
-  // Append a new research entry generated from the given accomplishment.
   onAddResearch?: (accomplishmentId: string) => Promise<void> | void;
-  // True while an add-research request is in flight (dim/disable the picker).
   addingResearch?: boolean;
-  // When set, the bullet section gets an "Add from accomplishment ▼"
-  // dropdown alongside the manual "+ Add bullet" button. The handler
-  // takes the employer_key + accomplishment_id and is expected to call
-  // POST /documents/{id}/generate-bullet, then optimistically (or
-  // post-response) refresh the resume.
   onGenerateBullet?: (employerKey: string, accomplishmentId: string) => Promise<void> | void;
-  // When generation is in flight, the caller sets this to the
-  // (employer_key, accomplishment_id) pair currently being generated so
-  // the dropdown can show a spinner and dim itself.
   generatingBullet?: { employer_key: string; accomplishment_id: string } | null;
   workHistory?: ProfileWorkHistory[];
   accomplishments?: ProfileAccomplishment[];
-  // Sourced from profile.data, not from resumeJson — the LLM-generated
-  // resume data only carries job-tailored sections, while education is
-  // static profile content. Mirrors the docx builder's behavior of
-  // pulling education from profile_data at render time.
   education?: ProfileEducation[];
-  // Full pub set from profile (separate from resumeJson.publications which
-  // is the curated subset selected for THIS resume). Used to populate the
-  // "+ Add publication" dropdown.
   profilePublications?: ProfilePublication[];
-  // User's saved layout/color/font selection. The preview live-mirrors
-  // colors + font; layout (two_column) shows as an info banner because the
-  // editor keeps a single-column structure for usability — the actual
-  // two-column rendering is in the downloaded .docx.
   resumeDesign?: ResumeDesign;
 }
 
@@ -73,7 +70,7 @@ function employerKeyToLabel(key: string, workHistory?: ProfileWorkHistory[]): st
 }
 
 // ---------------------------------------------------------------------------
-// Editable text component — handles inline editing with debounced save
+// Editable text component
 // ---------------------------------------------------------------------------
 
 function EditableText({
@@ -108,7 +105,6 @@ function EditableText({
   useEffect(() => {
     if (editing && inputRef.current) {
       inputRef.current.focus();
-      // Auto-resize textarea
       if (multiline && inputRef.current instanceof HTMLTextAreaElement) {
         inputRef.current.style.height = "auto";
         inputRef.current.style.height = inputRef.current.scrollHeight + "px";
@@ -141,7 +137,6 @@ function EditableText({
         value={editValue}
         onChange={(e) => {
           setEditValue(e.target.value);
-          // Auto-resize
           e.target.style.height = "auto";
           e.target.style.height = e.target.scrollHeight + "px";
         }}
@@ -191,15 +186,12 @@ function EditableText({
 }
 
 // ---------------------------------------------------------------------------
-// Preview styling — driven by the user's resume_design selection (color
-// scheme + font). The render layer pulls accent + body from a preview-time
-// color map computed from the design, so changes in the design tab are
-// reflected here immediately.
+// Preview color types
 // ---------------------------------------------------------------------------
 
 interface PreviewColors {
-  navy: string; // section headers + name + employer name
-  orange: string; // tagline + accents + section-header underline
+  navy: string;
+  orange: string;
 }
 
 function SectionHeader({
@@ -220,6 +212,37 @@ function SectionHeader({
     >
       {children}
     </h2>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sortable section wrapper — drag handle appears on hover beside the header
+// ---------------------------------------------------------------------------
+
+function SortableSection({ id, children }: { id: string; children: React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      className="group/section relative"
+    >
+      <div
+        className="absolute -left-5 top-4 opacity-0 group-hover/section:opacity-100
+                   transition-opacity cursor-grab text-gray-300 hover:text-gray-500 select-none z-10"
+        {...attributes}
+        {...listeners}
+        aria-label="Drag to reorder section"
+      >
+        ⠿
+      </div>
+      {children}
+    </div>
   );
 }
 
@@ -248,9 +271,6 @@ export function ResumeEditor({
 }: ResumeEditorProps) {
   const design = resumeDesign ?? DEFAULT_RESUME_DESIGN;
 
-  // Resolve preview accent + body from the chosen color scheme, with a
-  // sensible fallback if the saved ID is unknown (e.g. user is on an old
-  // build that doesn't recognize a newer preset).
   const previewColors = useMemo<PreviewColors>(() => {
     const scheme = COLOR_PRESETS.find((c) => c.id === design.color_scheme) ?? COLOR_PRESETS[0];
     return { navy: scheme.body, orange: scheme.accent };
@@ -261,9 +281,6 @@ export function ResumeEditor({
     return font.fontFamily;
   }, [design.font]);
 
-  // Banner and Compact suppress section underlines — they use letter-spaced
-  // caps and accent-bar prefixes respectively. Timeline and two-column keep
-  // the thin rule under each section header.
   const showSectionUnderline =
     design.layout !== "banner" && design.layout !== "compact";
 
@@ -276,7 +293,6 @@ export function ResumeEditor({
 
   const isSelected = (path: string) => selectedSection === path;
 
-  // Check if a path (or any of its ancestors/descendants) was recently updated
   const isUpdated = (path: string) => {
     for (const updated of recentlyUpdatedPaths) {
       if (path === updated || path.startsWith(updated + ".") || updated.startsWith(path + ".")) {
@@ -286,77 +302,62 @@ export function ResumeEditor({
     return false;
   };
 
-  return (
-    <div
-      className="text-sm leading-relaxed space-y-0"
-      style={{ fontFamily: previewFont }}
-      onClick={() => onSelectSection(null)}
-    >
-      {design.layout === "two_column" && (
-        <div className="mb-3 text-[11px] bg-blue-50 border border-blue-200 rounded px-2.5 py-1.5 text-blue-900">
-          Two-column layout selected. Preview is shown single-column for editing —
-          download to see the actual two-column .docx.
-        </div>
-      )}
+  // --- Section ordering ---
+  const effectiveOrder = useMemo(() => {
+    const layout = design.layout ?? "banner";
+    return resumeJson.section_order ?? LAYOUT_DEFAULT_ORDER[layout] ?? LAYOUT_DEFAULT_ORDER["banner"];
+  }, [resumeJson.section_order, design.layout]);
 
-      {/* Tagline */}
-      <div className="text-center mb-3">
-        <EditableText
-          value={resumeJson.tagline}
-          path="tagline"
-          isSelected={isSelected("tagline")}
-          isRecentlyUpdated={isUpdated("tagline")}
-          onSelect={onSelectSection}
-          onSave={handleSave}
-          className="text-sm font-medium"
-        />
-        <div className="mt-0.5 flex justify-center" onClick={(e) => e.stopPropagation()}>
-          <PastVersionsDropdown
-            docId={docId}
-            entityType="tagline"
-            entityKey="__scalar__"
-            applyPath="tagline"
-            onApply={handleSave}
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIdx = effectiveOrder.indexOf(active.id as string);
+      const newIdx = effectiveOrder.indexOf(over.id as string);
+      onSectionEdit("section_order", arrayMove([...effectiveOrder], oldIdx, newIdx));
+    }
+  }
+
+  function renderSection(id: string): React.ReactNode {
+    switch (id) {
+      case "summary": return (
+        <>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Summary</SectionHeader>
+          <EditableText
+            value={resumeJson.summary}
+            path="summary"
+            isSelected={isSelected("summary")}
+            isRecentlyUpdated={isUpdated("summary")}
+            onSelect={onSelectSection}
+            onSave={handleSave}
+            multiline
           />
-        </div>
-      </div>
+          <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
+            <PastVersionsDropdown
+              docId={docId}
+              entityType="summary"
+              entityKey="__scalar__"
+              applyPath="summary"
+              onApply={handleSave}
+            />
+          </div>
+        </>
+      );
 
-      {/* Summary */}
-      <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Summary</SectionHeader>
-      <EditableText
-        value={resumeJson.summary}
-        path="summary"
-        isSelected={isSelected("summary")}
-        isRecentlyUpdated={isUpdated("summary")}
-        onSelect={onSelectSection}
-        onSave={handleSave}
-        multiline
-      />
-      <div className="mt-0.5" onClick={(e) => e.stopPropagation()}>
-        <PastVersionsDropdown
-          docId={docId}
-          entityType="summary"
-          entityKey="__scalar__"
-          applyPath="summary"
-          onApply={handleSave}
-        />
-      </div>
-
-      {/* Selected Research — section visible if there are entries OR the
-          parent wired up an add handler (so users can add a first entry from
-          an empty state). */}
-      {(resumeJson.selected_research?.length > 0 || onAddResearch) && (
+      case "selected_research": return (resumeJson.selected_research?.length > 0 || onAddResearch) ? (
         <>
           <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>{resumeJson.selected_research_section_title || "Selected Research"}</SectionHeader>
           <div className="space-y-2">
             {(resumeJson.selected_research || []).map((entry, i) => {
-              // Build options: current accomplishments in resume + all from profile
               const currentIds = new Set(resumeJson.selected_research.map((r) => r.accomplishment_id));
               const availableAccomplishments = (accomplishments || []).filter(
                 (a) => a.id && (!currentIds.has(a.id) || a.id === entry.accomplishment_id)
               );
               const isSwapping = swappingIndex === i;
-
               const allEntries = resumeJson.selected_research || [];
               return (
                 <div key={i} className="space-y-0.5 group/research">
@@ -381,10 +382,6 @@ export function ResumeEditor({
                       onSave={handleSave}
                       className="text-xs flex-1"
                     />
-                    {/* Reorder + delete controls, hover-revealed to match the
-                        bullet UX. Moves swap adjacent entries; delete drops
-                        the entry. All three operate by setting the whole
-                        selected_research array via onSectionEdit. */}
                     <div className="flex items-center gap-0.5 opacity-0 group-hover/research:opacity-100 transition-opacity shrink-0">
                       <div className="flex flex-col">
                         {i > 0 && (
@@ -398,9 +395,7 @@ export function ResumeEditor({
                               [next[i - 1], next[i]] = [next[i], next[i - 1]];
                               onSectionEdit("selected_research", next);
                             }}
-                          >
-                            ▲
-                          </button>
+                          >▲</button>
                         )}
                         {i < allEntries.length - 1 && (
                           <button
@@ -413,9 +408,7 @@ export function ResumeEditor({
                               [next[i], next[i + 1]] = [next[i + 1], next[i]];
                               onSectionEdit("selected_research", next);
                             }}
-                          >
-                            ▼
-                          </button>
+                          >▼</button>
                         )}
                       </div>
                       <button
@@ -427,9 +420,7 @@ export function ResumeEditor({
                           const next = allEntries.filter((_, idx) => idx !== i);
                           onSectionEdit("selected_research", next);
                         }}
-                      >
-                        ✕
-                      </button>
+                      >✕</button>
                     </div>
                   </div>
                   <EditableText
@@ -442,7 +433,6 @@ export function ResumeEditor({
                     multiline
                     className="text-xs text-gray-600"
                   />
-                  {/* Swap dropdown */}
                   {onSwapResearch && availableAccomplishments.length > 0 && (
                     <div className="flex items-center gap-1.5 pt-0.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
                       <select
@@ -456,11 +446,7 @@ export function ResumeEditor({
                           }
                         }}
                       >
-                        {/* Current selection */}
-                        <option value={entry.accomplishment_id || ""}>
-                          {entry.title}
-                        </option>
-                        {/* Available accomplishments */}
+                        <option value={entry.accomplishment_id || ""}>{entry.title}</option>
                         {availableAccomplishments
                           .filter((a) => a.id !== entry.accomplishment_id)
                           .map((a) => (
@@ -486,9 +472,6 @@ export function ResumeEditor({
                 </div>
               );
             })}
-            {/* Add new research entry from an accomplishment not yet on the
-                resume. Hidden if every available accomplishment is already
-                used or if no add handler was wired. */}
             {onAddResearch && (() => {
               const currentIds = new Set(
                 (resumeJson.selected_research || []).map((r) => r.accomplishment_id),
@@ -510,14 +493,11 @@ export function ResumeEditor({
                     }}
                   >
                     <option value="">
-                      {addingResearch
-                        ? "Generating new entry…"
-                        : "+ Add research from accomplishment"}
+                      {addingResearch ? "Generating new entry…" : "+ Add research from accomplishment"}
                     </option>
                     {available.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.title}
-                        {a.employer ? ` (${a.employer})` : ""}
+                        {a.title}{a.employer ? ` (${a.employer})` : ""}
                       </option>
                     ))}
                   </select>
@@ -526,15 +506,9 @@ export function ResumeEditor({
             })()}
           </div>
         </>
-      )}
+      ) : null;
 
-      {/* Experience — sort entries to match work_history order from profile.
-          The backend's normalize_experience_order() does the same on the
-          server side when generating/patching, but older saved resumes in
-          the DB may still have non-chronological key order. Reordering here
-          guarantees the UI matches the docx regardless of when the resume
-          was generated. */}
-      {resumeJson.experience && (() => {
+      case "experience": return resumeJson.experience ? (() => {
         const entries = Object.entries(resumeJson.experience);
         if (workHistory && workHistory.length > 0) {
           const order = new Map<string, number>();
@@ -548,225 +522,195 @@ export function ResumeEditor({
           });
         }
         return (
-        <>
-          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Professional Experience</SectionHeader>
-          {entries.map(([employer, data]) => {
-            const bulletsPath = `experience.${employer}.bullets`;
-            return (
-              <div key={employer} className="mb-3 group/employer">
-                <div className="flex items-center gap-1">
-                  <div
-                    className={`cursor-pointer rounded px-1 -mx-1 text-xs font-semibold mb-1 flex-1 ${
-                      isUpdated(bulletsPath)
-                        ? "transition-all duration-1000 ring-1 ring-amber-300 bg-amber-50/70"
-                        : "transition-all duration-150"
-                    } ${
-                      isSelected(`experience.${employer}`) || isSelected(bulletsPath)
-                        ? "ring-2 ring-blue-400 bg-blue-50"
-                        : isUpdated(bulletsPath)
-                          ? ""
-                          : "hover:bg-gray-50"
-                    }`}
-                    style={{ color: previewColors.navy }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onSelectSection(bulletsPath);
-                    }}
-                  >
-                    {employerKeyToLabel(employer, workHistory)}
-                  </div>
-                  {Object.keys(resumeJson.experience).length > 1 && (
-                    <button
-                      className="text-gray-300 hover:text-red-500 p-0 leading-none text-[10px] opacity-0 group-hover/employer:opacity-100 transition-opacity"
-                      title="Remove experience"
+          <>
+            <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Professional Experience</SectionHeader>
+            {entries.map(([employer, data]) => {
+              const bulletsPath = `experience.${employer}.bullets`;
+              return (
+                <div key={employer} className="mb-3 group/employer">
+                  <div className="flex items-center gap-1">
+                    <div
+                      className={`cursor-pointer rounded px-1 -mx-1 text-xs font-semibold mb-1 flex-1 ${
+                        isUpdated(bulletsPath)
+                          ? "transition-all duration-1000 ring-1 ring-amber-300 bg-amber-50/70"
+                          : "transition-all duration-150"
+                      } ${
+                        isSelected(`experience.${employer}`) || isSelected(bulletsPath)
+                          ? "ring-2 ring-blue-400 bg-blue-50"
+                          : isUpdated(bulletsPath)
+                            ? ""
+                            : "hover:bg-gray-50"
+                      }`}
+                      style={{ color: previewColors.navy }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        const newExperience = { ...resumeJson.experience };
-                        delete newExperience[employer];
-                        onSectionEdit("experience", newExperience);
+                        onSelectSection(bulletsPath);
                       }}
                     >
-                      ✕
-                    </button>
-                  )}
-                </div>
-                <ul className="list-disc list-outside ml-4 space-y-0.5">
-                  {data.bullets.map((bullet, bi) => {
-                    const bulletPath = `experience.${employer}.bullets.${bi}`;
-                    const bulletText = typeof bullet === "string" ? bullet : bullet.text;
-                    return (
-                      <li key={bi} className="group/bullet relative">
-                        <div className="flex items-start gap-0.5">
-                          <EditableText
-                            value={bulletText}
-                            path={`${bulletPath}.text`}
-                            isSelected={isSelected(bulletPath) || isSelected(`${bulletPath}.text`) || isSelected(bulletsPath)}
-                            isRecentlyUpdated={isUpdated(bulletPath) || isUpdated(`${bulletPath}.text`)}
-                            onSelect={onSelectSection}
-                            onSave={handleSave}
-                            multiline
-                            className="text-xs flex-1"
-                          />
-                          <div className="flex items-center gap-0.5 opacity-0 group-hover/bullet:opacity-100 transition-opacity shrink-0 pt-0.5">
-                            <div className="flex flex-col">
-                              {bi > 0 && (
+                      {employerKeyToLabel(employer, workHistory)}
+                    </div>
+                    {Object.keys(resumeJson.experience).length > 1 && (
+                      <button
+                        className="text-gray-300 hover:text-red-500 p-0 leading-none text-[10px] opacity-0 group-hover/employer:opacity-100 transition-opacity"
+                        title="Remove experience"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const newExperience = { ...resumeJson.experience };
+                          delete newExperience[employer];
+                          onSectionEdit("experience", newExperience);
+                        }}
+                      >✕</button>
+                    )}
+                  </div>
+                  <ul className="list-disc list-outside ml-4 space-y-0.5">
+                    {data.bullets.map((bullet, bi) => {
+                      const bulletPath = `experience.${employer}.bullets.${bi}`;
+                      const bulletText = typeof bullet === "string" ? bullet : bullet.text;
+                      return (
+                        <li key={bi} className="group/bullet relative">
+                          <div className="flex items-start gap-0.5">
+                            <EditableText
+                              value={bulletText}
+                              path={`${bulletPath}.text`}
+                              isSelected={isSelected(bulletPath) || isSelected(`${bulletPath}.text`) || isSelected(bulletsPath)}
+                              isRecentlyUpdated={isUpdated(bulletPath) || isUpdated(`${bulletPath}.text`)}
+                              onSelect={onSelectSection}
+                              onSave={handleSave}
+                              multiline
+                              className="text-xs flex-1"
+                            />
+                            <div className="flex items-center gap-0.5 opacity-0 group-hover/bullet:opacity-100 transition-opacity shrink-0 pt-0.5">
+                              <div className="flex flex-col">
+                                {bi > 0 && (
+                                  <button
+                                    className="text-gray-400 hover:text-gray-700 p-0 leading-none text-[10px]"
+                                    title="Move up"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newBullets = [...data.bullets];
+                                      [newBullets[bi - 1], newBullets[bi]] = [newBullets[bi], newBullets[bi - 1]];
+                                      onSectionEdit(bulletsPath, newBullets);
+                                    }}
+                                  >▲</button>
+                                )}
+                                {bi < data.bullets.length - 1 && (
+                                  <button
+                                    className="text-gray-400 hover:text-gray-700 p-0 leading-none text-[10px]"
+                                    title="Move down"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const newBullets = [...data.bullets];
+                                      [newBullets[bi], newBullets[bi + 1]] = [newBullets[bi + 1], newBullets[bi]];
+                                      onSectionEdit(bulletsPath, newBullets);
+                                    }}
+                                  >▼</button>
+                                )}
+                              </div>
+                              {data.bullets.length > 1 && (
                                 <button
-                                  className="text-gray-400 hover:text-gray-700 p-0 leading-none text-[10px]"
-                                  title="Move up"
+                                  className="text-gray-400 hover:text-red-500 p-0 leading-none text-[10px] ml-0.5"
+                                  title="Delete bullet"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const newBullets = [...data.bullets];
-                                    [newBullets[bi - 1], newBullets[bi]] = [newBullets[bi], newBullets[bi - 1]];
+                                    const newBullets = data.bullets.filter((_, i) => i !== bi);
                                     onSectionEdit(bulletsPath, newBullets);
                                   }}
-                                >
-                                  ▲
-                                </button>
-                              )}
-                              {bi < data.bullets.length - 1 && (
-                                <button
-                                  className="text-gray-400 hover:text-gray-700 p-0 leading-none text-[10px]"
-                                  title="Move down"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const newBullets = [...data.bullets];
-                                    [newBullets[bi], newBullets[bi + 1]] = [newBullets[bi + 1], newBullets[bi]];
-                                    onSectionEdit(bulletsPath, newBullets);
-                                  }}
-                                >
-                                  ▼
-                                </button>
+                                >✕</button>
                               )}
                             </div>
-                            {data.bullets.length > 1 && (
-                              <button
-                                className="text-gray-400 hover:text-red-500 p-0 leading-none text-[10px] ml-0.5"
-                                title="Delete bullet"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  const newBullets = data.bullets.filter((_, i) => i !== bi);
-                                  onSectionEdit(bulletsPath, newBullets);
-                                }}
-                              >
-                                ✕
-                              </button>
-                            )}
                           </div>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <div className="flex items-center gap-2 ml-4 mt-0.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                  <button
-                    className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const newBullets = [...data.bullets, { text: "New bullet — double-click to edit", accomplishment_ids: [] }];
-                      onSectionEdit(bulletsPath, newBullets);
-                    }}
-                  >
-                    + Add bullet
-                  </button>
-                  {/* Add-from-accomplishment dropdown. Filters to accomplishments
-                      tied to this employer (matched on employer_key OR
-                      work_history_key) and skips any already used as a bullet
-                      here so the picker stays tight. Backend generates the
-                      bullet text + persists; we don't optimistically prepend.*/}
-                  {onGenerateBullet && (() => {
-                    const usedIds = new Set<string>();
-                    for (const b of data.bullets) {
-                      if (typeof b !== "string") {
-                        for (const id of b.accomplishment_ids || []) usedIds.add(id);
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <div className="flex items-center gap-2 ml-4 mt-0.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      className="text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const newBullets = [...data.bullets, { text: "New bullet — double-click to edit", accomplishment_ids: [] }];
+                        onSectionEdit(bulletsPath, newBullets);
+                      }}
+                    >+ Add bullet</button>
+                    {onGenerateBullet && (() => {
+                      const usedIds = new Set<string>();
+                      for (const b of data.bullets) {
+                        if (typeof b !== "string") {
+                          for (const id of b.accomplishment_ids || []) usedIds.add(id);
+                        }
                       }
-                    }
-                    const candidates = (accomplishments || []).filter((a) => {
-                      if (!a.id || usedIds.has(a.id)) return false;
-                      // Match by work_history_key first, fall back to employer slug
-                      if (a.work_history_key && a.work_history_key === employer) return true;
-                      if (a.employer && employerToKey(a.employer) === employer) return true;
-                      return false;
-                    });
-                    if (candidates.length === 0) return null;
-                    const inFlight = generatingBullet &&
-                      generatingBullet.employer_key === employer;
-                    return (
-                      <select
-                        className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground bg-transparent border border-dashed border-gray-300 rounded px-1 py-0.5 cursor-pointer disabled:opacity-50"
-                        value=""
-                        disabled={Boolean(inFlight)}
-                        title="Generate a new bullet from one of this employer's accomplishments"
-                        onChange={async (e) => {
-                          const accId = e.target.value;
-                          e.target.value = "";
-                          if (!accId) return;
-                          try {
-                            await onGenerateBullet(employer, accId);
-                          } catch {
-                            // Error handling lives in the caller
-                          }
-                        }}
-                      >
-                        <option value="">
-                          {inFlight
-                            ? "Generating…"
-                            : `+ Add from accomplishment (${candidates.length})…`}
-                        </option>
-                        {candidates.map((a) => (
-                          <option key={a.id} value={a.id}>
-                            {a.title?.slice(0, 80) ?? a.id}
+                      const candidates = (accomplishments || []).filter((a) => {
+                        if (!a.id || usedIds.has(a.id)) return false;
+                        if (a.work_history_key && a.work_history_key === employer) return true;
+                        if (a.employer && employerToKey(a.employer) === employer) return true;
+                        return false;
+                      });
+                      if (candidates.length === 0) return null;
+                      const inFlight = generatingBullet && generatingBullet.employer_key === employer;
+                      return (
+                        <select
+                          className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground bg-transparent border border-dashed border-gray-300 rounded px-1 py-0.5 cursor-pointer disabled:opacity-50"
+                          value=""
+                          disabled={Boolean(inFlight)}
+                          title="Generate a new bullet from one of this employer's accomplishments"
+                          onChange={async (e) => {
+                            const accId = e.target.value;
+                            e.target.value = "";
+                            if (!accId) return;
+                            try { await onGenerateBullet(employer, accId); } catch { }
+                          }}
+                        >
+                          <option value="">
+                            {inFlight ? "Generating…" : `+ Add from accomplishment (${candidates.length})…`}
                           </option>
-                        ))}
-                      </select>
-                    );
-                  })()}
-                  <PastVersionsDropdown
-                    docId={docId}
-                    entityType="experience_bullets_set"
-                    entityKey={employer}
-                    applyPath={bulletsPath}
-                    onApply={handleSave}
-                  />
+                          {candidates.map((a) => (
+                            <option key={a.id} value={a.id}>{a.title?.slice(0, 80) ?? a.id}</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                    <PastVersionsDropdown
+                      docId={docId}
+                      entityType="experience_bullets_set"
+                      entityKey={employer}
+                      applyPath={bulletsPath}
+                      onApply={handleSave}
+                    />
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-          {/* Add experience dropdown — show employers not already in resume */}
-          {workHistory && (() => {
-            const currentKeys = new Set(Object.keys(resumeJson.experience));
-            const available = workHistory.filter(wh => !currentKeys.has(employerToKey(wh.employer)));
-            if (available.length === 0) return null;
-            return (
-              <select
-                className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground mt-1 bg-transparent border border-dashed border-gray-300 rounded px-1 py-0.5 cursor-pointer"
-                value=""
-                onChange={(e) => {
-                  const empName = e.target.value;
-                  if (!empName) return;
-                  const key = employerToKey(empName);
-                  const newExperience = {
-                    ...resumeJson.experience,
-                    [key]: { bullets: [{ text: "New bullet — double-click to edit", accomplishment_ids: [] }] },
-                  };
-                  onSectionEdit("experience", newExperience);
-                }}
-              >
-                <option value="">+ Add experience...</option>
-                {available.map(wh => (
-                  <option key={wh.employer} value={wh.employer}>{wh.employer}</option>
-                ))}
-              </select>
-            );
-          })()}
-        </>
+              );
+            })}
+            {workHistory && (() => {
+              const currentKeys = new Set(Object.keys(resumeJson.experience));
+              const available = workHistory.filter(wh => !currentKeys.has(employerToKey(wh.employer)));
+              if (available.length === 0) return null;
+              return (
+                <select
+                  className="text-[10px] text-muted-foreground/60 hover:text-muted-foreground mt-1 bg-transparent border border-dashed border-gray-300 rounded px-1 py-0.5 cursor-pointer"
+                  value=""
+                  onChange={(e) => {
+                    const empName = e.target.value;
+                    if (!empName) return;
+                    const key = employerToKey(empName);
+                    const newExperience = {
+                      ...resumeJson.experience,
+                      [key]: { bullets: [{ text: "New bullet — double-click to edit", accomplishment_ids: [] }] },
+                    };
+                    onSectionEdit("experience", newExperience);
+                  }}
+                >
+                  <option value="">+ Add experience...</option>
+                  {available.map(wh => (
+                    <option key={wh.employer} value={wh.employer}>{wh.employer}</option>
+                  ))}
+                </select>
+              );
+            })()}
+          </>
         );
-      })()}
+      })() : null;
 
-      {/* Publications. Shown whenever the user has any pubs in their profile
-          (even if none are currently in the resume) so the "+ Add publication"
-          dropdown is always reachable. */}
-      {((resumeJson.publications?.length ?? 0) > 0 ||
-        (profilePublications?.length ?? 0) > 0) && (
+      case "publications": return ((resumeJson.publications?.length ?? 0) > 0 || (profilePublications?.length ?? 0) > 0) ? (
         <>
           <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Selected Publications</SectionHeader>
           <ul className="list-disc list-outside ml-4 space-y-0.5">
@@ -797,9 +741,7 @@ export function ResumeEditor({
                               [next[i - 1], next[i]] = [next[i], next[i - 1]];
                               onSectionEdit("publications", next);
                             }}
-                          >
-                            ▲
-                          </button>
+                          >▲</button>
                         )}
                         {i < pubs.length - 1 && (
                           <button
@@ -811,9 +753,7 @@ export function ResumeEditor({
                               [next[i], next[i + 1]] = [next[i + 1], next[i]];
                               onSectionEdit("publications", next);
                             }}
-                          >
-                            ▼
-                          </button>
+                          >▼</button>
                         )}
                       </div>
                       <button
@@ -824,21 +764,13 @@ export function ResumeEditor({
                           const next = pubs.filter((_, idx) => idx !== i);
                           onSectionEdit("publications", next);
                         }}
-                      >
-                        ✕
-                      </button>
+                      >✕</button>
                     </div>
                   </div>
                 </li>
               );
             })}
           </ul>
-          {/* + Add publication dropdown. Profile pubs come from RAND/Scholar
-              with `id: null` and a real identifier in `rand_id`, `doi`, or
-              `url` — pubKey() picks whichever is present so dedup actually
-              works. We deliberately don't do title-substring fuzzy dedup
-              (it was over-aggressive: a short title like "Trust" would
-              filter every existing citation that mentions trust). */}
           {profilePublications && profilePublications.length > 0 && (() => {
             const pubKey = (pp: ProfilePublication): string =>
               pp.id || pp.rand_id || pp.doi || pp.url || pp.title || "";
@@ -860,23 +792,13 @@ export function ResumeEditor({
                   if (!key) return;
                   const pp = profilePublications.find((p) => pubKey(p) === key);
                   if (!pp) return;
-                  // Citation shape mirrors the LLM output:
-                  // "Authors. Title. Venue, Year."
-                  const authors = (pp.authors && pp.authors.length > 0)
-                    ? pp.authors.join(", ") + "."
-                    : "";
+                  const authors = (pp.authors && pp.authors.length > 0) ? pp.authors.join(", ") + "." : "";
                   const title = pp.title ? `${pp.title}.` : "";
                   const venue = pp.venue || "";
                   const year = pp.year != null ? String(pp.year) : "";
                   const venueYear = [venue, year].filter(Boolean).join(", ");
-                  const citation = [authors, title, venueYear ? `${venueYear}.` : ""]
-                    .filter(Boolean)
-                    .join(" ")
-                    .trim();
-                  const next = [
-                    ...(resumeJson.publications ?? []),
-                    { citation, publication_id: key },
-                  ];
+                  const citation = [authors, title, venueYear ? `${venueYear}.` : ""].filter(Boolean).join(" ").trim();
+                  const next = [...(resumeJson.publications ?? []), { citation, publication_id: key }];
                   onSectionEdit("publications", next);
                 }}
               >
@@ -894,10 +816,9 @@ export function ResumeEditor({
             );
           })()}
         </>
-      )}
+      ) : null;
 
-      {/* Technical Skills */}
-      {resumeJson.technical_skills && (
+      case "technical_skills": return resumeJson.technical_skills ? (
         <>
           <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Technical Skills</SectionHeader>
           <div className="space-y-1">
@@ -941,12 +862,9 @@ export function ResumeEditor({
             })}
           </div>
         </>
-      )}
+      ) : null;
 
-      {/* Education — sourced from profile, not resumeJson. Read-only here;
-          the canonical edit surface lives on the Profile page. Mirrors the
-          docx, which calls _add_education(profile_data) at this position. */}
-      {education && education.length > 0 && (
+      case "education": return (education && education.length > 0) ? (
         <>
           <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Education</SectionHeader>
           <div className="space-y-0.5">
@@ -962,10 +880,9 @@ export function ResumeEditor({
             ))}
           </div>
         </>
-      )}
+      ) : null;
 
-      {/* Awards */}
-      {resumeJson.awards && (
+      case "awards": return resumeJson.awards ? (
         <>
           <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Awards & Honors</SectionHeader>
           <EditableText
@@ -978,7 +895,57 @@ export function ResumeEditor({
             className="text-xs"
           />
         </>
+      ) : null;
+
+      default: return null;
+    }
+  }
+
+  return (
+    <div
+      className="text-sm leading-relaxed space-y-0"
+      style={{ fontFamily: previewFont }}
+      onClick={() => onSelectSection(null)}
+    >
+      {design.layout === "two_column" && (
+        <div className="mb-3 text-[11px] bg-blue-50 border border-blue-200 rounded px-2.5 py-1.5 text-blue-900">
+          Two-column layout selected. Preview is shown single-column for editing —
+          download to see the actual two-column .docx.
+        </div>
       )}
+
+      {/* Tagline */}
+      <div className="text-center mb-3">
+        <EditableText
+          value={resumeJson.tagline}
+          path="tagline"
+          isSelected={isSelected("tagline")}
+          isRecentlyUpdated={isUpdated("tagline")}
+          onSelect={onSelectSection}
+          onSave={handleSave}
+          className="text-sm font-medium"
+        />
+        <div className="mt-0.5 flex justify-center" onClick={(e) => e.stopPropagation()}>
+          <PastVersionsDropdown
+            docId={docId}
+            entityType="tagline"
+            entityKey="__scalar__"
+            applyPath="tagline"
+            onApply={handleSave}
+          />
+        </div>
+      </div>
+
+      {/* Sections — rendered in user-defined order via drag-and-drop */}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={effectiveOrder} strategy={verticalListSortingStrategy}>
+          {effectiveOrder.map((id) => (
+            <SortableSection key={id} id={id}>
+              {renderSection(id)}
+            </SortableSection>
+          ))}
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }

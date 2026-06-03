@@ -184,6 +184,7 @@ export interface ResumeJson {
   };
   awards: string;
   tailoring_rationale?: string;
+  section_order?: string[];
   _critique?: Record<string, unknown>;
   _research?: CompanyResearch;
 }
@@ -212,7 +213,15 @@ export const SECTION_LABELS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Chat messages
 // ---------------------------------------------------------------------------
-
+export const LAYOUT_DEFAULT_ORDER: Record<string, string[]> = {
+  banner:     ["summary", "selected_research", "experience", "publications",
+               "technical_skills", "education", "awards"],
+  compact:    ["summary", "selected_research", "experience", "publications",
+               "technical_skills", "education", "awards"],
+  timeline:   ["summary", "experience_education", "selected_research",
+               "technical_skills", "publications", "awards"],
+  two_column: ["summary", "experience", "selected_research", "publications", "awards"],
+};
 export interface ChatMessageRead {
   id: string;
   job_id: string;
