@@ -1020,6 +1020,7 @@ function ResumeTab({ job }: { job: Job }) {
               onClear={chat.clearMessages}
               onDeselectSection={() => setSelectedSection(null)}
               workHistory={profile?.work_history}
+              selectedResearchTitle={resumeJson?.selected_research_section_title}
             />
           </div>
         </div>

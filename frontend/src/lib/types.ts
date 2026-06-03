@@ -171,6 +171,8 @@ export interface ResumeJson {
   tagline: string;
   summary: string;
   selected_research: ResearchEntry[];
+  selected_research_section_title?: string;
+  role_lane?: string;
   experience: Record<string, ExperienceBlock>;
   publications: { citation: string; publication_id?: string }[];
   technical_skills: {

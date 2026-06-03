@@ -187,7 +187,7 @@ function ResumeSections({
       )}
       {resume.selected_research?.length ? (
         <section>
-          <Header scheme={scheme}>Selected Research</Header>
+          <Header scheme={scheme}>{resume.selected_research_section_title || "Selected Research"}</Header>
           {resume.selected_research.map((entry, i) => (
             <div key={i} className="mb-1.5">
               <div className="text-[11px]">
@@ -438,7 +438,7 @@ function TimelinePreview({
         )}
         {resume.selected_research?.length ? (
           <section>
-            <SectionHeaderRule scheme={scheme}>Selected Research</SectionHeaderRule>
+            <SectionHeaderRule scheme={scheme}>{resume.selected_research_section_title || "Selected Research"}</SectionHeaderRule>
             {resume.selected_research.map((entry, i) => (
               <div key={i} className="mb-1.5">
                 <div className="text-[11px]">
@@ -715,7 +715,7 @@ function TwoColumnPreview({
           )}
           {resume.selected_research?.length > 0 && (
             <section>
-              <SectionHeaderRule scheme={scheme}>Selected Research</SectionHeaderRule>
+              <SectionHeaderRule scheme={scheme}>{resume.selected_research_section_title || "Selected Research"}</SectionHeaderRule>
               {resume.selected_research.map((entry, i) => (
                 <div key={i} className="mb-1.5">
                   <div className="text-[11px]">

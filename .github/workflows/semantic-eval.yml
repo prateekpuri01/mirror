@@ -99,19 +99,44 @@ jobs:
           asyncio.run(main())
           "
 
-      - name: Verify required secret is present
+      - name: Check for LLM API key
+        # Soft check — sets an output so subsequent eval steps can skip
+        # gracefully when no key is configured. The eval is opt-in for
+        # repos that haven't added OPENAI_API_KEY / ANTHROPIC_API_KEY
+        # under Settings → Secrets and variables → Actions; missing key
+        # never blocks the PR.
+        id: api_key_check
         run: |
           provider="${LLM_PROVIDER:-openai}"
           case "$provider" in
-            openai)    test -n "$OPENAI_API_KEY"     || { echo '::error::OPENAI_API_KEY secret is required'; exit 1; } ;;
-            anthropic) test -n "$ANTHROPIC_API_KEY"  || { echo '::error::ANTHROPIC_API_KEY secret is required'; exit 1; } ;;
-            *) echo "::warning::Unknown LLM_PROVIDER=$provider — eval may fail";;
+            openai)
+              if [ -n "$OPENAI_API_KEY" ]; then
+                echo "has_key=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "has_key=false" >> "$GITHUB_OUTPUT"
+                echo "::warning::OPENAI_API_KEY not configured — skipping semantic eval. Add it under Settings → Secrets and variables → Actions to enable."
+              fi
+              ;;
+            anthropic)
+              if [ -n "$ANTHROPIC_API_KEY" ]; then
+                echo "has_key=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "has_key=false" >> "$GITHUB_OUTPUT"
+                echo "::warning::ANTHROPIC_API_KEY not configured — skipping semantic eval. Add it under Settings → Secrets and variables → Actions to enable."
+              fi
+              ;;
+            *)
+              echo "has_key=false" >> "$GITHUB_OUTPUT"
+              echo "::warning::Unknown LLM_PROVIDER=$provider — skipping semantic eval."
+              ;;
           esac
 
       - name: Run multi-turn focused-edit eval
         # Script exits non-zero when pass_rate < EVAL_PASS_THRESHOLD,
         # which fails this job and blocks the PR until the regression is
         # addressed. The summary JSON below captures per-turn judge output.
+        # Skipped when no LLM API key is configured (see step above).
+        if: steps.api_key_check.outputs.has_key == 'true'
         run: |
           cd backend
           python scripts/eval/eval_focused_edit.py

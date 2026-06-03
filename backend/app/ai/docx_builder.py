@@ -1009,8 +1009,13 @@ def _render_summary(ctx: BuildContext, doc, summary: str) -> None:
     _set_run(ctx, run, size=ctx.size.body)
 
 
-def _render_selected_research(ctx: BuildContext, doc, research_entries: list) -> None:
-    _render_section_header(ctx, doc, "Selected Research")
+def _render_selected_research(
+    ctx: BuildContext,
+    doc,
+    research_entries: list,
+    section_title: str = "Selected Research",
+) -> None:
+    _render_section_header(ctx, doc, section_title)
     for entry in research_entries:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(4)
@@ -1199,7 +1204,12 @@ def _render_awards(ctx: BuildContext, doc, awards_text: str) -> None:
 def _build_layout_banner(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
     _render_banner_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
     _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
+    _render_selected_research(
+        ctx,
+        doc,
+        resume_data.get("selected_research", []),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
+    )
     _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
     _render_publications(ctx, doc, resume_data.get("publications", []))
     _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
@@ -1210,7 +1220,12 @@ def _build_layout_banner(ctx: BuildContext, doc, resume_data: dict, profile_data
 def _build_layout_compact(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
     _render_compact_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
     _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
+    _render_selected_research(
+        ctx,
+        doc,
+        resume_data.get("selected_research", []),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
+    )
     _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
     _render_publications(ctx, doc, resume_data.get("publications", []))
     _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
@@ -1232,7 +1247,12 @@ def _build_layout_centered_clean(
     """
     _render_centered_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
     _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
+    _render_selected_research(
+        ctx,
+        doc,
+        resume_data.get("selected_research", []),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
+    )
     _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
     _render_publications(ctx, doc, resume_data.get("publications", []))
     _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
@@ -1253,7 +1273,12 @@ def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_da
         resume_data.get("experience", {}),
         profile_data,
     )
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
+    _render_selected_research(
+        ctx,
+        doc,
+        resume_data.get("selected_research", []),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
+    )
     _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
     _render_publications(ctx, doc, resume_data.get("publications", []))
     _render_awards(ctx, doc, resume_data.get("awards", ""))
@@ -1704,7 +1729,12 @@ def _build_layout_two_column(ctx: BuildContext, doc, resume_data: dict, profile_
 
     _render_summary(ctx, main_cell, resume_data.get("summary", ""))
     _render_experience(ctx, main_cell, resume_data.get("experience", {}), profile_data)
-    _render_selected_research(ctx, main_cell, resume_data.get("selected_research", []))
+    _render_selected_research(
+        ctx,
+        main_cell,
+        resume_data.get("selected_research", []),
+        section_title=resume_data.get("selected_research_section_title", "Selected Research"),
+    )
     _render_publications(ctx, main_cell, resume_data.get("publications", []))
     _render_awards(ctx, main_cell, resume_data.get("awards", ""))
 

@@ -185,7 +185,8 @@ def _build_markdown(resume_data: dict, profile_data: dict | None = None) -> str:
     # Selected Research
     research = resume_data.get("selected_research", [])
     if research:
-        lines.append("## Selected Research\n")
+        section_title = resume_data.get("selected_research_section_title") or "Selected Research"
+        lines.append(f"## {section_title}\n")
         for entry in research:
             label = entry.get("category_label", "")
             title = entry.get("title", "")

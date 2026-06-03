@@ -281,7 +281,7 @@ Section path:"""
     return {"target_section_path": path, "target_section_value": value}
 
 
-_EDIT_SECTION_SYSTEM_BASE = """\
+_EDIT_SECTION_SYSTEM_BASE = f"""\
 You edit ONE resume section per turn. Output the updated section value as JSON \
 matching the input shape (string→string, array→array, object→object).
 
@@ -293,11 +293,11 @@ skills, or outcomes.
 section, do NOT repeat it.
 
 ## Voice (match the section type)
-- summary: confident pitch, 50–80 words, makes an argument. No pronouns. No metrics. \
+- summary: confident pitch, 50–80 words, makes an argument. No metrics. \
 No "Research scientist with N years…" openings.
-- selected_research description: 2–3 sentences, 75–100 words. Lead with an action \
-verb. State what's different now because of this work. Don't repeat the experience \
-bullet for the same accomplishment.
+- selected_research description: 75–100 words. Open with what's different now \
+because of this work; earn technical credibility in the next sentence or two. \
+Don't repeat the experience bullet for the same accomplishment.
 - experience bullet: 1–2 lines, punchy, outcome-led. Lead with what changed. \
 Include a metric only if it self-explains to someone outside the field.
 - skills bucket: comma-separated, job-relevant first, no skill in more than one bucket.
