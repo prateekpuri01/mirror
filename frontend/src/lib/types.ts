@@ -198,6 +198,23 @@ export interface ChatMessageRead {
   created_at: string;
 }
 
+// ---------------------------------------------------------------------------
+// Action cards (brainstorm-emitted edit suggestions)
+// ---------------------------------------------------------------------------
+
+export type ActionCardStatus = "pending" | "applied" | "dismissed";
+
+export interface ActionCardRead {
+  id: string;
+  message_id: string;
+  card_index: number;
+  kind: string; // "rewrite_section" | "replace_selected_research" | "add_bullet" | "remove_section"
+  section_path: string | null;
+  rationale: string | null;
+  proposed_value: string;
+  status: ActionCardStatus;
+}
+
 export interface JobUpdate {
   status?: JobStatus;
   thumbs?: number | null;

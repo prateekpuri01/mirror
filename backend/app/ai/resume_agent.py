@@ -13,7 +13,7 @@ from langgraph.graph import END, StateGraph
 
 from app.ai.agent_state import AgentState
 from app.ai.client import RESUME_MODEL, get_openai_client
-from app.ai.resume_prompts import RESUME_REVISION_SYSTEM
+from app.ai.resume_prompts import BRAINSTORM_SYSTEM, RESUME_REVISION_SYSTEM
 from app.services.document_service import _get_nested, _set_nested
 
 logger = logging.getLogger(__name__)
@@ -121,6 +121,7 @@ async def route_intent(state: AgentState) -> dict:
     valid = {
         "make_edit",
         "ask_question",
+        "brainstorm",
         "broad_rewrite",
         "multiple_changes",
         "remember_preference",
@@ -131,9 +132,17 @@ async def route_intent(state: AgentState) -> dict:
         logger.info("route_intent: using preset intent %r (skipping classifier)", preset)
         return {"intent": preset}
 
-    system = """You classify resume editing requests. Output ONLY one of these exact words:
-- make_edit: user wants a specific change to one section
-- ask_question: user is asking a question, no edits needed
+    system = """You classify resume chat messages. Output ONLY one of these exact words:
+- make_edit: user wants a specific change to one section (e.g., "rewrite my RAND \
+bullets to focus on infra", "change the tagline to mention evals")
+- ask_question: user is asking a factual question that needs a short direct answer, \
+no edits needed (e.g., "what's my publication count?", "what version of the resume \
+is this?")
+- brainstorm: user wants strategic/advisory help — variants of a draft, opinions, \
+scoring, swap recommendations, outreach drafts, or any "is this on target?" / "what \
+should I lead with?" / "punchier version" / "who at <company> should I message?" \
+question. Prefer brainstorm over ask_question when the message is asking for \
+judgment, not retrieval.
 - broad_rewrite: user wants a tone/style change affecting the whole resume
 - multiple_changes: user requested 2+ distinct changes at once
 - remember_preference: user wants you to remember a writing preference for all future resumes \
@@ -163,6 +172,11 @@ Classification:"""
     # Normalize to valid intents
     if intent not in valid:
         intent = "make_edit"  # Default to edit
+
+    # Advisory questions get the full-context brainstorm treatment, not the
+    # narrow answer_question path. Folded together intentionally — see plan.
+    if intent == "ask_question":
+        intent = "brainstorm"
 
     logger.info("route_intent: classified as %r", intent)
     return {"intent": intent}
@@ -239,81 +253,20 @@ Include a metric only if it self-explains to someone outside the field.
 designed, replaced, reduced, discovered).
 
 ## Sentence form
-- One idea per sentence. No participial tails (", demonstrating X", ", enabling Y").
-- Active voice. Subject–verb–object.
-- Read it aloud — if no human would say it, rewrite it.
-- Translate jargon metrics ("kappa 0.71" → "matched trained human coders (kappa 0.71)").
-
-## No buzzword-stacking — the #1 way this output reads as AI-generated
-
-The accomplishment data you receive often contains insider jargon
-("instantiated", "operationalized", "digital clone", "framework",
-"language-sensitive simulation"). DO NOT echo those terms in your
-output. **Translate them into ordinary language a non-specialist reader
-would understand on first read.**
-
-Two specific failure modes to avoid:
-
-1. **Echoing jargon from the source.** If the impact_summary says
-   "Built a digital clone of an actual misinformation network", do NOT
-   write "instantiated a digital clone of a misinformation community."
-   Write what it actually means: "trained the simulation on behavior
-   data from real users so it matched real-world dynamics."
-
-2. **Stacking 2+ modifiers on a single noun.** When you find yourself
-   writing a noun phrase with multiple nested modifiers — e.g.
-   "a digital clone of a misinformation community built from 10,000+
-   real users" — STOP and split into two sentences. Each idea gets
-   its own.
-
-### Concrete example
-
-BAD (this is the kind of sentence you're producing and we want to stop):
-> "Built a language-sensitive simulation framework that emulated how
->  misinformation moves through real online networks, then instantiated
->  it as a digital clone of a misinformation community built from
->  10,000+ real users."
-
-GOOD (translates the jargon, splits the stacked noun phrase):
-> "Built a simulation that mimics how misinformation spreads through
->  real online networks. Trained it on behavior data from 10,000+ real
->  users so the simulated patterns matched what we observed in the wild."
-
-### The "what does that even mean?" test
-
-Read your output line by line. For each sentence, ask: "Would a peer
-scanning this in 5 seconds ask what does that mean?" If yes — REWRITE
-as two shorter sentences, each saying one thing in ordinary words.
-
-A resume reader has 30 seconds. They don't have time to parse a noun
-phrase with three modifiers. Two short, clear sentences always beat
-one dense one.
+- One idea per sentence. Active voice, subject–verb–object.
+- If a human wouldn't say it out loud, rewrite it.
 
 ## Use the instruction's intent, not the instruction's phrasing
 
 When the user says "rephrase to highlight X" or "give more details on
 Y", that tells you WHAT to emphasize — not HOW to phrase the answer.
-Never use the user's sentence shape as your output's skeleton. Write
-the result the way a person would talk about the work, not the way
-the instruction was typed.
+Don't use the user's sentence shape as your output's skeleton.
 
-## No meta-pitch / interview-pitch language
+## Match the user's voice from past edits
 
-Especially when editing the summary or tagline, do NOT write FROM THE
-PERSPECTIVE OF A RECRUITER about the candidate. The output describes
-the work; it does not instruct the reader how to evaluate the candidate.
-Banned phrase shapes:
-
-- "Strong interview case for teams that need..."
-- "Brings exactly what teams need when..."
-- "An ideal candidate for..."
-- "Hiring managers will appreciate..."
-- "Best suited for teams that..."
-
-These are the LLM shortcutting to a sales-pitch register that real
-candidates never use. Write as a tight, first-person-implied description
-of the actual work — what was built, what shipped, what the impact was.
-The reader draws their own conclusion about fit.
+If a "How you've edited similar passages before" block is included in
+the user content, treat those exemplars as the authoritative voice
+guide. The user's actual past edits beat any generic rule.
 """
 
 
@@ -386,6 +339,15 @@ def _focused_profile_for_edit(path: str, resume_json: dict, profile_data: dict) 
             seen.add(aid)
             parts.append(_format_accomplishment_compact(by_id[aid]))
         if len(parts) > 1:
+            # Append one-liners for the rest of the catalog so the model has a
+            # shortlist to pull from if the user's instruction implicitly asks
+            # for it ("rewrite to focus on web extraction quality" should be
+            # able to draw from CAS scraping even if the current bullet is
+            # the FINRA one). The compact slice above is still the *primary*
+            # source for the edit.
+            other = _other_accomplishments_oneliners(by_id, seen)
+            if other:
+                parts.append(other)
             return "\n\n".join(parts)
 
     if path in ("summary", "tagline"):
@@ -395,6 +357,31 @@ def _focused_profile_for_edit(path: str, resume_json: dict, profile_data: dict) 
         return _format_skills_whitelist(profile_data)
 
     return _format_compact_profile_for_summary(profile_data, resume_json)
+
+
+def _other_accomplishments_oneliners(
+    by_id: dict[str, dict], exclude_ids: set[str]
+) -> str:
+    """One-line summary of every accomplishment NOT in `exclude_ids`.
+
+    Format: `[title] one-line impact (id=...)`. Kept tight so the model can
+    scan it when the user's edit instruction implies pulling from elsewhere.
+    """
+    lines: list[str] = []
+    for aid, a in by_id.items():
+        if aid in exclude_ids:
+            continue
+        title = a.get("title") or "Untitled"
+        impact = (a.get("impact_summary") or "").strip().replace("\n", " ")
+        if len(impact) > 180:
+            impact = impact[:177] + "…"
+        lines.append(f"- [{title}] {impact} (id={aid})")
+    if not lines:
+        return ""
+    return (
+        "## Other available accomplishments (one-liners — pull from here only "
+        "if the instruction asks for it)\n" + "\n".join(lines)
+    )
 
 
 def _format_accomplishment_compact(a: dict) -> str:
@@ -717,6 +704,10 @@ async def edit_section(state: AgentState) -> dict:
 
     other_sections_ctx = _other_sections_excerpt(state["resume_json"], path)
 
+    exemplars_block = await _fetch_exemplars_block(
+        state, section_path=path, instruction=state.get("user_message") or ""
+    )
+
     user_content_parts = [
         history_text,
         prior_attempts,
@@ -729,6 +720,7 @@ async def edit_section(state: AgentState) -> dict:
         focused_profile + "\n" if focused_profile else "",
         f"\n## Job context\n{state.get('job_context', '')}\n",
         _format_research_context(state),
+        exemplars_block,
         f'\nOutput ONLY the updated value for "{path}" as valid JSON. '
         "If the value is a string, output just the string in quotes. "
         "If it's an array or object, output the JSON structure.",
@@ -775,54 +767,274 @@ async def edit_section(state: AgentState) -> dict:
         }
 
 
-async def answer_question(state: AgentState) -> AgentState:
-    """Answer a question about the resume without making edits."""
-    system = """You are a helpful resume assistant. You have access to the candidate's full resume,
-their complete professional profile with all accomplishments, and the target job posting.
+# ---------------------------------------------------------------------------
+# Brainstorm path — opinionated free-prose advisor with optional web search
+# and action-card emission. See BRAINSTORM_SYSTEM in resume_prompts.py.
+# ---------------------------------------------------------------------------
 
-Answer questions about:
-- How well the resume targets the job
-- Which accomplishments could be swapped in/out
-- What's missing or could be strengthened
-- Strategy for tailoring specific sections
+_WEB_SEARCH_MARKERS = (
+    "who at ",
+    "who's at ",
+    "who is at ",
+    "who's on ",
+    "who runs ",
+    "who leads ",
+    "recent post",
+    " latest ",
+    " current ",
+    "currently ",
+    "linkedin",
+    "twitter",
+    " x.com",
+    "their team",
+    "their site",
+    "their product",
+    "their careers",
+    "look up ",
+    "search for ",
+    "find me ",
+    "who should i message",
+    "who should i reach out",
+)
 
-Be concise and specific. Reference specific accomplishments by name when relevant."""
 
-    resume_text = json.dumps(state["resume_json"], indent=2)
+def _needs_web_search(user_message: str) -> bool:
+    msg = " " + user_message.lower() + " "
+    return any(marker in msg for marker in _WEB_SEARCH_MARKERS)
 
-    # Include recent conversation for context
-    history_text = ""
-    for msg in state["chat_history"][-6:]:
-        history_text += f"{msg['role'].upper()}: {msg['content']}\n"
 
-    # Include strategic plan context if available
-    plan_ctx = ""
+def _company_hint(state: dict) -> str:
+    """Best-effort extraction of the company name from cached research or the
+    job context's leading lines. Used to disambiguate search queries."""
+    research = state.get("company_research") or {}
+    if isinstance(research, dict):
+        for key in ("company", "company_name", "name"):
+            v = research.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    # Fall back to the first line of job_context that looks like "Company: X"
+    job_text = state.get("job_context") or ""
+    for line in job_text.splitlines()[:8]:
+        line = line.strip()
+        if line.lower().startswith("company:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+async def _fetch_web_search_context(state: dict) -> str:
+    """Run one web search and format results as a block to inject into the
+    brainstorm user content. Returns empty string on failure or no result.
+
+    Uses services.web_search_llm.llm_web_search, which defaults to OpenAI's
+    Responses API + `web_search` tool when settings.llm_provider is "openai".
+    """
+    try:
+        from app.services.web_search_llm import llm_web_search
+    except Exception:
+        logger.exception("brainstorm: web_search_llm import failed")
+        return ""
+
+    query = state["user_message"]
+    company = _company_hint(state)
+    if company and company.lower() not in query.lower():
+        query = f"{company}: {query}"
+
+    try:
+        result = await llm_web_search(query, num_results=5)
+    except Exception:
+        logger.exception("brainstorm: llm_web_search call failed")
+        return ""
+
+    # WebSearchResult.answer (NOT .text) is the prose synthesis; .citations
+    # is a list of Citation(title, url, snippet). See web_search_llm.py.
+    answer = (getattr(result, "answer", "") or "").strip()
+    if not answer:
+        return ""
+
+    citation_lines: list[str] = []
+    for c in (getattr(result, "citations", None) or [])[:8]:
+        url = getattr(c, "url", "") or ""
+        title = getattr(c, "title", "") or url
+        if url:
+            citation_lines.append(f"- {title}: {url}")
+    citations_block = ("\n\nSources:\n" + "\n".join(citation_lines)) if citation_lines else ""
+
+    return (
+        "\n<web_search_results>\n"
+        f"Query: {query}\n\n"
+        f"{answer}{citations_block}\n"
+        "</web_search_results>\n"
+    )
+
+
+async def _fetch_exemplars_block(
+    state: dict, *, section_path: str | None, instruction: str
+) -> str:
+    """Pull the personalization "convergence record" block from
+    `edit_exemplars`. Empty string when there are no exemplars yet, or when
+    the lookup fails (non-fatal — handlers still run).
+
+    Gated by the EXEMPLARS_DISABLED env var so we can A/B without redeploys.
+    """
+    import os
+
+    if os.environ.get("EXEMPLARS_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+        return ""
+
+    session_factory = state.get("_session_factory")
+    job_id = state.get("_job_id")
+    if not session_factory or not job_id:
+        return ""
+
+    try:
+        from app.services import edit_exemplars_service
+
+        async with session_factory() as session:
+            block = await edit_exemplars_service.retrieve_for_prompt(
+                session,
+                job_id=job_id,
+                section_path=section_path,
+                instruction=instruction or "",
+            )
+        return f"\n{block}\n" if block else ""
+    except Exception:
+        logger.exception("edit_exemplars retrieval failed (non-fatal)")
+        return ""
+
+
+_ACTION_CARD_FENCE = re.compile(r"```action_card\s*\n(.*?)\n```", re.DOTALL)
+
+
+def _extract_action_cards(text: str) -> tuple[str, list[dict]]:
+    """Pull fenced action_card JSON blocks out of the brainstorm response.
+
+    Replaces each fence with a `[[ACTION_CARD:<index>]]` marker so the
+    frontend can render the card inline. Malformed blocks are dropped with
+    a warning. Returns (text_with_markers, cards).
+    """
+    cards: list[dict] = []
+
+    def repl(match: re.Match) -> str:
+        raw = match.group(1).strip()
+        # Tolerate trailing prose accidentally caught inside the fence
+        try:
+            card = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("brainstorm: dropping invalid action_card JSON: %r", raw[:200])
+            return ""
+        if not isinstance(card, dict):
+            logger.warning("brainstorm: action_card not an object: %r", card)
+            return ""
+        if "kind" not in card or "proposed_value" not in card:
+            logger.warning(
+                "brainstorm: action_card missing required keys (kind/proposed_value): %r",
+                card,
+            )
+            return ""
+        idx = len(cards)
+        cards.append(card)
+        return f"[[ACTION_CARD:{idx}]]"
+
+    cleaned = _ACTION_CARD_FENCE.sub(repl, text)
+    # Collapse 3+ consecutive newlines to 2, since dropped fences leave gaps
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned, cards
+
+
+async def brainstorm(state: AgentState) -> dict:
+    """Strategic-thinking handler. Free prose, opinionated, full profile context.
+
+    Differs from `edit_section` and `answer_question` by:
+    - Using BRAINSTORM_SYSTEM (no VOICE_RULES, no JSON schema).
+    - Temperature 0.7 instead of 0.3–0.5.
+    - Full chat history (last 30) instead of last 6.
+    - Full profile_text (every accomplishment) instead of focused slice.
+    - Optional one-shot OpenAI web_search injection when the message asks
+      about current state (team members, recent posts, etc.).
+    - Returning structured `_action_cards` parsed from fenced blocks in the
+      prose; the router persists them and emits SSE events.
+    """
+    user_msg = state["user_message"]
+    chat_history = state.get("chat_history") or []
+
+    web_search_block = ""
+    if _needs_web_search(user_msg):
+        web_search_block = await _fetch_web_search_context(state)
+
+    exemplars_block = await _fetch_exemplars_block(
+        state, section_path=state.get("section_context") or None, instruction=user_msg
+    )
+
+    resume_json_str = json.dumps(state["resume_json"], indent=2, default=str)
+
+    # Generous history budget — brainstorm needs to see the thread.
+    history_lines: list[str] = []
+    char_budget = 8000
+    used = 0
+    for msg in reversed(chat_history[-30:]):
+        role = "Assistant" if msg.get("role") == "assistant" else "User"
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+        line = f"{role}: {content}"
+        if used + len(line) + 2 > char_budget:
+            break
+        history_lines.insert(0, line)
+        used += len(line) + 2
+    history_text = "\n\n".join(history_lines)
+
     plan = state.get("strategic_plan") or {}
+    plan_ctx = ""
     if plan.get("core_argument"):
-        plan_ctx = f"\n## Resume Strategy\nCore argument: {plan['core_argument']}\nTone: {plan.get('tone', '?')}\n"
+        plan_ctx = (
+            "\n## Resume strategy for this role\n"
+            f"Core argument: {plan['core_argument']}\n"
+            f"Tone: {plan.get('tone', '?')}\n"
+        )
 
-    user_content = f"""## Current Resume (JSON)
-{resume_text}
+    user_content_parts = [
+        "## Current tailored resume (JSON)\n",
+        f"```json\n{resume_json_str}\n```\n",
+        "\n## Job posting\n",
+        state.get("job_context", ""),
+        "\n",
+        _format_research_context(state),
+        plan_ctx,
+        "\n## Full profile & accomplishments (the source of truth)\n",
+        state.get("profile_text", ""),
+        "\n",
+        exemplars_block,
+        web_search_block,
+        f"\n## Conversation history\n{history_text}\n" if history_text else "",
+        f"\n## Latest user message\n{user_msg}\n",
+    ]
+    user_content = "".join(p for p in user_content_parts if p)
 
-## Full Profile & Accomplishments
-{state["profile_text"]}
+    logger.info(
+        "brainstorm: prompt_chars=%d (web_search=%s, exemplars=%s, history_msgs=%d)",
+        len(user_content),
+        bool(web_search_block),
+        bool(exemplars_block),
+        len(history_lines),
+    )
 
-## Target Job Posting
-{state["job_context"]}
-{plan_ctx}
-## Conversation History
-{history_text}
+    response_text = await _call_openai(
+        BRAINSTORM_SYSTEM, user_content, max_tokens=4000, temperature=0.7
+    )
 
-## Current Question
-{state["user_message"]}"""
+    cleaned_text, action_cards = _extract_action_cards(response_text)
 
-    logger.info("answer_question: calling LLM with %d char prompt", len(user_content))
-    response = await _call_openai(system, user_content, max_tokens=800, temperature=0.5)
-    logger.info("answer_question: LLM returned %d chars: %r", len(response), response[:100])
+    logger.info(
+        "brainstorm: response_chars=%d, action_cards=%d",
+        len(cleaned_text),
+        len(action_cards),
+    )
+
     return {
-        "response_text": response,
+        "response_text": cleaned_text,
         "updated_json": None,
         "updated_section_path": None,
+        "_action_cards": action_cards,
     }
 
 
@@ -1040,8 +1252,10 @@ def _route_after_intent(state: AgentState) -> str:
     intent = state.get("intent", "make_edit")
     if intent == "make_edit":
         return "identify_section"
-    elif intent == "ask_question":
-        return "answer_question"
+    elif intent in ("ask_question", "brainstorm"):
+        # ask_question gets folded into brainstorm by route_intent itself; the
+        # branch here handles a preset/override that still sends ask_question.
+        return "brainstorm"
     elif intent == "broad_rewrite":
         return "broad_rewrite"
     elif intent == "multiple_changes":
@@ -1062,7 +1276,7 @@ def build_resume_agent_graph() -> StateGraph:
     graph.add_node("route_intent", route_intent)
     graph.add_node("identify_section", identify_section)
     graph.add_node("edit_section", edit_section)
-    graph.add_node("answer_question", answer_question)
+    graph.add_node("brainstorm", brainstorm)
     graph.add_node("broad_rewrite", broad_rewrite)
     graph.add_node("reject_multiple", reject_multiple)
     graph.add_node("save_preference", save_preference)
@@ -1087,7 +1301,7 @@ def build_resume_agent_graph() -> StateGraph:
         _route_after_intent,
         {
             "identify_section": "identify_section",
-            "answer_question": "answer_question",
+            "brainstorm": "brainstorm",
             "broad_rewrite": "broad_rewrite",
             "reject_multiple": "reject_multiple",
             "save_preference": "save_preference",
@@ -1100,7 +1314,7 @@ def build_resume_agent_graph() -> StateGraph:
 
     # Terminal nodes -> END
     graph.add_edge("edit_section", END)
-    graph.add_edge("answer_question", END)
+    graph.add_edge("brainstorm", END)
     graph.add_edge("broad_rewrite", END)
     graph.add_edge("reject_multiple", END)
     graph.add_edge("save_preference", END)

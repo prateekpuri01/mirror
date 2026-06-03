@@ -1,8 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChatMessageRead } from "@/lib/types";
-import { clearChat, fetchChatMessages, getApiUrl } from "@/lib/api";
+import { ActionCardRead, ChatMessageRead } from "@/lib/types";
+import {
+  applyActionCard,
+  clearChat,
+  dismissActionCard,
+  fetchActionCards,
+  fetchChatMessages,
+  getApiUrl,
+} from "@/lib/api";
 
 interface UseChatOptions {
   jobId: string;
@@ -11,6 +18,7 @@ interface UseChatOptions {
 
 interface UseChatReturn {
   messages: ChatMessageRead[];
+  actionCardsByMessage: Record<string, ActionCardRead[]>;
   isLoading: boolean;
   isSending: boolean;
   error: string | null;
@@ -20,12 +28,15 @@ interface UseChatReturn {
     docId?: string | null,
     intentOverride?: string | null,
   ) => Promise<void>;
+  applyCard: (cardId: string) => Promise<void>;
+  dismissCard: (cardId: string) => Promise<void>;
   clearMessages: () => Promise<void>;
   refreshMessages: () => Promise<void>;
 }
 
 export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessageRead[]>([]);
+  const [actionCards, setActionCards] = useState<ActionCardRead[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,8 +53,12 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
   const refreshMessages = useCallback(async () => {
     setIsLoading(true);
     try {
-      const msgs = await fetchChatMessages(jobId);
+      const [msgs, cards] = await Promise.all([
+        fetchChatMessages(jobId),
+        fetchActionCards(jobId).catch(() => [] as ActionCardRead[]),
+      ]);
       setMessages(msgs);
+      setActionCards(cards);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load messages");
@@ -119,6 +134,10 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
           },
         ]);
 
+        // Cards collected during this stream — attached to the assistant
+        // message once `done` arrives with the real message_id.
+        const pendingCards: ActionCardRead[] = [];
+
         const processLines = (lines: string[]) => {
           for (const line of lines) {
             if (line.startsWith("event: ")) {
@@ -140,6 +159,8 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
                   );
                 } else if (eventType === "section_update") {
                   onResumeUpdateRef.current?.(parsed.path, parsed.value);
+                } else if (eventType === "action_card") {
+                  pendingCards.push(parsed as ActionCardRead);
                 } else if (eventType === "done") {
                   if (parsed.message_id) {
                     setMessages((prev) =>
@@ -149,6 +170,15 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
                           : m
                       )
                     );
+                    // Re-stamp the cards with the persisted message_id (the
+                    // backend already does this, but be defensive).
+                    if (pendingCards.length) {
+                      const finalized = pendingCards.map((c) => ({
+                        ...c,
+                        message_id: parsed.message_id,
+                      }));
+                      setActionCards((prev) => [...prev, ...finalized]);
+                    }
                   }
                 } else if (eventType === "error") {
                   setError(parsed.error || "Agent error");
@@ -200,22 +230,72 @@ export function useChat({ jobId, onResumeUpdate }: UseChatOptions): UseChatRetur
     [jobId]
   );
 
+  const applyCard = useCallback(
+    async (cardId: string) => {
+      // Optimistic: mark applied locally; the backend will return final state.
+      setActionCards((prev) =>
+        prev.map((c) => (c.id === cardId ? { ...c, status: "applied" } : c)),
+      );
+      try {
+        const result = await applyActionCard(cardId);
+        // The apply endpoint produces a section update; push it into the
+        // resume editor through the same callback the SSE path uses.
+        onResumeUpdateRef.current?.(result.section_path, result.new_value);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to apply card");
+        // Revert optimistic update.
+        setActionCards((prev) =>
+          prev.map((c) => (c.id === cardId ? { ...c, status: "pending" } : c)),
+        );
+      }
+    },
+    [],
+  );
+
+  const dismissCard = useCallback(async (cardId: string) => {
+    setActionCards((prev) =>
+      prev.map((c) => (c.id === cardId ? { ...c, status: "dismissed" } : c)),
+    );
+    try {
+      await dismissActionCard(cardId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to dismiss card");
+      setActionCards((prev) =>
+        prev.map((c) => (c.id === cardId ? { ...c, status: "pending" } : c)),
+      );
+    }
+  }, []);
+
   const clearMessages = useCallback(async () => {
     try {
       await clearChat(jobId);
       setMessages([]);
+      setActionCards([]);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to clear chat");
     }
   }, [jobId]);
 
+  // Group cards by their parent assistant message id so the chat panel can
+  // render them inline next to the right reply.
+  const actionCardsByMessage = actionCards.reduce<Record<string, ActionCardRead[]>>(
+    (acc, card) => {
+      (acc[card.message_id] ||= []).push(card);
+      return acc;
+    },
+    {},
+  );
+
   return {
     messages,
+    actionCardsByMessage,
     isLoading,
     isSending,
     error,
     sendMessage,
+    applyCard,
+    dismissCard,
     clearMessages,
     refreshMessages,
   };

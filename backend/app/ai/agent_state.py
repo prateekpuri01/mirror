@@ -27,6 +27,15 @@ class AgentState(TypedDict):
     updated_json: dict | None  # updated resume JSON (None if no edits)
     updated_section_path: str | None  # what changed
     _new_preference: dict | None  # set by save_preference node
+    # Set by the brainstorm node when the LLM emits ```action_card fences.
+    # Each entry is the raw parsed dict {kind, section_path?, rationale?,
+    # proposed_value, ...}. Router persists them and emits SSE events.
+    _action_cards: list[dict] | None
+
+    # Loaded by the chat router and used by the brainstorm handler to
+    # inject cached company research into the prompt and to seed the
+    # web-search query with a company hint.
+    company_research: dict | None
 
     # Optional: callable returning an AsyncSession context manager. When set,
     # nodes that need the DB (e.g. fetching content_memory grounding) can use
@@ -36,3 +45,8 @@ class AgentState(TypedDict):
     # focused profile slice rather than dumping the entire profile_text.
     # Falls back to profile_text when missing.
     _profile_data: dict | None
+    # The current job_id and doc_id, threaded through so the brainstorm/edit
+    # handlers can read & write edit_exemplars without the router needing
+    # to wire each call site separately.
+    _job_id: Any  # uuid.UUID | None
+    _doc_id: Any  # uuid.UUID | None

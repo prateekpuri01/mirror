@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Send, Trash2, X } from "lucide-react";
-import { ChatMessageRead, ProfileWorkHistory } from "@/lib/types";
+import { Lightbulb, Send, Trash2, X } from "lucide-react";
+import { ActionCardRead, ChatMessageRead, ProfileWorkHistory } from "@/lib/types";
+import { ActionCard } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -65,18 +66,126 @@ function getSectionLabel(path: string, sectionDisplay: Record<string, string>): 
 }
 
 // ---------------------------------------------------------------------------
+// Renders an assistant message body, splicing in ActionCard components at the
+// [[ACTION_CARD:<index>]] marker positions emitted by the brainstorm handler.
+// ---------------------------------------------------------------------------
+
+const ACTION_CARD_MARKER = /\[\[ACTION_CARD:(\d+)\]\]/g;
+
+interface AssistantMessageBodyProps {
+  content: string;
+  cards: ActionCardRead[];
+  onApplyCard: (cardId: string) => void;
+  onDismissCard: (cardId: string) => void;
+  onRefineCard: (cardId: string, refinement: string) => void;
+  busyCardIds: Set<string>;
+}
+
+function AssistantMessageBody({
+  content,
+  cards,
+  onApplyCard,
+  onDismissCard,
+  onRefineCard,
+  busyCardIds,
+}: AssistantMessageBodyProps) {
+  const cardsByIndex = useMemo(() => {
+    const map = new Map<number, ActionCardRead>();
+    for (const c of cards) map.set(c.card_index, c);
+    return map;
+  }, [cards]);
+
+  // If the message has no markers but does have cards (e.g. a re-render
+  // after reload from DB where markers were already stripped), append the
+  // cards at the bottom instead.
+  if (!ACTION_CARD_MARKER.test(content) && cards.length > 0) {
+    return (
+      <div>
+        <div className="whitespace-pre-wrap">{content}</div>
+        {cards.map((card) => (
+          <ActionCard
+            key={card.id}
+            card={card}
+            onApply={() => onApplyCard(card.id)}
+            onDismiss={() => onDismissCard(card.id)}
+            onRefine={(r) => onRefineCard(card.id, r)}
+            busy={busyCardIds.has(card.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Reset lastIndex (regex above was consumed by `.test`).
+  ACTION_CARD_MARKER.lastIndex = 0;
+
+  const segments: Array<{ type: "text" | "card"; value: string; idx?: number }> = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ACTION_CARD_MARKER.exec(content)) !== null) {
+    if (match.index > cursor) {
+      segments.push({ type: "text", value: content.slice(cursor, match.index) });
+    }
+    segments.push({ type: "card", value: match[0], idx: Number(match[1]) });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < content.length) {
+    segments.push({ type: "text", value: content.slice(cursor) });
+  }
+
+  return (
+    <div>
+      {segments.map((seg, i) => {
+        if (seg.type === "text") {
+          const trimmed = seg.value.trim();
+          if (!trimmed) return null;
+          return (
+            <div key={i} className="whitespace-pre-wrap">
+              {seg.value.replace(/^\n+|\n+$/g, "")}
+            </div>
+          );
+        }
+        const card = seg.idx !== undefined ? cardsByIndex.get(seg.idx) : undefined;
+        if (!card) return null;
+        return (
+          <ActionCard
+            key={card.id}
+            card={card}
+            onApply={() => onApplyCard(card.id)}
+            onDismiss={() => onDismissCard(card.id)}
+            onRefine={(r) => onRefineCard(card.id, r)}
+            busy={busyCardIds.has(card.id)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Chat panel
 // ---------------------------------------------------------------------------
 
 interface ChatPanelProps {
   messages: ChatMessageRead[];
+  actionCardsByMessage: Record<string, ActionCardRead[]>;
   isSending: boolean;
   isLoading: boolean;
   error: string | null;
   disabled: boolean;
   selectedSection: string | null;
-  onSend: (content: string, sectionContext?: string | null) => void;
+  brainstormMode: boolean;
+  onToggleBrainstorm: () => void;
+  onSend: (
+    content: string,
+    sectionContext?: string | null,
+    intentOverride?: string | null,
+  ) => void;
   onProofread?: () => void;
+  onApplyCard: (cardId: string) => void;
+  onDismissCard: (cardId: string) => void;
+  onRefineCard: (cardId: string, refinement: string) => void;
+  busyCardIds: Set<string>;
   onClear: () => void;
   onDeselectSection: () => void;
   workHistory?: ProfileWorkHistory[];
@@ -84,13 +193,20 @@ interface ChatPanelProps {
 
 export function ChatPanel({
   messages,
+  actionCardsByMessage,
   isSending,
   isLoading,
   error,
   disabled,
   selectedSection,
+  brainstormMode,
+  onToggleBrainstorm,
   onSend,
   onProofread,
+  onApplyCard,
+  onDismissCard,
+  onRefineCard,
+  busyCardIds,
   onClear,
   onDeselectSection,
   workHistory,
@@ -108,7 +224,7 @@ export function ChatPanel({
 
   const handleSend = () => {
     if (!input.trim() || disabled || isSending) return;
-    onSend(input.trim(), selectedSection);
+    onSend(input.trim(), selectedSection, brainstormMode ? "brainstorm" : null);
     setInput("");
   };
 
@@ -125,6 +241,23 @@ export function ChatPanel({
       <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
         <span className="text-xs font-semibold text-muted-foreground">Chat</span>
         <div className="flex items-center gap-1">
+          {!disabled && !showClearConfirm && (
+            <Button
+              size="sm"
+              variant={brainstormMode ? "default" : "ghost"}
+              className={`h-6 px-2 text-[11px] ${
+                brainstormMode
+                  ? "bg-amber-500 hover:bg-amber-600 text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              disabled={isSending}
+              onClick={onToggleBrainstorm}
+              title="Brainstorm mode: opinionated advice, variants, swap suggestions, live web search"
+            >
+              <Lightbulb className="h-3 w-3 mr-1" />
+              {brainstormMode ? "Brainstorm: on" : "Brainstorm"}
+            </Button>
+          )}
           {onProofread && !disabled && !showClearConfirm && (
             <Button
               size="sm"
@@ -176,6 +309,14 @@ export function ChatPanel({
         </div>
       </div>
 
+      {/* Brainstorm mode banner */}
+      {brainstormMode && !disabled && (
+        <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-900">
+          <strong>Brainstorm mode</strong> — opinionated peer review. Ask for variants,
+          swaps, scoring, or outreach drafts. Concrete edits land as Yes/No cards.
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-0">
         {isLoading && messages.length === 0 && (
@@ -196,29 +337,43 @@ export function ChatPanel({
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+        {messages.map((msg) => {
+          const cards = actionCardsByMessage[msg.id] || [];
+          return (
             <div
-              className={`max-w-[85%] rounded-lg px-3 py-1.5 text-xs leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800"
-              }`}
+              key={msg.id}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {msg.section_context && msg.role === "user" && (
-                <div className="mb-1">
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500 text-blue-100">
-                    {getSectionLabel(msg.section_context, sectionDisplay)}
-                  </Badge>
-                </div>
-              )}
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              <div
+                className={`max-w-[85%] rounded-lg px-3 py-1.5 text-xs leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {msg.section_context && msg.role === "user" && (
+                  <div className="mb-1">
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500 text-blue-100">
+                      {getSectionLabel(msg.section_context, sectionDisplay)}
+                    </Badge>
+                  </div>
+                )}
+                {msg.role === "assistant" ? (
+                  <AssistantMessageBody
+                    content={msg.content}
+                    cards={cards}
+                    onApplyCard={onApplyCard}
+                    onDismissCard={onDismissCard}
+                    onRefineCard={onRefineCard}
+                    busyCardIds={busyCardIds}
+                  />
+                ) : (
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isSending && (!messages.length || messages[messages.length - 1]?.content === "") && (
           <div className="flex justify-start items-center gap-2">
@@ -228,7 +383,9 @@ export function ChatPanel({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                <span className="text-xs text-gray-500">Thinking...</span>
+                <span className="text-xs text-gray-500">
+                  {brainstormMode ? "Thinking it through..." : "Thinking..."}
+                </span>
               </div>
             </div>
           </div>
@@ -271,9 +428,11 @@ export function ChatPanel({
             placeholder={
               disabled
                 ? "Generate a resume first..."
-                : selectedSection
-                  ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}...`
-                  : "Ask me to edit your resume..."
+                : brainstormMode
+                  ? "Ask for variants, swaps, scoring, or outreach drafts..."
+                  : selectedSection
+                    ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}...`
+                    : "Ask me to edit your resume..."
             }
             disabled={disabled || isSending}
             className="resize-none min-h-[36px] max-h-[100px] text-xs flex-1"
