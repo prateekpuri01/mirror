@@ -775,11 +775,6 @@ function ResumeTab({ job }: { job: Job }) {
     chat.sendMessage("/proofread", null, doc?.id ?? null, "proofread");
   }, [chat, doc]);
 
-  // Brainstorm-mode toggle (panel-level). Persists across messages until
-  // the user turns it off; each chat message in this mode is sent with
-  // intent_override="brainstorm".
-  const [brainstormMode, setBrainstormMode] = useState(false);
-
   // Tracks card IDs currently being applied/dismissed so the buttons disable
   // optimistically.
   const [busyCardIds, setBusyCardIds] = useState<Set<string>>(new Set());
@@ -824,7 +819,10 @@ function ResumeTab({ job }: { job: Job }) {
       const prefix = card?.proposed_value
         ? `Refining the previous suggestion. Original proposal:\n\n${card.proposed_value}\n\nMy refinement: `
         : "";
-      chat.sendMessage(`${prefix}${refinement}`, sectionPath, doc?.id ?? null, "brainstorm");
+      // Refinement runs through the brainstorm path (no override = classifier
+      // picks; with a section anchor it'll naturally pick scoped_edit and
+      // emit a fresh card).
+      chat.sendMessage(`${prefix}${refinement}`, sectionPath, doc?.id ?? null, null);
     },
     [chat, doc],
   );
@@ -1011,8 +1009,6 @@ function ResumeTab({ job }: { job: Job }) {
               error={chat.error}
               disabled={!hasResume}
               selectedSection={selectedSection}
-              brainstormMode={brainstormMode}
-              onToggleBrainstorm={() => setBrainstormMode((v) => !v)}
               onSend={(content, sectionContext, intentOverride) =>
                 chat.sendMessage(content, sectionContext, doc?.id ?? null, intentOverride)
               }

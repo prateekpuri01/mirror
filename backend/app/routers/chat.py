@@ -242,17 +242,21 @@ async def send_chat_message(
 
     writing_memory_text = await format_writing_memory(session, "resume")
 
-    # Pre-route override: deterministic buttons (e.g. "Proofread") send the
-    # exact intent so the agent skips classification. The Brainstorm UI
-    # toggle uses "brainstorm" to force the strategic-thinking handler.
+    # Pre-route override: deterministic UI affordances skip the classifier.
+    # Live: proofread (read-only), quick_edit (commit-direct, bypasses card).
+    # Legacy intents accepted for backward compatibility — route_intent
+    # remaps them to the new set.
     valid_intent_overrides = {
-        "make_edit",
-        "ask_question",
+        "scoped_edit",
+        "quick_edit",
         "brainstorm",
         "broad_rewrite",
-        "multiple_changes",
         "remember_preference",
         "proofread",
+        # Legacy aliases — remapped in route_intent.
+        "make_edit",
+        "ask_question",
+        "multiple_changes",
     }
     initial_intent = (
         body.intent_override if body.intent_override in valid_intent_overrides else None

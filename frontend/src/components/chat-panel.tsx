@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Lightbulb, Send, Trash2, X } from "lucide-react";
+import { Send, Trash2, X, Zap } from "lucide-react";
 import { ActionCardRead, ChatMessageRead, ProfileWorkHistory } from "@/lib/types";
 import { ActionCard } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
@@ -174,8 +174,6 @@ interface ChatPanelProps {
   error: string | null;
   disabled: boolean;
   selectedSection: string | null;
-  brainstormMode: boolean;
-  onToggleBrainstorm: () => void;
   onSend: (
     content: string,
     sectionContext?: string | null,
@@ -199,8 +197,6 @@ export function ChatPanel({
   error,
   disabled,
   selectedSection,
-  brainstormMode,
-  onToggleBrainstorm,
   onSend,
   onProofread,
   onApplyCard,
@@ -214,6 +210,10 @@ export function ChatPanel({
   const sectionDisplay = useMemo(() => buildSectionDisplay(workHistory), [workHistory]);
   const [input, setInput] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // Quick-edit is a one-shot modifier: when on, the next send bypasses the
+  // brainstorm card flow and commits the edit directly via edit_section.
+  // Resets after each send.
+  const [quickEdit, setQuickEdit] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -224,8 +224,9 @@ export function ChatPanel({
 
   const handleSend = () => {
     if (!input.trim() || disabled || isSending) return;
-    onSend(input.trim(), selectedSection, brainstormMode ? "brainstorm" : null);
+    onSend(input.trim(), selectedSection, quickEdit ? "quick_edit" : null);
     setInput("");
+    setQuickEdit(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -244,18 +245,18 @@ export function ChatPanel({
           {!disabled && !showClearConfirm && (
             <Button
               size="sm"
-              variant={brainstormMode ? "default" : "ghost"}
+              variant={quickEdit ? "default" : "ghost"}
               className={`h-6 px-2 text-[11px] ${
-                brainstormMode
+                quickEdit
                   ? "bg-amber-500 hover:bg-amber-600 text-white"
                   : "text-muted-foreground hover:text-foreground"
               }`}
               disabled={isSending}
-              onClick={onToggleBrainstorm}
-              title="Brainstorm mode: opinionated advice, variants, swap suggestions, live web search"
+              onClick={() => setQuickEdit((v) => !v)}
+              title="Quick edit: bypass the action card and commit the next edit directly. One-shot — resets after send."
             >
-              <Lightbulb className="h-3 w-3 mr-1" />
-              {brainstormMode ? "Brainstorm: on" : "Brainstorm"}
+              <Zap className="h-3 w-3 mr-1" />
+              {quickEdit ? "Quick edit: next send" : "Quick edit"}
             </Button>
           )}
           {onProofread && !disabled && !showClearConfirm && (
@@ -309,11 +310,11 @@ export function ChatPanel({
         </div>
       </div>
 
-      {/* Brainstorm mode banner */}
-      {brainstormMode && !disabled && (
+      {/* Quick-edit banner (only when active) */}
+      {quickEdit && !disabled && (
         <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-900">
-          <strong>Brainstorm mode</strong> — opinionated peer review. Ask for variants,
-          swaps, scoring, or outreach drafts. Concrete edits land as Yes/No cards.
+          <strong>Quick edit armed</strong> — next message commits directly,
+          no Yes/No card. Resets after send.
         </div>
       )}
 
@@ -383,9 +384,7 @@ export function ChatPanel({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                <span className="text-xs text-gray-500">
-                  {brainstormMode ? "Thinking it through..." : "Thinking..."}
-                </span>
+                <span className="text-xs text-gray-500">Thinking...</span>
               </div>
             </div>
           </div>
@@ -403,16 +402,19 @@ export function ChatPanel({
 
       {/* Selected section badge */}
       {selectedSection && !disabled && (
-        <div className="px-3 py-1 border-t bg-blue-50 flex items-center gap-1.5">
+        <div className="px-3 py-1.5 border-t bg-blue-50 flex items-center gap-2">
           <span className="text-[10px] text-blue-600 font-medium">Editing:</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
             {getSectionLabel(selectedSection, sectionDisplay)}
           </Badge>
           <button
             onClick={onDeselectSection}
-            className="ml-auto text-blue-400 hover:text-blue-600"
+            type="button"
+            title="Clear section scope — next message won't be anchored to this section"
+            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 hover:text-blue-900 transition-colors"
           >
             <X className="h-3 w-3" />
+            Clear scope
           </button>
         </div>
       )}
@@ -428,11 +430,13 @@ export function ChatPanel({
             placeholder={
               disabled
                 ? "Generate a resume first..."
-                : brainstormMode
-                  ? "Ask for variants, swaps, scoring, or outreach drafts..."
+                : quickEdit
+                  ? selectedSection
+                    ? `Quick-edit ${getSectionLabel(selectedSection, sectionDisplay)} — commits immediately`
+                    : "Quick edit — commits immediately, no card"
                   : selectedSection
-                    ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}...`
-                    : "Ask me to edit your resume..."
+                    ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}, or ask about it...`
+                    : "Ask, propose, or edit..."
             }
             disabled={disabled || isSending}
             className="resize-none min-h-[36px] max-h-[100px] text-xs flex-1"

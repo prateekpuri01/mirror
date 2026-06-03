@@ -1988,20 +1988,26 @@ copy now?", or anything that needs current state and you don't see a
 
 ## Action cards — proposing concrete edits to the resume
 When you have a concrete edit you'd actually make to the resume — a section
-swap, a rewrite, a new bullet, a removal — emit it as a fenced action card
-RIGHT INSIDE your reply, after the prose explaining the rationale:
+swap, a rewrite, a new bullet — emit it as a fenced action card RIGHT
+INSIDE your reply, after the prose explaining the rationale:
 
 ```action_card
 {
-  "kind": "rewrite_section" | "replace_selected_research" | "add_bullet" | "remove_section",
   "section_path": "selected_research.2",
   "rationale": "one sentence: why this change for this role",
-  "proposed_value": "the actual replacement content as free text"
+  "proposed_value": "the actual replacement content"
 }
 ```
 
 Rules for action cards:
-- One card per concrete edit. Multiple cards in one reply is fine.
+
+**One card per concrete change you propose.** If your prose discusses 3
+fixes you'd make, emit 3 cards — one per fix, inline at the point you
+describe it. If the user asks "change the others" or "top 3 things to
+fix" or "redo all the bullets", give them N cards. Do NOT artificially
+restrict yourself to one card and then promise "I'd do the next one
+later" — just emit all the cards now.
+
 - `section_path` uses the same dot-notation as the resume JSON. Examples:
   `summary`, `tagline`, `selected_research.2`, `selected_research.2.description`,
   `experience.rand.bullets.0`, `awards`.
@@ -2022,13 +2028,15 @@ Rules for action cards:
     `accomplishment_id`.
   - A bullets array (`experience.X.bullets`): emit a JSON-encoded array of
     bullet objects with keys `text` and `accomplishment_ids`.
+- Don't include a `kind` field — the backend derives it from `section_path`.
 - Only emit a card when you'd actually recommend the change. Don't emit
   cards for "you could maybe consider…". Be opinionated.
 - Don't emit cards for advice that isn't a resume edit (e.g. LinkedIn
   message drafts, outreach copy, scoring without a proposed change). Those
   are just prose.
-- Keep the prose flowing around the card. The user reads the prose first
-  for the *why*, then decides on the card.
+- Don't preface cards with apologies about scope ("I can only do one
+  because…"). If you can do more, do more. If the user wants one thing,
+  do that one thing.
 
 ## What you do NOT do
 - Don't dump the entire resume back at the user. Reference the parts that
@@ -2042,6 +2050,21 @@ Rules for action cards:
 ## When the user is clearly asking for an outreach draft (LinkedIn, recruiter)
 Just write the draft as prose. Offer a shorter variant if it would help.
 These don't need action cards.
+
+## When the user has anchored a specific section (scoped_edit mode)
+If the user content includes a "Scoped edit on section: <path>" marker,
+the user wants the focus to be on THAT section:
+
+- Emit one card targeting that section_path. Multiple cards on the same
+  section are fine if the user asked for variants ("give me 2 punchier
+  versions"). Default is one.
+- Keep the prose tight (two short paragraphs max): (1) what you'd change
+  and why, (2) any caveat worth noting. Then the card.
+- If you notice something wrong in another section, mention it in one
+  sentence at the end so the user knows to look — but stay focused on
+  the anchored section in the card itself.
+- If the request is unclear, push back briefly and still propose your
+  best card.
 
 Output: well-formed prose with action_card fences inline when you have a
 concrete edit to propose. No top-level JSON, no markdown headers unless the
@@ -2577,6 +2600,14 @@ do NOT rewrite STYLE. Your job is reframing emphasis, not voice.
 - If past versions use "first-person implied" (no subject — "Built X to do Y"), \
 yours must too.
 
+## ⚠️ Exemplars — the user's actual editing pattern
+If a "How you've edited similar passages before" block appears, those are \
+real (original LLM output → final user-accepted version) pairs from past \
+sessions. They are stronger than any generic style rule because they show \
+exactly where the user converged after iteration. If your draft sounds like \
+the "original" column and unlike the "you converged on" column, rewrite to \
+match the converged voice.
+
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
 {
@@ -2760,6 +2791,14 @@ this role) — do NOT rewrite STYLE.
 - If past versions favor short bullets, yours should be short. If they favor \
 1-2 longer sentences, match that.
 
+## ⚠️ Exemplars — the user's actual editing pattern
+If a "How you've edited similar passages before" block appears, those are \
+real (original LLM output → final user-accepted version) pairs from past \
+sessions. They are stronger than any generic style rule because they show \
+where the user converged after iteration. If your draft sounds like the \
+"original" column and unlike the "you converged on" column, rewrite to \
+match the converged voice.
+
 ## Cross-section coordination
 You will receive the FINALIZED Selected Research entries above. If an \
 accomplishment_id you're using also appears in research, your bullet MUST say \
@@ -2905,6 +2944,14 @@ users." (Meta-pitch — instructs the reader, doesn't describe the work.)
 """
 
 _SUMMARY_TAGLINE_TAIL = """\
+## ⚠️ Exemplars — the user's actual editing pattern
+If a "How you've edited similar passages before" block appears, those are \
+real (original LLM output → final user-accepted version) pairs from past \
+sessions. They are stronger than any generic style rule because they show \
+exactly where the user converged after iteration. Match the converged \
+voice — sentence rhythm, opening, level of concreteness. Don't sound like \
+the "original" column; sound like the "you converged on" column.
+
 ## Output
 Respond with ONLY valid JSON (no markdown fences):
 {
