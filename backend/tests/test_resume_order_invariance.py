@@ -7,7 +7,13 @@ from app.ai.docx_builder import LAYOUT_DEFAULT_ORDER, _render_ordered_sections
 
 
 def test_all_layouts_have_default_order():
-    assert set(LAYOUT_DEFAULT_ORDER.keys()) == {"banner", "compact", "timeline", "two_column"}
+    assert set(LAYOUT_DEFAULT_ORDER.keys()) == {
+        "banner",
+        "compact",
+        "centered_clean",
+        "timeline",
+        "two_column",
+    }
 
 
 def test_no_duplicate_section_ids():
