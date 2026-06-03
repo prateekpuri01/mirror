@@ -12,8 +12,8 @@ from typing import Any
 from langgraph.graph import END, StateGraph
 
 from app.ai.agent_state import AgentState
-from app.ai.client import RESUME_MODEL, get_openai_client
-from app.ai.resume_prompts import RESUME_REVISION_SYSTEM, VOICE_RULES
+from app.ai.client import EXTRACTION_MODEL, RESUME_MODEL, get_openai_client
+from app.ai.resume_prompts import BRAINSTORM_SYSTEM, RESUME_REVISION_SYSTEM
 from app.services.document_service import _get_nested, _set_nested
 
 logger = logging.getLogger(__name__)
@@ -97,74 +97,144 @@ async def _call_openai_json(system: str, user_content: str, max_tokens: int = 20
 
 
 async def check_section_context(state: AgentState) -> dict:
-    """If section_context is set from UI click, skip routing entirely."""
+    """Annotate the state with the clicked section value (if any).
+
+    Previously this short-circuited the router and forced make_edit. Under
+    the unified chat model the click is just a *signal* — the classifier
+    decides whether the user wants a scoped_edit (card), quick_edit
+    (commit), broad_rewrite, or pure brainstorm advisory.
+    """
     if state["section_context"]:
         try:
             value = _get_nested(state["resume_json"], state["section_context"])
         except (KeyError, IndexError, TypeError):
             value = None
         return {
-            "intent": "make_edit",
             "target_section_path": state["section_context"],
             "target_section_value": value,
         }
     return {}
 
 
-async def route_intent(state: AgentState) -> dict:
-    """Classify the user's intent via a fast structured-output LLM call.
-
-    Short-circuits when ``state['intent']`` is already a valid value — used by
-    deterministic UI buttons (e.g. the Proofread button) that pre-set the
-    intent so the classifier is skipped entirely.
-    """
-    valid = {
-        "make_edit",
-        "ask_question",
+# Live intents under the unified chat model. Older intents (`make_edit`,
+# `ask_question`, `multiple_changes`) are still accepted by the override
+# path for backward compatibility and remapped — see ``route_intent``.
+_VALID_INTENTS: frozenset[str] = frozenset(
+    {
+        "scoped_edit",
+        "quick_edit",
         "broad_rewrite",
-        "multiple_changes",
+        "brainstorm",
         "remember_preference",
         "proofread",
     }
+)
+
+# Legacy intents we still accept on inbound (UI may send them) and remap.
+_INTENT_ALIASES: dict[str, str] = {
+    "make_edit": "scoped_edit",
+    "ask_question": "brainstorm",
+    "multiple_changes": "brainstorm",
+}
+
+
+async def route_intent(state: AgentState) -> dict:
+    """Classify the user's intent.
+
+    Short-circuits when ``state['intent']`` is already a valid value (or a
+    legacy alias) — used by deterministic UI affordances:
+      - "proofread" button       -> proofread (read-only)
+      - "quick_edit" toggle      -> commit edit directly, bypass card
+
+    Otherwise the LLM classifier picks one of: scoped_edit, broad_rewrite,
+    brainstorm, remember_preference. (Proofread and quick_edit are
+    button-only — the classifier never picks them.)
+
+    When section_context is set but the message is not a clear directive,
+    we still bias toward scoped_edit so the click lands as a card.
+    """
     preset = state.get("intent")
-    if preset in valid:
-        logger.info("route_intent: using preset intent %r (skipping classifier)", preset)
-        return {"intent": preset}
+    if preset:
+        canonical = _INTENT_ALIASES.get(preset, preset)
+        if canonical in _VALID_INTENTS:
+            logger.info("route_intent: using preset intent %r -> %r", preset, canonical)
+            return {"intent": canonical}
 
-    system = """You classify resume editing requests. Output ONLY one of these exact words:
-- make_edit: user wants a specific change to one section
-- ask_question: user is asking a question, no edits needed
-- broad_rewrite: user wants a tone/style change affecting the whole resume
-- multiple_changes: user requested 2+ distinct changes at once
-- remember_preference: user wants you to remember a writing preference for all future resumes \
-(e.g., "always keep bullets under 15 words", "never use the word architected", \
-"remember: I prefer casual tone")
-- proofread: user wants a read-only spell-check / typo / grammar / awkward-phrasing scan \
-(e.g., "check for typos", "spell check the resume", "proofread", "any typos?", \
-"are there grammar errors", "/proofread", "/typos"). DO NOT make edits — just report findings.
+    has_section = bool(state.get("target_section_path") or state.get("section_context"))
+    section_note = (
+        "The user has a section anchored. Treat this as a FOCUS HINT, not a "
+        "scope constraint. If the message is clearly an edit directive on "
+        "that section, pick scoped_edit. If the message is a question, "
+        "advisory, multi-section, or whole-resume, pick the right intent "
+        "for the message and ignore the anchor.\n\n"
+        if has_section
+        else ""
+    )
 
-Output only the classification word, nothing else."""
+    system = """You classify resume chat messages. Output ONLY one of these exact words:
 
-    # Include recent chat for context
+- scoped_edit: user wants a specific change to ONE section (e.g., "rewrite \
+my RAND bullets to focus on infra", "change the tagline to mention evals", \
+"tighten this", "make this punchier", "less corporate", "shorter"). Pick \
+this for clear edit directives that target one section.
+
+- broad_rewrite: user wants a change affecting the WHOLE resume \
+(e.g., "rewrite the resume to focus on evals", "redo this targeting the \
+Distyl posting", "make the whole thing more conversational", "tighten up \
+everything"). Whole-resume scope.
+
+- brainstorm: pick this for ANY of:
+  - questions / advice / opinions / scoring ("is this on target?", "what's \
+the weakest part?", "score this 1-100")
+  - multi-section asks ("change the others", "top 3 things to fix", \
+"redo all the bullets", "fix the experience section AND the summary")
+  - variants ("give me 3 punchier versions")
+  - outreach drafts (LinkedIn, recruiter, cover letter)
+  - "what would you do" / "what should I lead with"
+  The brainstorm path can still propose cards — one per concrete edit it \
+sees worth proposing — so don't avoid brainstorm thinking "the user wants \
+edits committed." Edits are the COMMIT step. brainstorm is the THINKING \
+step that produces cards.
+
+- remember_preference: user is telling you a writing preference to keep \
+in mind for all future generations (e.g., "always keep bullets under 15 \
+words", "never use the word architected", "remember: I prefer casual tone").
+
+## How to break ties
+- "Change the others" / "do the rest" / "now do X too" -> brainstorm \
+(multi-section), even if a section is anchored.
+- "What about X?" / "is X right?" / "should I X?" -> brainstorm.
+- Short imperative on a clicked section ("tighter", "more punchy", \
+"less corporate") -> scoped_edit.
+- Plural "the others" / "them" / "these" -> brainstorm, ALWAYS.
+
+Output only the classification word."""
+
     history_text = ""
     for msg in state["chat_history"][-4:]:
         history_text += f"{msg['role']}: {msg['content']}\n"
 
-    user_content = f"""Chat history:
-{history_text}
+    section_hint = ""
+    if has_section:
+        section_hint = (
+            f"\nClicked section: {state.get('target_section_path') or state.get('section_context')}\n"
+        )
 
+    user_content = f"""{section_note}Chat history:
+{history_text}{section_hint}
 Latest message: {state["user_message"]}
 
 Classification:"""
 
     result = await _call_openai(system, user_content, max_tokens=10, temperature=0)
     intent = result.strip().lower().strip('"').strip("'")
+    intent = _INTENT_ALIASES.get(intent, intent)
+    if intent not in _VALID_INTENTS:
+        # Sensible defaults: scoped_edit when a section is in play, brainstorm
+        # otherwise. Avoids dropping the user into a wrong terminal node.
+        intent = "scoped_edit" if has_section else "brainstorm"
 
-    # Normalize to valid intents
-    if intent not in valid:
-        intent = "make_edit"  # Default to edit
-
-    logger.info("route_intent: classified as %r", intent)
+    logger.info("route_intent: classified as %r (has_section=%s)", intent, has_section)
     return {"intent": intent}
 
 
@@ -238,33 +308,21 @@ Include a metric only if it self-explains to someone outside the field.
 "passionate about", "proven track record". Use direct verbs (built, shipped, \
 designed, replaced, reduced, discovered).
 
-{VOICE_RULES}
+## Sentence form
+- One idea per sentence. Active voice, subject–verb–object.
+- If a human wouldn't say it out loud, rewrite it.
 
 ## Use the instruction's intent, not the instruction's phrasing
 
 When the user says "rephrase to highlight X" or "give more details on
 Y", that tells you WHAT to emphasize — not HOW to phrase the answer.
-Never use the user's sentence shape as your output's skeleton. Write
-the result the way a person would talk about the work, not the way
-the instruction was typed.
+Don't use the user's sentence shape as your output's skeleton.
 
-## No meta-pitch / interview-pitch language
+## Match the user's voice from past edits
 
-Especially when editing the summary or tagline, do NOT write FROM THE
-PERSPECTIVE OF A RECRUITER about the candidate. The output describes
-the work; it does not instruct the reader how to evaluate the candidate.
-Banned phrase shapes:
-
-- "Strong interview case for teams that need..."
-- "Brings exactly what teams need when..."
-- "An ideal candidate for..."
-- "Hiring managers will appreciate..."
-- "Best suited for teams that..."
-
-These are the LLM shortcutting to a sales-pitch register that real
-candidates never use. Write as a tight, first-person-implied description
-of the actual work — what was built, what shipped, what the impact was.
-The reader draws their own conclusion about fit.
+If a "How you've edited similar passages before" block is included in
+the user content, treat those exemplars as the authoritative voice
+guide. The user's actual past edits beat any generic rule.
 """
 
 
@@ -337,6 +395,15 @@ def _focused_profile_for_edit(path: str, resume_json: dict, profile_data: dict) 
             seen.add(aid)
             parts.append(_format_accomplishment_compact(by_id[aid]))
         if len(parts) > 1:
+            # Append one-liners for the rest of the catalog so the model has a
+            # shortlist to pull from if the user's instruction implicitly asks
+            # for it ("rewrite to focus on web extraction quality" should be
+            # able to draw from CAS scraping even if the current bullet is
+            # the FINRA one). The compact slice above is still the *primary*
+            # source for the edit.
+            other = _other_accomplishments_oneliners(by_id, seen)
+            if other:
+                parts.append(other)
             return "\n\n".join(parts)
 
     if path in ("summary", "tagline"):
@@ -346,6 +413,31 @@ def _focused_profile_for_edit(path: str, resume_json: dict, profile_data: dict) 
         return _format_skills_whitelist(profile_data)
 
     return _format_compact_profile_for_summary(profile_data, resume_json)
+
+
+def _other_accomplishments_oneliners(
+    by_id: dict[str, dict], exclude_ids: set[str]
+) -> str:
+    """One-line summary of every accomplishment NOT in `exclude_ids`.
+
+    Format: `[title] one-line impact (id=...)`. Kept tight so the model can
+    scan it when the user's edit instruction implies pulling from elsewhere.
+    """
+    lines: list[str] = []
+    for aid, a in by_id.items():
+        if aid in exclude_ids:
+            continue
+        title = a.get("title") or "Untitled"
+        impact = (a.get("impact_summary") or "").strip().replace("\n", " ")
+        if len(impact) > 180:
+            impact = impact[:177] + "…"
+        lines.append(f"- [{title}] {impact} (id={aid})")
+    if not lines:
+        return ""
+    return (
+        "## Other available accomplishments (one-liners — pull from here only "
+        "if the instruction asks for it)\n" + "\n".join(lines)
+    )
 
 
 def _format_accomplishment_compact(a: dict) -> str:
@@ -668,6 +760,10 @@ async def edit_section(state: AgentState) -> dict:
 
     other_sections_ctx = _other_sections_excerpt(state["resume_json"], path)
 
+    exemplars_block = await _fetch_exemplars_block(
+        state, section_path=path, instruction=state.get("user_message") or ""
+    )
+
     user_content_parts = [
         history_text,
         prior_attempts,
@@ -680,6 +776,7 @@ async def edit_section(state: AgentState) -> dict:
         focused_profile + "\n" if focused_profile else "",
         f"\n## Job context\n{state.get('job_context', '')}\n",
         _format_research_context(state),
+        exemplars_block,
         f'\nOutput ONLY the updated value for "{path}" as valid JSON. '
         "If the value is a string, output just the string in quotes. "
         "If it's an array or object, output the JSON structure.",
@@ -726,54 +823,399 @@ async def edit_section(state: AgentState) -> dict:
         }
 
 
-async def answer_question(state: AgentState) -> AgentState:
-    """Answer a question about the resume without making edits."""
-    system = """You are a helpful resume assistant. You have access to the candidate's full resume,
-their complete professional profile with all accomplishments, and the target job posting.
+# ---------------------------------------------------------------------------
+# Brainstorm path — opinionated free-prose advisor with optional web search
+# and action-card emission. See BRAINSTORM_SYSTEM in resume_prompts.py.
+# ---------------------------------------------------------------------------
 
-Answer questions about:
-- How well the resume targets the job
-- Which accomplishments could be swapped in/out
-- What's missing or could be strengthened
-- Strategy for tailoring specific sections
+_WEB_SEARCH_ROUTER_SYSTEM = """\
+You decide whether a brainstorm message about a job application needs \
+LIVE WEB SEARCH to answer well.
 
-Be concise and specific. Reference specific accomplishments by name when relevant."""
+Output ONLY "yes" or "no".
 
-    resume_text = json.dumps(state["resume_json"], indent=2)
+Say YES if the answer plausibly requires CURRENT-WORLD info the assistant \
+wouldn't already have:
+- who specifically to message at a company (team members, recruiters)
+- recent posts, news, or product changes from a company
+- current job posting language we'd want to mirror
+- whether a specific person still works somewhere
+- any "look it up" / "search for" / "find me" request
 
-    # Include recent conversation for context
-    history_text = ""
-    for msg in state["chat_history"][-6:]:
-        history_text += f"{msg['role'].upper()}: {msg['content']}\n"
+Say NO when the answer is purely about the user's own resume, profile, \
+voice, or strategy — even if it references a company name. Examples:
+- "is my third bullet on target for Anthropic?" -> no
+- "punchier version of this summary" -> no
+- "score this resume out of 100" -> no
+- "rewrite my MUSE bullet" -> no
 
-    # Include strategic plan context if available
-    plan_ctx = ""
+When in doubt say NO; web search costs latency and tokens."""
+
+
+async def _should_use_web_search_llm(
+    user_message: str, chat_history: list[dict] | None = None
+) -> bool:
+    """Tiny-model router replacing the keyword heuristic.
+
+    Uses EXTRACTION_MODEL (cheap/fast). Conservative bias: returns False on
+    any error, so a flaky router never silently blocks the brainstorm path.
+    """
+    msg = (user_message or "").strip()
+    if not msg:
+        return False
+    # One-turn context — last 2 messages help disambiguate follow-ups like
+    # "who else?" that depend on the prior message.
+    recent = ""
+    for m in (chat_history or [])[-2:]:
+        content = (m.get("content") or "").strip()
+        if content:
+            recent += f"{m.get('role', '?')}: {content[:200]}\n"
+    user_content = (
+        (f"Recent context:\n{recent}\n" if recent else "")
+        + f"Latest message: {msg}\n\nyes or no:"
+    )
+    try:
+        client = get_openai_client()
+        # gpt-5-mini and similar reasoning models (a) reject custom
+        # temperature and (b) consume reasoning tokens before emitting
+        # content. 128 leaves headroom for both reasoning and the
+        # one-token yes/no answer.
+        resp = await client.chat.completions.create(
+            model=EXTRACTION_MODEL,
+            max_completion_tokens=256,
+            messages=[
+                {"role": "system", "content": _WEB_SEARCH_ROUTER_SYSTEM},
+                {"role": "user", "content": user_content},
+            ],
+        )
+        answer = (resp.choices[0].message.content or "").strip().lower()
+        decision = answer.startswith("y")
+        logger.info("web-search router: %r -> %s (%r)", msg[:60], decision, answer[:30])
+        return decision
+    except Exception:
+        logger.exception("web-search router LLM call failed; defaulting to no")
+        return False
+
+
+def _company_hint(state: dict) -> str:
+    """Best-effort extraction of the company name from cached research or the
+    job context's leading lines. Used to disambiguate search queries."""
+    research = state.get("company_research") or {}
+    if isinstance(research, dict):
+        for key in ("company", "company_name", "name"):
+            v = research.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()
+    # Fall back to the first line of job_context that looks like "Company: X"
+    job_text = state.get("job_context") or ""
+    for line in job_text.splitlines()[:8]:
+        line = line.strip()
+        if line.lower().startswith("company:"):
+            return line.split(":", 1)[1].strip()
+    return ""
+
+
+async def _fetch_web_search_context(state: dict) -> str:
+    """Run one web search and format results as a block to inject into the
+    brainstorm user content. Returns empty string on failure or no result.
+
+    Uses services.web_search_llm.llm_web_search, which defaults to OpenAI's
+    Responses API + `web_search` tool when settings.llm_provider is "openai".
+    """
+    try:
+        from app.services.web_search_llm import llm_web_search
+    except Exception:
+        logger.exception("brainstorm: web_search_llm import failed")
+        return ""
+
+    query = state["user_message"]
+    company = _company_hint(state)
+    if company and company.lower() not in query.lower():
+        query = f"{company}: {query}"
+
+    try:
+        result = await llm_web_search(query, num_results=5)
+    except Exception:
+        logger.exception("brainstorm: llm_web_search call failed")
+        return ""
+
+    # WebSearchResult.answer (NOT .text) is the prose synthesis; .citations
+    # is a list of Citation(title, url, snippet). See web_search_llm.py.
+    answer = (getattr(result, "answer", "") or "").strip()
+    if not answer:
+        return ""
+
+    citation_lines: list[str] = []
+    for c in (getattr(result, "citations", None) or [])[:8]:
+        url = getattr(c, "url", "") or ""
+        title = getattr(c, "title", "") or url
+        if url:
+            citation_lines.append(f"- {title}: {url}")
+    citations_block = ("\n\nSources:\n" + "\n".join(citation_lines)) if citation_lines else ""
+
+    return (
+        "\n<web_search_results>\n"
+        f"Query: {query}\n\n"
+        f"{answer}{citations_block}\n"
+        "</web_search_results>\n"
+    )
+
+
+async def _fetch_exemplars_block(
+    state: dict, *, section_path: str | None, instruction: str
+) -> str:
+    """Pull the personalization "convergence record" block from
+    `edit_exemplars`. Empty string when there are no exemplars yet, or when
+    the lookup fails (non-fatal — handlers still run).
+
+    Gated by the EXEMPLARS_DISABLED env var so we can A/B without redeploys.
+    """
+    import os
+
+    if os.environ.get("EXEMPLARS_DISABLED", "").strip().lower() in {"1", "true", "yes"}:
+        return ""
+
+    session_factory = state.get("_session_factory")
+    job_id = state.get("_job_id")
+    if not session_factory or not job_id:
+        return ""
+
+    try:
+        from app.services import edit_exemplars_service
+
+        async with session_factory() as session:
+            block = await edit_exemplars_service.retrieve_for_prompt(
+                session,
+                job_id=job_id,
+                section_path=section_path,
+                instruction=instruction or "",
+            )
+        return f"\n{block}\n" if block else ""
+    except Exception:
+        logger.exception("edit_exemplars retrieval failed (non-fatal)")
+        return ""
+
+
+_ACTION_CARD_FENCE = re.compile(r"```action_card\s*\n(.*?)\n```", re.DOTALL)
+
+
+def derive_card_kind(section_path: str, proposed_value: str = "") -> str:
+    """Infer the action_card `kind` from the section_path shape.
+
+    The model used to be asked for `kind` directly, which led to silly
+    mismatches like emitting `add_bullet` for a `experience.X.bullets.N`
+    path that's actually a single-bullet rewrite. Backend-derived is
+    less error-prone and saves prompt tokens.
+
+    Heuristic:
+      - "selected_research.<N>"            -> replace_selected_research
+      - "experience.<X>.bullets" (exact)   -> rewrite_section (whole array)
+                                             OR add_bullet if proposed_value
+                                             looks like a single bullet
+      - "experience.<X>.bullets.<N>(.text)?" -> rewrite_section
+      - everything else                    -> rewrite_section
+    """
+    sr_match = re.fullmatch(r"selected_research\.\d+", section_path or "")
+    if sr_match:
+        return "replace_selected_research"
+
+    bullets_arr_match = re.fullmatch(r"experience\.[^.]+\.bullets", section_path or "")
+    if bullets_arr_match:
+        # If the proposed_value parses to a single bullet object (not an
+        # array), treat as an append. Otherwise rewrite the whole array.
+        try:
+            parsed = json.loads(proposed_value) if proposed_value else None
+        except (json.JSONDecodeError, TypeError):
+            parsed = None
+        if isinstance(parsed, dict) and "text" in parsed:
+            return "add_bullet"
+        if isinstance(parsed, str) and parsed.strip():
+            return "add_bullet"
+        return "rewrite_section"
+
+    return "rewrite_section"
+
+
+def _extract_action_cards(text: str) -> tuple[str, list[dict]]:
+    """Pull fenced action_card JSON blocks out of the brainstorm response.
+
+    Replaces each fence with a `[[ACTION_CARD:<index>]]` marker so the
+    frontend can render the card inline. Malformed blocks are dropped with
+    a warning. Returns (text_with_markers, cards).
+
+    `kind` is derived backend-side from `section_path`; any model-supplied
+    `kind` is ignored. Required fields are now just `section_path` and
+    `proposed_value`.
+    """
+    cards: list[dict] = []
+
+    def repl(match: re.Match) -> str:
+        raw = match.group(1).strip()
+        try:
+            card = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("brainstorm: dropping invalid action_card JSON: %r", raw[:200])
+            return ""
+        if not isinstance(card, dict):
+            logger.warning("brainstorm: action_card not an object: %r", card)
+            return ""
+        section_path = card.get("section_path")
+        if not section_path or not isinstance(section_path, str):
+            logger.warning(
+                "brainstorm: action_card missing section_path: %r", card
+            )
+            return ""
+        proposed_value = card.get("proposed_value")
+        if proposed_value is None:
+            logger.warning(
+                "brainstorm: action_card missing proposed_value: %r", card
+            )
+            return ""
+        # Coerce proposed_value to a string for downstream storage.
+        if not isinstance(proposed_value, str):
+            try:
+                proposed_value = json.dumps(proposed_value)
+            except (TypeError, ValueError):
+                proposed_value = str(proposed_value)
+            card["proposed_value"] = proposed_value
+        # Always derive kind backend-side — overrides any model-supplied
+        # value so we never trust a hallucinated kind.
+        card["kind"] = derive_card_kind(section_path, proposed_value)
+        idx = len(cards)
+        cards.append(card)
+        return f"[[ACTION_CARD:{idx}]]"
+
+    cleaned = _ACTION_CARD_FENCE.sub(repl, text)
+    # Collapse 3+ consecutive newlines to 2, since dropped fences leave gaps
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    return cleaned, cards
+
+
+async def brainstorm(state: AgentState) -> dict:
+    """Strategic-thinking handler. Free prose, opinionated, full profile context.
+
+    Differs from `edit_section` and `answer_question` by:
+    - Using BRAINSTORM_SYSTEM (no VOICE_RULES, no JSON schema).
+    - Temperature 0.7 instead of 0.3–0.5.
+    - Full chat history (last 30) instead of last 6.
+    - Full profile_text (every accomplishment) instead of focused slice.
+    - Optional one-shot OpenAI web_search injection when the message asks
+      about current state (team members, recent posts, etc.).
+    - Returning structured `_action_cards` parsed from fenced blocks in the
+      prose; the router persists them and emits SSE events.
+    """
+    user_msg = state["user_message"]
+    chat_history = state.get("chat_history") or []
+
+    # Scoped-edit mode triggers ONLY when the classifier explicitly picked
+    # scoped_edit (a clear single-section edit directive). A section being
+    # anchored via click is just a focus *hint* — when the user asks
+    # "change the others" or "what's wrong with this resume?" the classifier
+    # picks brainstorm and we let it run unscoped so it can emit multiple
+    # cards across sections.
+    scoped_path = state.get("target_section_path") or state.get("section_context") or None
+    is_scoped_edit = state.get("intent") == "scoped_edit"
+    scoped_block = ""
+    if is_scoped_edit and scoped_path:
+        scoped_block = (
+            f"\n## Scoped edit on section: {scoped_path}\n"
+            "The user wants a change to this section. Emit one action_card "
+            "targeting this section_path. Multiple cards on the same section "
+            "are fine if the user asked for variants. Keep the prose tight "
+            "(two paragraphs max).\n"
+        )
+    elif is_scoped_edit:
+        # Classifier picked scoped_edit but the user didn't click a section
+        # — they implied one in their message ("rewrite my MUSE bullet").
+        # Let the model infer the section and emit a card with that path.
+        scoped_block = (
+            "\n## Scoped edit on a single section\n"
+            "The user is asking for a change to ONE section but didn't "
+            "click it explicitly. Read the message, identify the section "
+            "(from the resume JSON keys), and emit an action_card with the "
+            "correct section_path.\n"
+        )
+
+    web_search_block = ""
+    if await _should_use_web_search_llm(user_msg, chat_history):
+        web_search_block = await _fetch_web_search_context(state)
+
+    exemplars_block = await _fetch_exemplars_block(
+        state, section_path=scoped_path, instruction=user_msg
+    )
+
+    resume_json_str = json.dumps(state["resume_json"], indent=2, default=str)
+
+    # Generous history budget — brainstorm needs to see the thread.
+    history_lines: list[str] = []
+    char_budget = 8000
+    used = 0
+    for msg in reversed(chat_history[-30:]):
+        role = "Assistant" if msg.get("role") == "assistant" else "User"
+        content = (msg.get("content") or "").strip()
+        if not content:
+            continue
+        line = f"{role}: {content}"
+        if used + len(line) + 2 > char_budget:
+            break
+        history_lines.insert(0, line)
+        used += len(line) + 2
+    history_text = "\n\n".join(history_lines)
+
     plan = state.get("strategic_plan") or {}
+    plan_ctx = ""
     if plan.get("core_argument"):
-        plan_ctx = f"\n## Resume Strategy\nCore argument: {plan['core_argument']}\nTone: {plan.get('tone', '?')}\n"
+        plan_ctx = (
+            "\n## Resume strategy for this role\n"
+            f"Core argument: {plan['core_argument']}\n"
+            f"Tone: {plan.get('tone', '?')}\n"
+        )
 
-    user_content = f"""## Current Resume (JSON)
-{resume_text}
+    user_content_parts = [
+        "## Current tailored resume (JSON)\n",
+        f"```json\n{resume_json_str}\n```\n",
+        "\n## Job posting\n",
+        state.get("job_context", ""),
+        "\n",
+        _format_research_context(state),
+        plan_ctx,
+        "\n## Full profile & accomplishments (the source of truth)\n",
+        state.get("profile_text", ""),
+        "\n",
+        exemplars_block,
+        web_search_block,
+        scoped_block,
+        f"\n## Conversation history\n{history_text}\n" if history_text else "",
+        f"\n## Latest user message\n{user_msg}\n",
+    ]
+    user_content = "".join(p for p in user_content_parts if p)
 
-## Full Profile & Accomplishments
-{state["profile_text"]}
+    logger.info(
+        "brainstorm: prompt_chars=%d (scoped=%s, web_search=%s, exemplars=%s, history_msgs=%d)",
+        len(user_content),
+        bool(scoped_block),
+        bool(web_search_block),
+        bool(exemplars_block),
+        len(history_lines),
+    )
 
-## Target Job Posting
-{state["job_context"]}
-{plan_ctx}
-## Conversation History
-{history_text}
+    response_text = await _call_openai(
+        BRAINSTORM_SYSTEM, user_content, max_tokens=4000, temperature=0.7
+    )
 
-## Current Question
-{state["user_message"]}"""
+    cleaned_text, action_cards = _extract_action_cards(response_text)
 
-    logger.info("answer_question: calling LLM with %d char prompt", len(user_content))
-    response = await _call_openai(system, user_content, max_tokens=800, temperature=0.5)
-    logger.info("answer_question: LLM returned %d chars: %r", len(response), response[:100])
+    logger.info(
+        "brainstorm: response_chars=%d, action_cards=%d",
+        len(cleaned_text),
+        len(action_cards),
+    )
+
     return {
-        "response_text": response,
+        "response_text": cleaned_text,
         "updated_json": None,
         "updated_section_path": None,
+        "_action_cards": action_cards,
     }
 
 
@@ -924,7 +1366,11 @@ async def broad_rewrite(state: AgentState) -> dict:
 
 Apply the revision instruction. Output the COMPLETE updated resume as valid JSON."""
 
-    result = await _call_openai_json(system, user_content, max_tokens=4000)
+    # Resume JSON for a 2-page resume regularly exceeds 4K tokens. Give it
+    # enough headroom to finish the JSON output without truncation. Tracked
+    # by a pre-existing bug surfaced under the unified-chat classifier when
+    # broad_rewrite is picked more reliably than before.
+    result = await _call_openai_json(system, user_content, max_tokens=8000)
     return {
         "updated_json": result,
         "updated_section_path": None,
@@ -962,46 +1408,41 @@ Output ONLY valid JSON (no fences):
     }
 
 
-async def reject_multiple(state: AgentState) -> dict:
-    """Politely reject multi-change requests."""
-    return {
-        "response_text": (
-            "I can handle one change at a time for accuracy. "
-            "Which change would you like me to make first?"
-        ),
-        "updated_json": None,
-        "updated_section_path": None,
-    }
-
-
 # ---------------------------------------------------------------------------
 # Graph construction
 # ---------------------------------------------------------------------------
 
 
-def _route_after_context_check(state: AgentState) -> str:
-    """Conditional edge after check_section_context."""
-    if state.get("section_context"):
-        return "edit_section"
-    return "route_intent"
-
-
 def _route_after_intent(state: AgentState) -> str:
-    """Conditional edge after route_intent."""
-    intent = state.get("intent", "make_edit")
-    if intent == "make_edit":
-        return "identify_section"
-    elif intent == "ask_question":
-        return "answer_question"
-    elif intent == "broad_rewrite":
+    """Conditional edge after route_intent.
+
+    Unified-chat routing:
+      - scoped_edit  -> brainstorm handler (which produces a card targeting
+        the anchored section; the user accepts via Yes to commit)
+      - quick_edit   -> edit_section handler (commits immediately, bypasses
+        the card; section path comes from section_context or is inferred by
+        identify_section)
+      - broad_rewrite, brainstorm, remember_preference, proofread -> as before
+    """
+    intent = state.get("intent") or "brainstorm"
+    if intent == "scoped_edit":
+        # Brainstorm w/ section anchor; emits a single action_card for the
+        # section, the user accepts via Yes to commit verbatim.
+        return "brainstorm"
+    if intent == "quick_edit":
+        # Direct-commit path. If section_context is set, edit_section uses
+        # it; otherwise identify_section runs first to pick the target.
+        return "identify_section" if not state.get("target_section_path") else "edit_section"
+    if intent == "brainstorm":
+        return "brainstorm"
+    if intent == "broad_rewrite":
         return "broad_rewrite"
-    elif intent == "multiple_changes":
-        return "reject_multiple"
-    elif intent == "remember_preference":
+    if intent == "remember_preference":
         return "save_preference"
-    elif intent == "proofread":
+    if intent == "proofread":
         return "proofread"
-    return "identify_section"
+    # Defensive fallback
+    return "brainstorm"
 
 
 def build_resume_agent_graph() -> StateGraph:
@@ -1013,47 +1454,34 @@ def build_resume_agent_graph() -> StateGraph:
     graph.add_node("route_intent", route_intent)
     graph.add_node("identify_section", identify_section)
     graph.add_node("edit_section", edit_section)
-    graph.add_node("answer_question", answer_question)
+    graph.add_node("brainstorm", brainstorm)
     graph.add_node("broad_rewrite", broad_rewrite)
-    graph.add_node("reject_multiple", reject_multiple)
     graph.add_node("save_preference", save_preference)
     graph.add_node("proofread", proofread)
 
-    # Set entry point
+    # Entry: always annotate section context, then route.
     graph.set_entry_point("check_section_context")
+    graph.add_edge("check_section_context", "route_intent")
 
-    # Conditional edges from check_section_context
-    graph.add_conditional_edges(
-        "check_section_context",
-        _route_after_context_check,
-        {
-            "edit_section": "edit_section",
-            "route_intent": "route_intent",
-        },
-    )
-
-    # Conditional edges from route_intent
     graph.add_conditional_edges(
         "route_intent",
         _route_after_intent,
         {
             "identify_section": "identify_section",
-            "answer_question": "answer_question",
+            "edit_section": "edit_section",
+            "brainstorm": "brainstorm",
             "broad_rewrite": "broad_rewrite",
-            "reject_multiple": "reject_multiple",
             "save_preference": "save_preference",
             "proofread": "proofread",
         },
     )
 
-    # identify_section -> edit_section
     graph.add_edge("identify_section", "edit_section")
 
     # Terminal nodes -> END
     graph.add_edge("edit_section", END)
-    graph.add_edge("answer_question", END)
+    graph.add_edge("brainstorm", END)
     graph.add_edge("broad_rewrite", END)
-    graph.add_edge("reject_multiple", END)
     graph.add_edge("save_preference", END)
     graph.add_edge("proofread", END)
 
