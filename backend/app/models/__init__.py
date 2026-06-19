@@ -1,11 +1,12 @@
 from app.models.app_settings import AppSetting
 from app.models.ats_learning import AtsDomainCache, AtsLearnedPattern
 from app.models.base import Base
-from app.models.chat import ChatMessage
+from app.models.chat import ChatActionCard, ChatMessage
 from app.models.companies import Company, ScrapeRun
 from app.models.content_memory import ContentMemory
 from app.models.discovered_companies import DiscoveredCompany
 from app.models.documents import ApplicationRequirements, DocType, Document
+from app.models.edit_exemplars import EditExemplar
 from app.models.jobs import (
     Job,
     JobSearchProfile,
@@ -24,6 +25,7 @@ __all__ = [
     "AtsDomainCache",
     "AtsLearnedPattern",
     "Base",
+    "ChatActionCard",
     "ChatMessage",
     "Company",
     "ScrapeRun",
@@ -41,6 +43,7 @@ __all__ = [
     "ApplicationRequirements",
     "Document",
     "DocType",
+    "EditExemplar",
     "UserProfile",
     "WritingMemory",
 ]

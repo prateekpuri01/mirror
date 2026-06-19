@@ -1,4 +1,5 @@
 import {
+  ActionCardRead,
   ChatMessageRead,
   CompaniesParams,
   CompanyListResponse,
@@ -342,6 +343,37 @@ export async function clearChat(jobId: string): Promise<{ deleted: number }> {
   return apiFetch<{ deleted: number }>(`/api/jobs/${jobId}/chat`, {
     method: "DELETE",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Action cards (brainstorm)
+// ---------------------------------------------------------------------------
+
+export async function fetchActionCards(jobId: string): Promise<ActionCardRead[]> {
+  return apiFetch<ActionCardRead[]>(`/api/jobs/${jobId}/chat/action_cards`);
+}
+
+export interface ApplyActionCardResponse {
+  id: string;
+  status: "applied";
+  section_path: string;
+  new_value: unknown;
+}
+
+export async function applyActionCard(cardId: string): Promise<ApplyActionCardResponse> {
+  return apiFetch<ApplyActionCardResponse>(
+    `/api/chat/action_cards/${cardId}/apply`,
+    { method: "POST" },
+  );
+}
+
+export async function dismissActionCard(
+  cardId: string,
+): Promise<{ id: string; status: "dismissed" }> {
+  return apiFetch<{ id: string; status: "dismissed" }>(
+    `/api/chat/action_cards/${cardId}/dismiss`,
+    { method: "POST" },
+  );
 }
 
 // ---------------------------------------------------------------------------

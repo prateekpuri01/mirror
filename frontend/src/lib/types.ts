@@ -171,6 +171,8 @@ export interface ResumeJson {
   tagline: string;
   summary: string;
   selected_research: ResearchEntry[];
+  selected_research_section_title?: string;
+  role_lane?: string;
   experience: Record<string, ExperienceBlock>;
   publications: { citation: string; publication_id?: string }[];
   technical_skills: {
@@ -205,6 +207,23 @@ export interface ChatMessageRead {
   content: string;
   section_context: string | null;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Action cards (brainstorm-emitted edit suggestions)
+// ---------------------------------------------------------------------------
+
+export type ActionCardStatus = "pending" | "applied" | "dismissed";
+
+export interface ActionCardRead {
+  id: string;
+  message_id: string;
+  card_index: number;
+  kind: string; // "rewrite_section" | "replace_selected_research" | "add_bullet" | "remove_section"
+  section_path: string | null;
+  rationale: string | null;
+  proposed_value: string;
+  status: ActionCardStatus;
 }
 
 export interface JobUpdate {

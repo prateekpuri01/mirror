@@ -350,7 +350,7 @@ export function ResumeEditor({
 
       case "selected_research": return (resumeJson.selected_research?.length > 0 || onAddResearch) ? (
         <>
-          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>Selected Research</SectionHeader>
+          <SectionHeader colors={previewColors} showUnderline={showSectionUnderline}>{resumeJson.selected_research_section_title || "Selected Research"}</SectionHeader>
           <div className="space-y-2">
             {(resumeJson.selected_research || []).map((entry, i) => {
               const currentIds = new Set(resumeJson.selected_research.map((r) => r.accomplishment_id));

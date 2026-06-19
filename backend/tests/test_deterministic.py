@@ -840,29 +840,43 @@ class TestFocusedProfileForEdit:
             },
         }
 
-    def test_research_path_sends_only_referenced_accomplishment(self, profile, resume):
+    def test_research_path_sends_focused_accomplishment_plus_oneliners(self, profile, resume):
         out = _focused_profile_for_edit(
             "selected_research.0.description",
             resume,
             profile,
         )
+        # Primary anchor accomplishment is included in full.
         assert "rand-muse" in out
         assert "MUSE" in out
         assert "Built a thing" in out
-        # Other accomplishments NOT included
-        assert "DARPA CKC" not in out
-        assert "Fraud detection" not in out
+        # Other accomplishments appear only as one-liners in the
+        # "Other available accomplishments" footer — so the model can pull
+        # from them if the instruction asks, but they are not the primary
+        # source for this edit.
+        assert "Other available accomplishments" in out
+        assert "DARPA CKC" in out
+        assert "Fraud detection" in out
+        # Verify they're one-liners, not full data dumps.
+        assert "Different work." in out  # impact summary one-liner
+        # The full-form 'So what' / 'Metrics' headers should only appear once
+        # (for the primary slice), not for the other accomplishments.
+        assert out.count("So what:") == 1
 
-    def test_bullet_path_sends_all_bullet_accomplishments(self, profile, resume):
+    def test_bullet_path_includes_all_bullet_accs_plus_oneliners(self, profile, resume):
         out = _focused_profile_for_edit(
             "experience.rand_corporation.bullets.0.text",
             resume,
             profile,
         )
+        # Both accomplishments bound to this bullet appear in full.
         assert "MUSE" in out
         assert "DARPA CKC" in out
-        # Unrelated finra accomplishment NOT included
-        assert "Fraud detection" not in out
+        # Unrelated finra accomplishment is now included as a one-liner
+        # (intentional, per brainstorm-mode plan — gives the model a
+        # shortlist to pull from if the instruction implies it).
+        assert "Other available accomplishments" in out
+        assert "Fraud detection" in out
 
     def test_skills_path_returns_whitelist(self, profile, resume):
         out = _focused_profile_for_edit(

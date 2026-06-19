@@ -185,7 +185,8 @@ def _build_markdown(resume_data: dict, profile_data: dict | None = None) -> str:
     # Selected Research
     research = resume_data.get("selected_research", [])
     if research:
-        lines.append("## Selected Research\n")
+        section_title = resume_data.get("selected_research_section_title") or "Selected Research"
+        lines.append(f"## {section_title}\n")
         for entry in research:
             label = entry.get("category_label", "")
             title = entry.get("title", "")
@@ -505,6 +506,10 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
 
         # Call LLM with revision prompt
         logger.info("Revising resume for doc %s: %s", doc_id, instruction[:100])
+        # Strip section_order — LLM must not see or overwrite it. Copy first
+        # so .pop() doesn't mutate the caller's loaded dict (mirrors broad_rewrite).
+        current_resume = dict(current_resume)
+        saved_order = current_resume.pop("section_order", None)
         messages = build_revision_prompt(
             current_resume_json=json.dumps(current_resume, indent=2),
             instruction=instruction,
@@ -515,6 +520,9 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
             memory_text=memory_text,
         )
         resume_data = await _call_llm(RESUME_REVISION_SYSTEM, messages)
+        # Restore section_order onto the result
+        if saved_order is not None:
+            resume_data["section_order"] = saved_order
         resume_data = normalize_experience_order(resume_data, profile.data)
 
         # Regenerate markdown

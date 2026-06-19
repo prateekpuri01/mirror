@@ -1009,8 +1009,13 @@ def _render_summary(ctx: BuildContext, doc, summary: str) -> None:
     _set_run(ctx, run, size=ctx.size.body)
 
 
-def _render_selected_research(ctx: BuildContext, doc, research_entries: list) -> None:
-    _render_section_header(ctx, doc, "Selected Research")
+def _render_selected_research(
+    ctx: BuildContext,
+    doc,
+    research_entries: list,
+    section_title: str = "Selected Research",
+) -> None:
+    _render_section_header(ctx, doc, section_title)
     for entry in research_entries:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(4)
@@ -1195,27 +1200,100 @@ def _render_awards(ctx: BuildContext, doc, awards_text: str) -> None:
 # Layout dispatch
 # ---------------------------------------------------------------------------
 
+LAYOUT_DEFAULT_ORDER: dict[str, list[str]] = {
+    "banner": [
+        "summary",
+        "selected_research",
+        "experience",
+        "publications",
+        "technical_skills",
+        "education",
+        "awards",
+    ],
+    "compact": [
+        "summary",
+        "selected_research",
+        "experience",
+        "publications",
+        "technical_skills",
+        "education",
+        "awards",
+    ],
+    "centered_clean": [
+        "summary",
+        "selected_research",
+        "experience",
+        "publications",
+        "technical_skills",
+        "education",
+        "awards",
+    ],
+    "timeline": [
+        "summary",
+        "experience_education",
+        "selected_research",
+        "technical_skills",
+        "publications",
+        "awards",
+    ],
+    "two_column": ["summary", "experience", "selected_research", "publications", "awards"],
+}
+"""Default section order per layout, used when a resume has no explicit
+``section_order``.
+
+Note the ``timeline`` layout intentionally omits a standalone ``education``
+section: education entries are folded into the combined
+``experience_education`` timeline render, so adding ``education`` here would
+duplicate them. Don't "fix" the apparent omission.
+"""
+
+
+def _render_ordered_sections(ctx, container, resume_data, profile_data, layout):
+    # Use `is None` rather than truthiness so an explicit empty list
+    # (section_order: []) renders nothing instead of silently falling back
+    # to the layout default.
+    order = resume_data.get("section_order")
+    if order is None:
+        order = LAYOUT_DEFAULT_ORDER.get(layout, LAYOUT_DEFAULT_ORDER["banner"])
+    for section_id in order:
+        if section_id == "summary":
+            _render_summary(ctx, container, resume_data.get("summary", ""))
+        elif section_id == "experience":
+            _render_experience(ctx, container, resume_data.get("experience", {}), profile_data)
+        elif section_id == "experience_education":
+            _render_experience_education_timeline(
+                ctx, container, resume_data.get("experience", {}), profile_data
+            )
+        elif section_id == "selected_research":
+            # Pass section_title so per-resume custom headers (e.g. "AI Evaluation")
+            # aren't silently dropped — main adds `selected_research_section_title`
+            # on top of the base resume schema.
+            _render_selected_research(
+                ctx,
+                container,
+                resume_data.get("selected_research", []),
+                section_title=resume_data.get(
+                    "selected_research_section_title", "Selected Research"
+                ),
+            )
+        elif section_id == "publications":
+            _render_publications(ctx, container, resume_data.get("publications", []))
+        elif section_id == "technical_skills":
+            _render_skills(ctx, container, resume_data.get("technical_skills", {}))
+        elif section_id == "education":
+            _render_education(ctx, container, profile_data)
+        elif section_id == "awards":
+            _render_awards(ctx, container, resume_data.get("awards", ""))
+
 
 def _build_layout_banner(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
     _render_banner_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
-    _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
-    _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
-    _render_publications(ctx, doc, resume_data.get("publications", []))
-    _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
-    _render_education(ctx, doc, profile_data)
-    _render_awards(ctx, doc, resume_data.get("awards", ""))
+    _render_ordered_sections(ctx, doc, resume_data, profile_data, "banner")
 
 
 def _build_layout_compact(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
     _render_compact_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
-    _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
-    _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
-    _render_publications(ctx, doc, resume_data.get("publications", []))
-    _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
-    _render_education(ctx, doc, profile_data)
-    _render_awards(ctx, doc, resume_data.get("awards", ""))
+    _render_ordered_sections(ctx, doc, resume_data, profile_data, "compact")
 
 
 def _build_layout_centered_clean(
@@ -1231,32 +1309,12 @@ def _build_layout_centered_clean(
     match the user's intent.
     """
     _render_centered_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
-    _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
-    _render_experience(ctx, doc, resume_data.get("experience", {}), profile_data)
-    _render_publications(ctx, doc, resume_data.get("publications", []))
-    _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
-    _render_education(ctx, doc, profile_data)
-    _render_awards(ctx, doc, resume_data.get("awards", ""))
+    _render_ordered_sections(ctx, doc, resume_data, profile_data, "centered_clean")
 
 
 def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
-    # V1 ordering: header → summary → combined timeline (work + education,
-    # sub-grouped on one continuous vertical rule) → research → skills →
-    # publications → awards. The separate Education render is intentionally
-    # dropped — education entries live in the timeline now.
     _render_timeline_designer_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
-    _render_summary(ctx, doc, resume_data.get("summary", ""))
-    _render_experience_education_timeline(
-        ctx,
-        doc,
-        resume_data.get("experience", {}),
-        profile_data,
-    )
-    _render_selected_research(ctx, doc, resume_data.get("selected_research", []))
-    _render_skills(ctx, doc, resume_data.get("technical_skills", {}))
-    _render_publications(ctx, doc, resume_data.get("publications", []))
-    _render_awards(ctx, doc, resume_data.get("awards", ""))
+    _render_ordered_sections(ctx, doc, resume_data, profile_data, "timeline")
 
 
 def _render_experience_education_timeline(
@@ -1702,11 +1760,7 @@ def _build_layout_two_column(ctx: BuildContext, doc, resume_data: dict, profile_
             ctx, run, font_name=ctx.font.body, size=ctx.size.body, color=ctx.color.dark, italic=True
         )
 
-    _render_summary(ctx, main_cell, resume_data.get("summary", ""))
-    _render_experience(ctx, main_cell, resume_data.get("experience", {}), profile_data)
-    _render_selected_research(ctx, main_cell, resume_data.get("selected_research", []))
-    _render_publications(ctx, main_cell, resume_data.get("publications", []))
-    _render_awards(ctx, main_cell, resume_data.get("awards", ""))
+    _render_ordered_sections(ctx, main_cell, resume_data, profile_data, "two_column")
 
 
 _LAYOUT_DISPATCH = {

@@ -66,6 +66,17 @@ logger = logging.getLogger(__name__)
 SKILL_BUCKETS = ("ai_systems", "data_science", "engineering")
 
 
+# Section heading for "Selected Research" varies by the lane the strategic plan
+# identifies. Anything the plan doesn't classify falls back to "Selected Research".
+SECTION_TITLE_BY_LANE: dict[str, str] = {
+    "evals_safety": "Selected AI Evaluation & Research Engineering Projects",
+    "human_data": "Selected Human-AI Systems & Evaluation Projects",
+    "applied_ai_eng": "Selected Applied AI Projects",
+    "research_engineer": "Selected Research Engineering Projects",
+    "generalist": "Selected Research",
+}
+
+
 # Trace logging — every leaf LLM call dumps its assembled system + user + response
 # to a flat directory so debugging "what did the agent see" becomes a file diff.
 _TRACE_ROOT = Path(os.environ.get("RESUME_TRACE_DIR", "/app/output/traces"))
@@ -202,21 +213,44 @@ async def run_pipeline(
 
     plan_research_lookup = _build_plan_research_lookup(plan)
 
-    research_tasks = [
-        _generate_research_entry(
-            call_llm=call_llm,
-            accomplishment=accomplishment_lookup[aid],
-            plan_text=plan_text,
-            plan_entry=plan_research_lookup.get(aid),
-            job_text=job_text,
-            grounding_rows=research_grounding.get(aid, []),
-            profile_data=profile_data,
-            writing_memory_text=writing_memory_text,
-            trace_id=trace_id,
-            stage_label=f"03_research_{aid}",
-        )
-        for aid in research_ids
-    ]
+    # Exemplars for research entries — fetched once, reused across the
+    # sequential research generation. The retrieval is entity_type-biased
+    # (research_description) so each entry sees past edits to similar prose.
+    research_exemplars_text = await _fetch_generation_exemplars(
+        session,
+        job.id,
+        section_path="selected_research.0.description",
+        instruction_hint=(
+            f"generate research entry for {getattr(job, 'company', '')} {getattr(job, 'title', '')}"
+        ),
+    )
+
+    # Research entries are generated SEQUENTIALLY so each later entry sees
+    # the prior entries as anti-redundancy context (and won't echo opening
+    # verbs or framings like "The hard part was..."). Skill buckets and the
+    # publications pick still run in parallel with the research sequence,
+    # so the only added latency is N-1 research round-trips (~20-30s).
+    async def _generate_research_sequence() -> list[dict]:
+        completed: list[dict] = []
+        for aid in research_ids:
+            entry = await _generate_research_entry(
+                call_llm=call_llm,
+                accomplishment=accomplishment_lookup[aid],
+                plan_text=plan_text,
+                plan_entry=plan_research_lookup.get(aid),
+                job_text=job_text,
+                grounding_rows=research_grounding.get(aid, []),
+                profile_data=profile_data,
+                writing_memory_text=writing_memory_text,
+                exemplars_text=research_exemplars_text,
+                trace_id=trace_id,
+                stage_label=f"03_research_{aid}",
+                prior_entries=list(completed),
+            )
+            if entry:
+                completed.append(entry)
+        return completed
+
     skill_tasks = [
         _generate_skill_bucket(
             call_llm=call_llm,
@@ -239,13 +273,12 @@ async def run_pipeline(
         trace_id=trace_id,
     )
 
-    research_results, skill_results, publications = await asyncio.gather(
-        asyncio.gather(*research_tasks, return_exceptions=False),
+    selected_research, skill_results, publications = await asyncio.gather(
+        _generate_research_sequence(),
         asyncio.gather(*skill_tasks, return_exceptions=False),
         publications_task,
     )
 
-    selected_research = [r for r in research_results if r]
     technical_skills = {
         bucket: text for bucket, text in zip(SKILL_BUCKETS, skill_results, strict=False) if text
     }
@@ -260,6 +293,22 @@ async def run_pipeline(
         entity_keys=employer_keys,
     )
 
+    # Exemplars per employer — bullets the user has converged on for THIS
+    # employer are highest signal, so we fetch one block per employer rather
+    # than sharing across the parallel tasks.
+    bullet_exemplars: dict[str, str] = {}
+    for anchor in employer_anchors:
+        emp_key = anchor["employer_key"]
+        bullet_exemplars[emp_key] = await _fetch_generation_exemplars(
+            session,
+            job.id,
+            section_path=f"experience.{emp_key}.bullets",
+            instruction_hint=(
+                f"generate bullets for {emp_key} for {getattr(job, 'company', '')} "
+                f"{getattr(job, 'title', '')}"
+            ),
+        )
+
     bullet_tasks = [
         _generate_bullet_set(
             call_llm=call_llm,
@@ -273,6 +322,7 @@ async def run_pipeline(
             grounding_rows=bullet_grounding.get(anchor["employer_key"], []),
             profile_data=profile_data,
             writing_memory_text=writing_memory_text,
+            exemplars_text=bullet_exemplars.get(anchor["employer_key"], ""),
             trace_id=trace_id,
             stage_label=f"04_bullets_{anchor['employer_key']}",
         )
@@ -378,6 +428,24 @@ async def run_pipeline(
         label="## Your past hand-tuned taglines",
     )
     grounding_text = "\n\n".join(b for b in (summary_grounding, tagline_grounding) if b)
+    # Fetch exemplars for both summary and tagline — same job, two section
+    # paths, concatenate. Exemplars carry our strongest voice signal.
+    summary_exemplars = await _fetch_generation_exemplars(
+        session,
+        job.id,
+        section_path="summary",
+        instruction_hint=f"generate summary for {getattr(job, 'company', '')} "
+        f"{getattr(job, 'title', '')}",
+    )
+    tagline_exemplars = await _fetch_generation_exemplars(
+        session,
+        job.id,
+        section_path="tagline",
+        instruction_hint=f"generate tagline for {getattr(job, 'company', '')} "
+        f"{getattr(job, 'title', '')}",
+    )
+    exemplars_text = "\n\n".join(b for b in (summary_exemplars, tagline_exemplars) if b)
+    grounding_text = _augment_with_exemplars(grounding_text, exemplars_text)
     grounding_text = _augment_with_writing_memory(grounding_text, writing_memory_text)
 
     assembled_draft = _format_assembled_draft(
@@ -393,11 +461,13 @@ async def run_pipeline(
         technical_skills=technical_skills,
         employer_label_map=employer_label_map,
     )
+    role_lane = (plan.get("role_lane") or "generalist").strip()
     summary_messages = build_summary_tagline_prompt(
         plan_text,
         assembled_draft,
         job_text,
         grounding_text=grounding_text,
+        role_lane=role_lane,
     )
     summary_result = await call_llm(
         SUMMARY_TAGLINE_SYSTEM,
@@ -412,10 +482,15 @@ async def run_pipeline(
     tagline = (summary_result.get("tagline") or "").strip()
 
     # ----- Assemble final content_json ------------------------------------
+    selected_research_section_title = SECTION_TITLE_BY_LANE.get(
+        role_lane, SECTION_TITLE_BY_LANE["generalist"]
+    )
     resume_data = {
         "tagline": tagline,
         "summary": summary,
         "selected_research": selected_research,
+        "selected_research_section_title": selected_research_section_title,
+        "role_lane": role_lane,
         "experience": experience,
         "publications": publications,
         "technical_skills": technical_skills,
@@ -445,11 +520,14 @@ async def _generate_research_entry(
     grounding_rows: list,
     profile_data: dict,
     writing_memory_text: str,
+    exemplars_text: str = "",
     trace_id: str | None = None,
     stage_label: str = "research_entry",
     critic_notes: str = "",
+    prior_entries: list[dict] | None = None,
 ) -> dict | None:
     grounding_text = format_grounding_block(grounding_rows, profile_data=profile_data)
+    grounding_text = _augment_with_exemplars(grounding_text, exemplars_text)
     grounding_text = _augment_with_writing_memory(grounding_text, writing_memory_text)
     messages = build_research_entry_v4_prompt(
         accomplishment,
@@ -458,6 +536,7 @@ async def _generate_research_entry(
         job_text,
         grounding_text=grounding_text,
         critic_notes=critic_notes,
+        prior_entries=prior_entries,
     )
     try:
         entry = await call_llm(
@@ -525,6 +604,7 @@ async def _generate_bullet_set(
     grounding_rows: list,
     profile_data: dict,
     writing_memory_text: str,
+    exemplars_text: str = "",
     trace_id: str | None = None,
     stage_label: str = "bullet_set",
     critic_notes: str = "",
@@ -545,6 +625,7 @@ async def _generate_bullet_set(
     plan_mapping = _find_plan_bullet_mapping(plan, employer_key_str)
 
     grounding_text = format_grounding_block(grounding_rows, profile_data=profile_data)
+    grounding_text = _augment_with_exemplars(grounding_text, exemplars_text)
     grounding_text = _augment_with_writing_memory(grounding_text, writing_memory_text)
 
     system = build_bullet_set_system(profile_data)
@@ -666,6 +747,10 @@ async def _run_refiner(
             accomplishment = accomplishment_lookup.get(aid)
             if not accomplishment:
                 continue
+            # When refining one research entry, feed the OTHER two as
+            # anti-redundancy context so the rewrite doesn't drift back into
+            # framings/phrasing chunks they already use.
+            other_entries = [e for j, e in enumerate(selected_research) if j != idx and e]
             tasks.append(
                 (
                     target,
@@ -682,6 +767,7 @@ async def _run_refiner(
                             trace_id=trace_id,
                             stage_label=f"06_refiner_research_{aid}",
                             critic_notes=notes,
+                            prior_entries=other_entries,
                         )
                     ),
                 )
@@ -992,3 +1078,44 @@ def _augment_with_writing_memory(grounding_text: str, writing_memory_text: str) 
     if grounding_text:
         return f"{grounding_text}\n\n{writing_memory_text}"
     return writing_memory_text
+
+
+def _augment_with_exemplars(grounding_text: str, exemplars_text: str) -> str:
+    """Prepend edit_exemplars convergence records above content_memory grounding.
+
+    Exemplars are the strongest voice signal we have — they're the user's
+    actual edits, not generic style rules. Putting them above the content
+    memory + writing memory blocks gives them visual primacy in the prompt.
+    """
+    if not exemplars_text:
+        return grounding_text
+    if grounding_text:
+        return f"{exemplars_text}\n\n{grounding_text}"
+    return exemplars_text
+
+
+async def _fetch_generation_exemplars(
+    session: AsyncSession,
+    job_id: Any,
+    *,
+    section_path: str,
+    instruction_hint: str,
+) -> str:
+    """Pull the exemplar block for a generation stage. Empty string when no
+    exemplars exist or on any failure (non-fatal — generation still runs).
+
+    Uses the same retrieve_for_prompt the chat agent uses, so a single
+    embedding model and a single retrieval policy are kept across surfaces.
+    """
+    try:
+        from app.services import edit_exemplars_service
+
+        return await edit_exemplars_service.retrieve_for_prompt(
+            session,
+            job_id=job_id,
+            section_path=section_path,
+            instruction=instruction_hint,
+        )
+    except Exception:
+        logger.exception("exemplar fetch failed for generation stage path=%s", section_path)
+        return ""
