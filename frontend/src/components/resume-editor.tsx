@@ -903,7 +903,12 @@ export function ResumeEditor({
 
   return (
     <div
-      className="text-sm leading-relaxed space-y-0"
+      // pl-6 reserves a left gutter for the per-section drag handles, which are
+      // absolutely positioned at -left-5. Without it the handles render past the
+      // editor card's padding and get clipped by its overflow-y-auto, so they
+      // never appear on hover. The padding shifts the tagline header and all
+      // sections together, so their left edges stay aligned.
+      className="text-sm leading-relaxed space-y-0 pl-6"
       style={{ fontFamily: previewFont }}
       onClick={() => onSelectSection(null)}
     >
