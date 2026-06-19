@@ -1,6 +1,22 @@
 "use client";
 
 import { Fragment, useMemo } from "react";
+import { GripVertical, X } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import {
   COLOR_PRESETS,
   FONT_PRESETS,
@@ -20,6 +36,9 @@ interface ResumePreviewProps {
   resume: ResumeJson;
   profile: PreviewProfile;
   isSample?: boolean;
+  // When provided, sections become draggable + hideable inline (design tab).
+  // Called with the new explicit section order on reorder/hide.
+  onSectionsChange?: (order: string[]) => void;
 }
 
 type Scheme = { accent: string; body: string; muted: string };
@@ -33,7 +52,13 @@ function employerToKey(employer: string): string {
     .replace(/\s+/g, "_");
 }
 
-export function ResumePreview({ design, resume, profile, isSample }: ResumePreviewProps) {
+export function ResumePreview({
+  design,
+  resume,
+  profile,
+  isSample,
+  onSectionsChange,
+}: ResumePreviewProps) {
   const scheme = useMemo(
     () => COLOR_PRESETS.find((c) => c.id === design.color_scheme) ?? COLOR_PRESETS[0],
     [design.color_scheme],
@@ -50,7 +75,25 @@ export function ResumePreview({ design, resume, profile, isSample }: ResumePrevi
   const layoutDefault = LAYOUT_DEFAULT_ORDER[design.layout] ?? LAYOUT_DEFAULT_ORDER.banner;
   const order = (design.section_order ?? layoutDefault).filter((id) => layoutDefault.includes(id));
 
-  const common = { resume, profile, scheme, fontFamily, isSample, order };
+  // Inline editing wiring (design tab). Dragging reorders; the per-section X
+  // hides (we keep at least one section visible).
+  const interactive = !!onSectionsChange;
+  const onReorder = (newOrder: string[]) => onSectionsChange?.(newOrder);
+  const onHide = (id: string) => {
+    if (order.length > 1) onSectionsChange?.(order.filter((s) => s !== id));
+  };
+
+  const common = {
+    resume,
+    profile,
+    scheme,
+    fontFamily,
+    isSample,
+    order,
+    interactive,
+    onReorder,
+    onHide,
+  };
 
   if (design.layout === "two_column") return <TwoColumnPreview {...common} />;
   if (design.layout === "banner") return <BannerPreview {...common} />;
@@ -287,17 +330,111 @@ function renderSection(id: string, ctx: SectionCtx): React.ReactNode {
   }
 }
 
+// Interactive (design-tab) wiring threaded through each layout to ResumeSections.
+type InteractiveProps = {
+  interactive?: boolean;
+  onReorder?: (order: string[]) => void;
+  onHide?: (id: string) => void;
+};
+
 function ResumeSections({
   order,
+  interactive,
+  onReorder,
+  onHide,
   ...ctx
-}: SectionCtx & { order: string[] }) {
+}: SectionCtx & { order: string[] } & InteractiveProps) {
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  if (!interactive) {
+    return (
+      <>
+        {order.map((id) => {
+          const node = renderSection(id, ctx);
+          return node ? <Fragment key={id}>{node}</Fragment> : null;
+        })}
+      </>
+    );
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      const oldIdx = order.indexOf(active.id as string);
+      const newIdx = order.indexOf(over.id as string);
+      onReorder?.(arrayMove(order, oldIdx, newIdx));
+    }
+  }
+
   return (
-    <>
-      {order.map((id) => {
-        const node = renderSection(id, ctx);
-        return node ? <Fragment key={id}>{node}</Fragment> : null;
-      })}
-    </>
+    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <SortableContext items={order} strategy={verticalListSortingStrategy}>
+        {order.map((id) => {
+          const node = renderSection(id, ctx);
+          if (!node) return null;
+          return (
+            <SortablePreviewSection
+              key={id}
+              id={id}
+              canHide={order.length > 1}
+              onHide={() => onHide?.(id)}
+            >
+              {node}
+            </SortablePreviewSection>
+          );
+        })}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+// A resume section wrapped with an inline drag handle (⠿, hover-revealed on the
+// left) and a hide (✕) button — mirrors the job resume tab's reorder UX so the
+// design tab edits the résumé directly rather than via a side list.
+function SortablePreviewSection({
+  id,
+  children,
+  canHide,
+  onHide,
+}: {
+  id: string;
+  children: React.ReactNode;
+  canHide: boolean;
+  onHide: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+      }}
+      className="group/sec relative"
+    >
+      <button
+        type="button"
+        aria-label="Drag to reorder section"
+        className="absolute -left-4 top-3 opacity-0 group-hover/sec:opacity-100 transition-opacity cursor-grab text-gray-400 hover:text-gray-600 touch-none z-10"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      {canHide && (
+        <button
+          type="button"
+          onClick={onHide}
+          aria-label="Hide section"
+          className="absolute right-0 top-3 opacity-0 group-hover/sec:opacity-100 transition-opacity text-gray-400 hover:text-red-600 rounded bg-white/80 z-10"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {children}
+    </div>
   );
 }
 
@@ -312,6 +449,9 @@ function BannerPreview({
   fontFamily,
   isSample,
   order,
+  interactive,
+  onReorder,
+  onHide,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
@@ -319,7 +459,7 @@ function BannerPreview({
   fontFamily: string;
   isSample?: boolean;
   order: string[];
-}) {
+} & InteractiveProps) {
   const personal = (profile.personal || {}) as { name?: string; email?: string; phone?: string; linkedin?: string };
   return (
     <div
@@ -344,6 +484,9 @@ function BannerPreview({
         <ContactLine personal={personal} color="#555" className="mb-1" />
         <ResumeSections
           order={order}
+          interactive={interactive}
+          onReorder={onReorder}
+          onHide={onHide}
           resume={resume}
           profile={profile}
           scheme={scheme}
@@ -365,6 +508,9 @@ function CompactPreview({
   fontFamily,
   isSample,
   order,
+  interactive,
+  onReorder,
+  onHide,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
@@ -372,7 +518,7 @@ function CompactPreview({
   fontFamily: string;
   isSample?: boolean;
   order: string[];
-}) {
+} & InteractiveProps) {
   const personal = (profile.personal || {}) as { name?: string; email?: string; phone?: string; linkedin?: string };
   return (
     <div
@@ -404,6 +550,9 @@ function CompactPreview({
 
       <ResumeSections
         order={order}
+        interactive={interactive}
+        onReorder={onReorder}
+        onHide={onHide}
         resume={resume}
         profile={profile}
         scheme={scheme}
@@ -424,6 +573,9 @@ function TimelinePreview({
   fontFamily,
   isSample,
   order,
+  interactive,
+  onReorder,
+  onHide,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
@@ -431,7 +583,7 @@ function TimelinePreview({
   fontFamily: string;
   isSample?: boolean;
   order: string[];
-}) {
+} & InteractiveProps) {
   const personal = (profile.personal || {}) as {
     name?: string;
     email?: string;
@@ -496,6 +648,9 @@ function TimelinePreview({
       <div className="px-6 pt-3 pb-5">
         <ResumeSections
           order={order}
+          interactive={interactive}
+          onReorder={onReorder}
+          onHide={onHide}
           resume={resume}
           profile={profile}
           scheme={scheme}
@@ -637,6 +792,9 @@ function TwoColumnPreview({
   fontFamily,
   isSample,
   order,
+  interactive,
+  onReorder,
+  onHide,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
@@ -644,7 +802,7 @@ function TwoColumnPreview({
   fontFamily: string;
   isSample?: boolean;
   order: string[];
-}) {
+} & InteractiveProps) {
   const personal = (profile.personal || {}) as {
     name?: string;
     email?: string;
@@ -735,6 +893,9 @@ function TwoColumnPreview({
               education live in the sidebar, so they're never in this order. */}
           <ResumeSections
             order={order}
+            interactive={interactive}
+            onReorder={onReorder}
+            onHide={onHide}
             resume={resume}
             profile={profile}
             scheme={scheme}
