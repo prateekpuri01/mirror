@@ -51,9 +51,7 @@ class EditExemplar(UUIDPrimaryKey, TimestampMixin, Base):
     # Updated on every iteration; always the latest user-accepted version.
     final_user_value: Mapped[str] = mapped_column(Text, nullable=False)
 
-    iteration_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="1"
-    )
+    iteration_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
     # JSONB array of user instructions, oldest-first. Each entry is
     # {"text": "...", "source": "action_card"|"edit_section"|"broad_rewrite",
     #  "at": "<iso timestamp>"}. The most-recent instruction's text drives

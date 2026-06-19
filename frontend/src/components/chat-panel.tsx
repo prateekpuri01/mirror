@@ -98,10 +98,15 @@ function AssistantMessageBody({
     return map;
   }, [cards]);
 
+  // Collect markers via matchAll so we never mutate the shared module-level
+  // regex's lastIndex — that carried state across calls (a re-entrancy bug)
+  // and the React Compiler flags the mutation. matchAll clones the regex.
+  const markerMatches = [...content.matchAll(ACTION_CARD_MARKER)];
+
   // If the message has no markers but does have cards (e.g. a re-render
   // after reload from DB where markers were already stripped), append the
   // cards at the bottom instead.
-  if (!ACTION_CARD_MARKER.test(content) && cards.length > 0) {
+  if (markerMatches.length === 0 && cards.length > 0) {
     return (
       <div>
         <div className="whitespace-pre-wrap">{content}</div>
@@ -119,18 +124,15 @@ function AssistantMessageBody({
     );
   }
 
-  // Reset lastIndex (regex above was consumed by `.test`).
-  ACTION_CARD_MARKER.lastIndex = 0;
-
   const segments: Array<{ type: "text" | "card"; value: string; idx?: number }> = [];
   let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = ACTION_CARD_MARKER.exec(content)) !== null) {
-    if (match.index > cursor) {
-      segments.push({ type: "text", value: content.slice(cursor, match.index) });
+  for (const match of markerMatches) {
+    const matchIndex = match.index ?? 0;
+    if (matchIndex > cursor) {
+      segments.push({ type: "text", value: content.slice(cursor, matchIndex) });
     }
     segments.push({ type: "card", value: match[0], idx: Number(match[1]) });
-    cursor = match.index + match[0].length;
+    cursor = matchIndex + match[0].length;
   }
   if (cursor < content.length) {
     segments.push({ type: "text", value: content.slice(cursor) });

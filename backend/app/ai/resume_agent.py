@@ -216,9 +216,7 @@ Output only the classification word."""
 
     section_hint = ""
     if has_section:
-        section_hint = (
-            f"\nClicked section: {state.get('target_section_path') or state.get('section_context')}\n"
-        )
+        section_hint = f"\nClicked section: {state.get('target_section_path') or state.get('section_context')}\n"
 
     user_content = f"""{section_note}Chat history:
 {history_text}{section_hint}
@@ -281,7 +279,7 @@ Section path:"""
     return {"target_section_path": path, "target_section_value": value}
 
 
-_EDIT_SECTION_SYSTEM_BASE = f"""\
+_EDIT_SECTION_SYSTEM_BASE = """\
 You edit ONE resume section per turn. Output the updated section value as JSON \
 matching the input shape (string→string, array→array, object→object).
 
@@ -415,9 +413,7 @@ def _focused_profile_for_edit(path: str, resume_json: dict, profile_data: dict) 
     return _format_compact_profile_for_summary(profile_data, resume_json)
 
 
-def _other_accomplishments_oneliners(
-    by_id: dict[str, dict], exclude_ids: set[str]
-) -> str:
+def _other_accomplishments_oneliners(by_id: dict[str, dict], exclude_ids: set[str]) -> str:
     """One-line summary of every accomplishment NOT in `exclude_ids`.
 
     Format: `[title] one-line impact (id=...)`. Kept tight so the model can
@@ -871,9 +867,8 @@ async def _should_use_web_search_llm(
         if content:
             recent += f"{m.get('role', '?')}: {content[:200]}\n"
     user_content = (
-        (f"Recent context:\n{recent}\n" if recent else "")
-        + f"Latest message: {msg}\n\nyes or no:"
-    )
+        f"Recent context:\n{recent}\n" if recent else ""
+    ) + f"Latest message: {msg}\n\nyes or no:"
     try:
         client = get_openai_client()
         # gpt-5-mini and similar reasoning models (a) reject custom
@@ -961,9 +956,7 @@ async def _fetch_web_search_context(state: dict) -> str:
     )
 
 
-async def _fetch_exemplars_block(
-    state: dict, *, section_path: str | None, instruction: str
-) -> str:
+async def _fetch_exemplars_block(state: dict, *, section_path: str | None, instruction: str) -> str:
     """Pull the personalization "convergence record" block from
     `edit_exemplars`. Empty string when there are no exemplars yet, or when
     the lookup fails (non-fatal — handlers still run).
@@ -1061,15 +1054,11 @@ def _extract_action_cards(text: str) -> tuple[str, list[dict]]:
             return ""
         section_path = card.get("section_path")
         if not section_path or not isinstance(section_path, str):
-            logger.warning(
-                "brainstorm: action_card missing section_path: %r", card
-            )
+            logger.warning("brainstorm: action_card missing section_path: %r", card)
             return ""
         proposed_value = card.get("proposed_value")
         if proposed_value is None:
-            logger.warning(
-                "brainstorm: action_card missing proposed_value: %r", card
-            )
+            logger.warning("brainstorm: action_card missing proposed_value: %r", card)
             return ""
         # Coerce proposed_value to a string for downstream storage.
         if not isinstance(proposed_value, str):

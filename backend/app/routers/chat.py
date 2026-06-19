@@ -501,9 +501,7 @@ async def send_chat_message(
 
 
 @router.get("/jobs/{job_id}/chat/action_cards")
-async def list_action_cards(
-    job_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def list_action_cards(job_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     """List action cards for a job (used by the frontend on reload so the
     inline cards re-appear next to their messages with current status)."""
     cards = await chat_service.list_action_cards_for_job(session, job_id)
@@ -525,9 +523,7 @@ async def list_action_cards(
 
 
 @router.post("/chat/action_cards/{card_id}/dismiss")
-async def dismiss_action_card(
-    card_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def dismiss_action_card(card_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     """Mark an action card as dismissed. No model call."""
     card = await chat_service.get_action_card(session, card_id)
     if card is None:
@@ -538,9 +534,7 @@ async def dismiss_action_card(
     return {"id": str(updated.id), "status": updated.status}
 
 
-def _resolve_card_value(
-    kind: str, proposed_value: str, current_value: object
-) -> object:
+def _resolve_card_value(kind: str, proposed_value: str, current_value: object) -> object:
     """Convert a card's `proposed_value` (always a string) into the value that
     will be written to the resume JSON, verbatim — no LLM polish.
 
@@ -628,22 +622,16 @@ def _resolve_card_value(
 
 
 @router.post("/chat/action_cards/{card_id}/apply")
-async def apply_action_card(
-    card_id: uuid.UUID, session: AsyncSession = Depends(get_session)
-):
+async def apply_action_card(card_id: uuid.UUID, session: AsyncSession = Depends(get_session)):
     """Apply an action card verbatim. No second LLM pass — what the user saw
     on the card is what lands in the resume."""
     card = await chat_service.get_action_card(session, card_id)
     if card is None:
         raise HTTPException(status_code=404, detail="Action card not found")
     if card.status != "pending":
-        raise HTTPException(
-            status_code=400, detail=f"Card is already {card.status}"
-        )
+        raise HTTPException(status_code=400, detail=f"Card is already {card.status}")
     if not card.section_path:
-        raise HTTPException(
-            status_code=400, detail="Card has no section_path; cannot apply"
-        )
+        raise HTTPException(status_code=400, detail="Card has no section_path; cannot apply")
 
     # Load job + resume doc.
     job_result = await session.execute(select(Job).where(Job.id == card.job_id))
@@ -652,9 +640,7 @@ async def apply_action_card(
         raise HTTPException(status_code=404, detail="Job not found")
 
     docs = await document_service.list_documents_for_job(session, card.job_id)
-    resume_doc = next(
-        (d for d in docs if d.doc_type == DocType.resume and d.content_json), None
-    )
+    resume_doc = next((d for d in docs if d.doc_type == DocType.resume and d.content_json), None)
     if resume_doc is None:
         raise HTTPException(
             status_code=400,
@@ -714,9 +700,7 @@ async def apply_action_card(
     # brainstorm to produce this card), with the card rationale as a fallback.
     try:
         msgs = await chat_service.list_messages(session, card.job_id)
-        last_user = next(
-            (m.content for m in reversed(msgs) if m.role == "user"), None
-        )
+        last_user = next((m.content for m in reversed(msgs) if m.role == "user"), None)
         instruction = last_user or (card.rationale or "")
         async with async_session() as exemplar_session:
             await edit_exemplars_service.upsert_from_edit(
