@@ -221,8 +221,7 @@ async def run_pipeline(
         job.id,
         section_path="selected_research.0.description",
         instruction_hint=(
-            f"generate research entry for {getattr(job, 'company', '')} "
-            f"{getattr(job, 'title', '')}"
+            f"generate research entry for {getattr(job, 'company', '')} {getattr(job, 'title', '')}"
         ),
     )
 
@@ -251,7 +250,6 @@ async def run_pipeline(
             if entry:
                 completed.append(entry)
         return completed
-
 
     skill_tasks = [
         _generate_skill_bucket(
@@ -1119,7 +1117,5 @@ async def _fetch_generation_exemplars(
             instruction=instruction_hint,
         )
     except Exception:
-        logger.exception(
-            "exemplar fetch failed for generation stage path=%s", section_path
-        )
+        logger.exception("exemplar fetch failed for generation stage path=%s", section_path)
         return ""

@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import desc, select
@@ -121,7 +121,7 @@ async def upsert_from_edit(
         return None
 
     entity_type = classify_entity(section_path)
-    now_iso = datetime.now(timezone.utc).isoformat()
+    now_iso = datetime.now(UTC).isoformat()
     new_instruction_entry = {"text": instruction, "source": source, "at": now_iso}
 
     # Embed the latest instruction. embed_batch returns a list; we want
@@ -220,7 +220,9 @@ def _format_exemplar(row: EditExemplar) -> str:
     """Render one exemplar as a markdown block for prompt injection."""
     instructions = row.instructions or []
     latest = (
-        instructions[-1].get("text", "") if instructions and isinstance(instructions[-1], dict) else ""
+        instructions[-1].get("text", "")
+        if instructions and isinstance(instructions[-1], dict)
+        else ""
     )
     original = _format_value_for_display(row.original_llm_value, row.entity_type)
     final = _format_value_for_display(row.final_user_value, row.entity_type)
@@ -228,7 +230,7 @@ def _format_exemplar(row: EditExemplar) -> str:
         f" (after {row.iteration_count} iterations)" if (row.iteration_count or 0) > 1 else ""
     )
     return (
-        f"### {row.section_path} · instruction: \"{latest}\"\n"
+        f'### {row.section_path} · instruction: "{latest}"\n'
         f"The model first produced:\n> {original}\n\n"
         f"You converged on{iter_note}:\n> {final}"
     )
@@ -257,9 +259,7 @@ async def retrieve_for_prompt(
     # Pull a working set. Bound it so we don't load the whole table on
     # large histories. 200 most-recent globally is plenty for cosine.
     result = await session.execute(
-        select(EditExemplar)
-        .order_by(desc(EditExemplar.updated_at))
-        .limit(200)
+        select(EditExemplar).order_by(desc(EditExemplar.updated_at)).limit(200)
     )
     rows: list[EditExemplar] = list(result.scalars().all())
     if not rows:
@@ -315,9 +315,7 @@ async def retrieve_for_prompt(
     return f"{header}\n{body}\n"
 
 
-async def list_all_for_job(
-    session: AsyncSession, job_id: uuid.UUID
-) -> list[EditExemplar]:
+async def list_all_for_job(session: AsyncSession, job_id: uuid.UUID) -> list[EditExemplar]:
     """Diagnostic helper — return every exemplar tied to a job."""
     result = await session.execute(
         select(EditExemplar)

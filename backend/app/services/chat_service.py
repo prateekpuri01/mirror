@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -98,12 +98,8 @@ async def list_action_cards_for_job(
     return list(result.scalars().all())
 
 
-async def get_action_card(
-    session: AsyncSession, card_id: uuid.UUID
-) -> ChatActionCard | None:
-    result = await session.execute(
-        select(ChatActionCard).where(ChatActionCard.id == card_id)
-    )
+async def get_action_card(session: AsyncSession, card_id: uuid.UUID) -> ChatActionCard | None:
+    result = await session.execute(select(ChatActionCard).where(ChatActionCard.id == card_id))
     return result.scalar_one_or_none()
 
 
@@ -115,7 +111,7 @@ async def mark_action_card(
     if card is None:
         return None
     card.status = status
-    card.resolved_at = datetime.now(timezone.utc)
+    card.resolved_at = datetime.now(UTC)
     await session.commit()
     await session.refresh(card)
     return card
