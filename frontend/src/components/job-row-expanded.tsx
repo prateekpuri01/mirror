@@ -17,6 +17,7 @@ import {
   draftSingleAnswer,
   fetchDocument,
   fetchRequirements,
+  addResearchEntry,
   generateBullet,
   generateResearchEntry,
   generateResume,
@@ -720,6 +721,31 @@ function ResumeTab({ job }: { job: Job }) {
     [doc, flashUpdatedPath]
   );
 
+  // Append a new research entry generated from an accomplishment.
+  const [addingResearch, setAddingResearch] = useState(false);
+  const handleAddResearch = useCallback(
+    async (accomplishmentId: string) => {
+      if (!doc) return;
+      setAddingResearch(true);
+      setGenError(null);
+      try {
+        const updated = await addResearchEntry(doc.id, accomplishmentId);
+        setDoc(updated);
+        if (updated.content_json) {
+          setResumeJson(updated.content_json as ResumeJson);
+          const newIndex = (updated.content_json as ResumeJson).selected_research?.length;
+          if (newIndex) flashUpdatedPath(`selected_research.${newIndex - 1}`);
+        }
+      } catch (err) {
+        setGenError(err instanceof Error ? err.message : "Failed to add research entry");
+      } finally {
+        setAddingResearch(false);
+      }
+    },
+    [doc, flashUpdatedPath]
+  );
+
+
   // Generate a bullet from an accomplishment for a specific employer.
   const handleGenerateBullet = useCallback(
     async (employerKey: string, accomplishmentId: string) => {
@@ -748,6 +774,58 @@ function ResumeTab({ job }: { job: Job }) {
   const handleProofread = useCallback(() => {
     chat.sendMessage("/proofread", null, doc?.id ?? null, "proofread");
   }, [chat, doc]);
+
+  // Tracks card IDs currently being applied/dismissed so the buttons disable
+  // optimistically.
+  const [busyCardIds, setBusyCardIds] = useState<Set<string>>(new Set());
+  const markCardBusy = useCallback((id: string, busy: boolean) => {
+    setBusyCardIds((prev) => {
+      const next = new Set(prev);
+      if (busy) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }, []);
+  const handleApplyCard = useCallback(
+    async (cardId: string) => {
+      markCardBusy(cardId, true);
+      try {
+        await chat.applyCard(cardId);
+      } finally {
+        markCardBusy(cardId, false);
+      }
+    },
+    [chat, markCardBusy],
+  );
+  const handleDismissCard = useCallback(
+    async (cardId: string) => {
+      markCardBusy(cardId, true);
+      try {
+        await chat.dismissCard(cardId);
+      } finally {
+        markCardBusy(cardId, false);
+      }
+    },
+    [chat, markCardBusy],
+  );
+  const handleRefineCard = useCallback(
+    (cardId: string, refinement: string) => {
+      // Find the card so we can scope the refinement to the right section.
+      const card = Object.values(chat.actionCardsByMessage)
+        .flat()
+        .find((c) => c.id === cardId);
+      const sectionPath = card?.section_path ?? null;
+      chat.dismissCard(cardId);
+      const prefix = card?.proposed_value
+        ? `Refining the previous suggestion. Original proposal:\n\n${card.proposed_value}\n\nMy refinement: `
+        : "";
+      // Refinement runs through the brainstorm path (no override = classifier
+      // picks; with a section anchor it'll naturally pick scoped_edit and
+      // emit a fresh card).
+      chat.sendMessage(`${prefix}${refinement}`, sectionPath, doc?.id ?? null, null);
+    },
+    [chat, doc],
+  );
 
   // Cached company research from the document, if any.
   const documentResearch =
@@ -909,6 +987,8 @@ function ResumeTab({ job }: { job: Job }) {
               onSectionEdit={handleSectionEdit}
               onSwapResearch={handleSwapResearch}
               swappingIndex={swappingIndex}
+              onAddResearch={handleAddResearch}
+              addingResearch={addingResearch}
               onGenerateBullet={handleGenerateBullet}
               generatingBullet={generatingBullet}
               workHistory={profile?.work_history}
@@ -923,18 +1003,24 @@ function ResumeTab({ job }: { job: Job }) {
           <div className="flex-[2] min-w-[280px] border rounded-lg bg-white max-h-[600px] flex flex-col">
             <ChatPanel
               messages={chat.messages}
+              actionCardsByMessage={chat.actionCardsByMessage}
               isSending={chat.isSending}
               isLoading={chat.isLoading}
               error={chat.error}
               disabled={!hasResume}
               selectedSection={selectedSection}
-              onSend={(content, sectionContext) =>
-                chat.sendMessage(content, sectionContext)
+              onSend={(content, sectionContext, intentOverride) =>
+                chat.sendMessage(content, sectionContext, doc?.id ?? null, intentOverride)
               }
               onProofread={handleProofread}
+              onApplyCard={handleApplyCard}
+              onDismissCard={handleDismissCard}
+              onRefineCard={handleRefineCard}
+              busyCardIds={busyCardIds}
               onClear={chat.clearMessages}
               onDeselectSection={() => setSelectedSection(null)}
               workHistory={profile?.work_history}
+              selectedResearchTitle={resumeJson?.selected_research_section_title}
             />
           </div>
         </div>

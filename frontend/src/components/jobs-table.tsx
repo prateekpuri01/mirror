@@ -321,6 +321,16 @@ export function JobsTable({
           </div>
         ),
       }),
+      columnHelper.accessor("scraped_at", {
+        header: "Added",
+        size: 100,
+        enableSorting: true,
+        cell: ({ getValue }) => (
+          <span className="text-sm text-muted-foreground">
+            {relativeDate(getValue())}
+          </span>
+        ),
+      }),
     ],
     []
   );
@@ -512,6 +522,14 @@ export function JobsTable({
             onClick={() => onPageChange(page + 1)}
           >
             Next
+          </button>
+          <button
+            className="h-8 px-3 rounded-md border text-sm disabled:opacity-50 hover:bg-muted/50"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(Math.max(1, totalPages))}
+            title="Jump to last page"
+          >
+            Last »
           </button>
         </div>
       </div>

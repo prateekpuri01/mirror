@@ -1,4 +1,5 @@
 import {
+  ActionCardRead,
   ChatMessageRead,
   CompaniesParams,
   CompanyListResponse,
@@ -257,6 +258,23 @@ export async function generateResearchEntry(
   return res.document;
 }
 
+export async function addResearchEntry(
+  docId: string,
+  accomplishmentId: string,
+): Promise<DocumentFull> {
+  // Mirrors generateResearchEntry but appends instead of swapping. The
+  // backend ignores `index` for this endpoint — passed as 0 to satisfy
+  // the shared ResearchEntryRequest schema.
+  const res = await apiFetch<{ entry: unknown; document: DocumentFull }>(
+    `/api/documents/${docId}/add-research-entry`,
+    {
+      method: "POST",
+      body: JSON.stringify({ accomplishment_id: accomplishmentId, index: 0 }),
+    },
+  );
+  return res.document;
+}
+
 export async function generateBullet(
   docId: string,
   employerKey: string,
@@ -325,6 +343,37 @@ export async function clearChat(jobId: string): Promise<{ deleted: number }> {
   return apiFetch<{ deleted: number }>(`/api/jobs/${jobId}/chat`, {
     method: "DELETE",
   });
+}
+
+// ---------------------------------------------------------------------------
+// Action cards (brainstorm)
+// ---------------------------------------------------------------------------
+
+export async function fetchActionCards(jobId: string): Promise<ActionCardRead[]> {
+  return apiFetch<ActionCardRead[]>(`/api/jobs/${jobId}/chat/action_cards`);
+}
+
+export interface ApplyActionCardResponse {
+  id: string;
+  status: "applied";
+  section_path: string;
+  new_value: unknown;
+}
+
+export async function applyActionCard(cardId: string): Promise<ApplyActionCardResponse> {
+  return apiFetch<ApplyActionCardResponse>(
+    `/api/chat/action_cards/${cardId}/apply`,
+    { method: "POST" },
+  );
+}
+
+export async function dismissActionCard(
+  cardId: string,
+): Promise<{ id: string; status: "dismissed" }> {
+  return apiFetch<{ id: string; status: "dismissed" }>(
+    `/api/chat/action_cards/${cardId}/dismiss`,
+    { method: "POST" },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -738,7 +787,7 @@ export async function generateKeywords(
 }
 
 export async function suggestProfileSection(
-  section: "domains" | "skills" | "target_roles",
+  section: "domains" | "skills" | "target_roles" | "looking_for",
 ): Promise<Record<string, unknown>> {
   return apiFetch("/api/profile/suggest", {
     method: "POST",

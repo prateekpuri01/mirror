@@ -38,7 +38,7 @@ export function EducationSection({ data, onChange }: EducationSectionProps) {
                 </label>
                 <input
                   type="text"
-                  value={edu.degree}
+                  value={edu.degree ?? ""}
                   onChange={(e) => update(i, "degree", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="Ph.D."
@@ -50,7 +50,7 @@ export function EducationSection({ data, onChange }: EducationSectionProps) {
                 </label>
                 <input
                   type="text"
-                  value={edu.field}
+                  value={edu.field ?? ""}
                   onChange={(e) => update(i, "field", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="Computer Science"
@@ -62,7 +62,7 @@ export function EducationSection({ data, onChange }: EducationSectionProps) {
                 </label>
                 <input
                   type="text"
-                  value={edu.institution}
+                  value={edu.institution ?? ""}
                   onChange={(e) => update(i, "institution", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="MIT"
@@ -74,7 +74,7 @@ export function EducationSection({ data, onChange }: EducationSectionProps) {
                 </label>
                 <input
                   type="text"
-                  value={edu.year}
+                  value={edu.year ?? ""}
                   onChange={(e) => update(i, "year", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="2020"

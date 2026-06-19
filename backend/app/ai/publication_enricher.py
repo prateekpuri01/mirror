@@ -1,122 +1,207 @@
-"""LLM enrichment for publications with profile-aware descriptions."""
+"""Publication enrichment — deterministic normalization, no LLM.
 
-import json
+Earlier versions of this module ran a per-paper LLM call to generate
+``impact_summary``, ``skills_demonstrated``, ``so_what``,
+``quantitative_specifics``, and ``relevance_weight`` fields. Two problems
+with that design surfaced in real use:
+
+1. **The LLM only had the abstract to work from.** Downstream consumers
+   (resume generator, scoring agent) also see the abstract — they can
+   re-derive any of those fields at the moment they actually matter,
+   with strictly more context (the job they're targeting). Pre-computing
+   them was duplicating speculation.
+
+2. **It cost 28 LLM calls per academic onboarding (~5-7 minutes wall
+   clock at 4-wide parallelism, ~$0.05 in tokens).** Effectively wasted
+   spend on derived fields that downstream agents would re-derive anyway.
+
+This module now does the work the LLM was previously approximating —
+``first_author``, ``work_history_key``, ``relevance_weight``, ``type`` —
+with simple deterministic heuristics. The abstract is passed through
+unmodified from Semantic Scholar. Downstream LLMs do the rest.
+
+For backward compat, the dead fields (``impact_summary``, ``so_what``,
+``quantitative_specifics``, ``skills_demonstrated``) are emitted as
+empty strings / empty lists so old DB rows and TypeScript types don't
+need to change in lockstep.
+"""
+
+from __future__ import annotations
+
 import logging
-
-from app.ai.client import EXTRACTION_MODEL, get_openai_client
-from app.ai.keyword_generator import _strip_fences
+import math
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """\
-You are a career profile assistant. Given a publication's metadata and the user's \
-professional profile, generate job-search-relevant descriptions.
 
-Your output must be valid JSON with these fields:
-{
-  "impact_summary": "1-2 sentence description of what the user contributed, framed through their skill set",
-  "so_what": "1 sentence explaining why this publication matters for the user's target roles",
-  "skills_demonstrated": ["skill1", "skill2", ...],
-  "quantitative_specifics": ["metric1", "metric2", ...],
-  "relevance_weight": 0.0-1.0,
-  "work_history_key": "best_guess_employer_key_or_null",
-  "type": "journal|conference|report|tool|commentary"
-}
+def _parse_year(value) -> int | None:
+    """Extract a 4-digit year from a string or int. ``None`` if unparseable."""
+    if value is None:
+        return None
+    if isinstance(value, int) and 1900 < value < 2100:
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    # Prefix is fine — "2024-06" → 2024
+    head = text[:4]
+    try:
+        n = int(head)
+    except ValueError:
+        return None
+    return n if 1900 < n < 2100 else None
 
-Rules:
-- impact_summary: Frame through the user's likely contribution angle. If the user is a \
-  tech person, emphasize the data pipeline/system they built, not the survey design.
-- skills_demonstrated: Only include skills that appear in the user's actual skill list \
-  AND are relevant to the abstract. Do not invent skills.
-- relevance_weight: Based on alignment with user's target roles and domains.
-- work_history_key: Match to user's work history by publication date/venue/employer. \
-  Use the employer key slugs provided. Return null if uncertain.
-- Output ONLY valid JSON, no markdown fences."""
+
+def _match_work_history_key(paper_year: int | None, work_history: list[dict]) -> str | None:
+    """Return the work_history.key whose date range contains ``paper_year``.
+
+    Falls back to ``None`` when the year is unparseable or no entry covers it.
+    Picks the first match if multiple ranges overlap (work_history is ordered
+    most-recent-first in the schema, so the first match is the latest tenure
+    that covers the publication — usually right).
+    """
+    if paper_year is None:
+        return None
+    current_year = datetime.now().year
+    for wh in work_history:
+        start = _parse_year(wh.get("start"))
+        end_raw = wh.get("end")
+        end = (
+            current_year
+            if end_raw is None or str(end_raw).lower() == "present"
+            else _parse_year(end_raw)
+        )
+        if start is None or end is None:
+            continue
+        if start <= paper_year <= end:
+            key = wh.get("key") or wh.get("employer", "").lower().replace(" ", "_")
+            return key or None
+    return None
+
+
+def _compute_relevance_weight(
+    *,
+    year: int | None,
+    citation_count: int,
+    first_author: bool,
+) -> float:
+    """Heuristic priority score in [0, 1] for selecting top pubs in scoring.
+
+    Three factors that tend to track resume-relevance in practice:
+      * recency — papers from the last 5 years rate higher
+      * citation count (log-scaled so a single 5k-citation paper doesn't
+        crush everything else)
+      * first authorship — a strong signal that the user owned the work
+
+    Replaces the LLM-generated ``relevance_weight`` from the prior design,
+    which depended on stale "target roles" context computed at upload
+    time rather than per-job-match time. This formula is more legible AND
+    holds up better at job-match time because the scoring agent re-sees
+    the abstract directly anyway.
+    """
+    current_year = datetime.now().year
+    recency = 1.0
+    if year is not None:
+        years_old = max(0, current_year - year)
+        # Decay: every year subtracts 0.05, floored at 0.4 for very old work
+        recency = max(0.4, 1.0 - 0.05 * years_old)
+
+    # log10(citations + 1) → 0 for 0 cites, 1 for 10, 2 for 100, ...
+    cite_factor = 0.5 + 0.15 * math.log10(max(1, citation_count + 1))
+    cite_factor = min(1.0, cite_factor)
+
+    fa_bonus = 1.25 if first_author else 1.0
+
+    score = recency * cite_factor * fa_bonus
+    # Cap and floor to [0, 1] so the scoring agent's sort behaves predictably.
+    return max(0.0, min(1.0, score))
+
+
+def _slug_for_pub(title: str) -> str:
+    """Stable, URL-safe id derived from the title."""
+    head = (title or "untitled")[:40].lower()
+    # Replace anything non-alphanumeric with hyphens, collapse runs, strip ends.
+    out: list[str] = []
+    prev_dash = False
+    for ch in head:
+        if ch.isalnum():
+            out.append(ch)
+            prev_dash = False
+        elif not prev_dash:
+            out.append("-")
+            prev_dash = True
+    slug = "".join(out).strip("-")
+    return f"pub-auto-{slug or 'untitled'}"
+
+
+def _infer_type(paper_metadata: dict) -> str:
+    """Use Semantic Scholar's publicationTypes if present, otherwise infer from venue."""
+    pre_normalized = paper_metadata.get("type")
+    if pre_normalized:
+        return pre_normalized
+    venue = (paper_metadata.get("venue") or "").lower()
+    if "arxiv" in venue or "preprint" in venue:
+        return "preprint"
+    if any(kw in venue for kw in ("conf", "proceedings", "workshop", "symp")):
+        return "conference"
+    return "journal"
 
 
 async def enrich_publication(paper_metadata: dict, profile_data: dict) -> dict:
-    """Enrich a publication with profile-aware descriptions.
+    """Deterministic normalization of a Semantic Scholar paper into a
+    ProfilePublication dict. Kept as ``async`` so the streaming pipeline's
+    ``await`` callsites don't need to change.
 
     Args:
-        paper_metadata: Normalized paper dict from Semantic Scholar.
-        profile_data: Full user profile data (skills, target_roles, work_history, etc.)
+        paper_metadata: Normalized paper dict from
+            ``publication_lookup._normalize_paper``.
+        profile_data: User profile (used only for first-author detection
+            and work-history date matching — no LLM call).
 
     Returns:
-        Complete ProfilePublication dict with auto_populated: true.
+        ProfilePublication-shaped dict with ``auto_populated: true``.
+        Deprecated narrative fields are present as empty placeholders
+        so downstream code (and old TypeScript types) keeps working.
     """
-    # Build profile context
-    from app.ai.skill_utils import flatten_skills
+    authors = paper_metadata.get("authors") or []
+    user_name = (profile_data.get("personal") or {}).get("name") or ""
+    first_author = bool(authors and user_name and user_name.lower() in (authors[0] or "").lower())
 
-    all_skills = flatten_skills(profile_data.get("skills", {}))
-    target_roles = [r.get("title", "") for r in profile_data.get("target_roles", [])]
-    domains = profile_data.get("domains", [])
-    work_history = profile_data.get("work_history", [])
-    wh_context = [
-        f"{wh.get('key', '')}: {wh.get('employer', '')} ({wh.get('start', '')}-{wh.get('end', 'present')})"
-        for wh in work_history
-    ]
+    year = _parse_year(paper_metadata.get("year"))
+    citation_count = int(paper_metadata.get("citation_count") or 0)
 
-    user_content = f"""Publication metadata:
-Title: {paper_metadata.get("title", "")}
-Authors: {", ".join(paper_metadata.get("authors", []))}
-Venue: {paper_metadata.get("venue", "")}
-Year: {paper_metadata.get("year", "")}
-Abstract: {paper_metadata.get("abstract", "")[:500]}
-Citation count: {paper_metadata.get("citation_count", "unknown")}
+    work_history_key = _match_work_history_key(year, profile_data.get("work_history") or [])
 
-User profile context:
-Skills: {", ".join(all_skills[:30])}
-Target roles: {", ".join(target_roles)}
-Domains: {", ".join(domains)}
-Work history (key: employer, dates):
-{chr(10).join(wh_context)}
-
-Generate the enrichment JSON."""
-
-    client = get_openai_client()
-    response = await client.chat.completions.create(
-        model=EXTRACTION_MODEL,
-        messages=[
-            {"role": "system", "content": _SYSTEM_PROMPT},
-            {"role": "user", "content": user_content},
-        ],
-        max_completion_tokens=2000,
+    relevance_weight = _compute_relevance_weight(
+        year=year,
+        citation_count=citation_count,
+        first_author=first_author,
     )
 
-    raw = response.choices[0].message.content or ""
-    raw = _strip_fences(raw)
-
-    try:
-        enrichment = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.warning("Failed to parse publication enrichment: %s", raw[:200])
-        enrichment = {}
-
-    # Generate a stable ID from the title
-    title_slug = paper_metadata.get("title", "untitled")[:40].lower().replace(" ", "-").strip("-")
-    pub_id = f"pub-auto-{title_slug}"
-
-    # Determine first_author status
-    authors = paper_metadata.get("authors", [])
-    user_name = profile_data.get("personal", {}).get("name", "")
-    first_author = bool(authors and user_name and user_name.lower() in authors[0].lower())
+    title = paper_metadata.get("title") or ""
 
     return {
-        "id": pub_id,
-        "title": paper_metadata.get("title", ""),
+        "id": _slug_for_pub(title),
+        "title": title,
         "authors": authors,
-        "venue": paper_metadata.get("venue", ""),
-        "year": paper_metadata.get("year", ""),
-        "type": enrichment.get("type", paper_metadata.get("type", "")),
+        "venue": paper_metadata.get("venue") or "",
+        "year": paper_metadata.get("year") or "",
+        "type": _infer_type(paper_metadata),
         "url": paper_metadata.get("url"),
         "doi": paper_metadata.get("doi"),
-        "abstract": paper_metadata.get("abstract", ""),
+        "abstract": paper_metadata.get("abstract") or "",
+        "citation_count": citation_count,
         "first_author": first_author,
-        "impact_summary": enrichment.get("impact_summary", ""),
-        "so_what": enrichment.get("so_what", ""),
-        "quantitative_specifics": enrichment.get("quantitative_specifics", []),
-        "skills_demonstrated": enrichment.get("skills_demonstrated", []),
-        "relevance_weight": enrichment.get("relevance_weight", 0.5),
-        "work_history_key": enrichment.get("work_history_key"),
+        "relevance_weight": relevance_weight,
+        "work_history_key": work_history_key,
+        # Deprecated narrative fields — kept as empty placeholders so
+        # existing TypeScript types and old DB rows keep loading. The
+        # downstream resume + scoring agents now read ``abstract``
+        # directly instead of these LLM-derived paraphrases.
+        "impact_summary": "",
+        "so_what": "",
+        "quantitative_specifics": [],
+        "skills_demonstrated": [],
         "auto_populated": True,
     }

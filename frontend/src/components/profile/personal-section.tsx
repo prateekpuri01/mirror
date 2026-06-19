@@ -127,14 +127,14 @@ export function PersonalSection({ data, onChange }: PersonalSectionProps) {
             <div key={i} className="flex items-center gap-2">
               <input
                 type="text"
-                value={link.label}
+                value={link.label ?? ""}
                 onChange={(e) => updateLink(i, "label", e.target.value)}
                 className="w-36 rounded border px-2 py-1 text-sm"
                 placeholder="Display text"
               />
               <input
                 type="url"
-                value={link.url}
+                value={link.url ?? ""}
                 onChange={(e) => updateLink(i, "url", e.target.value)}
                 className="flex-1 rounded border px-2 py-1 text-sm"
                 placeholder="https://..."

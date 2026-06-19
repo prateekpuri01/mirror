@@ -207,12 +207,12 @@ function AccomplishmentCard({
     <div
       className={`border rounded ${acc.auto_populated ? "border-amber-300 bg-amber-50/50" : "bg-gray-50"}`}
     >
-      <button
-        type="button"
-        className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-100"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-2 text-left min-w-0">
+      <div className="flex items-center justify-between text-sm hover:bg-gray-100">
+        <button
+          type="button"
+          className="flex-1 flex items-center gap-2 text-left min-w-0 px-3 py-2"
+          onClick={() => setExpanded(!expanded)}
+        >
           {expanded ? (
             <ChevronDown className="h-3.5 w-3.5 text-gray-500 shrink-0" />
           ) : (
@@ -229,18 +229,16 @@ function AccomplishmentCard({
               <FileText className="h-3 w-3 inline" /> {linkedPubCount}
             </span>
           )}
-        </div>
+        </button>
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove(index);
-          }}
-          className="text-gray-400 hover:text-red-500 p-0.5"
+          onClick={() => onRemove(index)}
+          className="text-gray-400 hover:text-red-500 px-3 py-2"
+          aria-label="Remove accomplishment"
         >
           <Trash2 className="h-3 w-3" />
         </button>
-      </button>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 space-y-2 border-t">

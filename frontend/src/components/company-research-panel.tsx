@@ -56,11 +56,12 @@ export function CompanyResearchPanel({
   return (
     <div className="border rounded-md bg-slate-50 text-xs mb-3">
       {/* Header */}
-      <button
-        className="flex items-center justify-between w-full px-3 py-2 hover:bg-slate-100 transition-colors"
-        onClick={() => setExpanded((e) => !e)}
-      >
-        <div className="flex items-center gap-1.5 font-medium text-slate-700">
+      <div className="flex items-center justify-between hover:bg-slate-100 transition-colors">
+        <button
+          type="button"
+          className="flex-1 flex items-center gap-1.5 font-medium text-slate-700 px-3 py-2 text-left"
+          onClick={() => setExpanded((e) => !e)}
+        >
           {expanded ? (
             <ChevronDown className="h-3.5 w-3.5" />
           ) : (
@@ -71,13 +72,11 @@ export function CompanyResearchPanel({
             {" "}
             &mdash; {headerLabel}
           </span>
-        </div>
+        </button>
         <button
-          className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-amber-600 px-1.5 py-0.5 rounded hover:bg-white transition-colors"
-          onClick={(e) => {
-            e.stopPropagation();
-            handleRefresh();
-          }}
+          type="button"
+          className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-amber-600 mx-2 px-1.5 py-0.5 rounded hover:bg-white transition-colors"
+          onClick={handleRefresh}
           disabled={loading}
         >
           <RefreshCw
@@ -85,7 +84,7 @@ export function CompanyResearchPanel({
           />
           {loading ? "Researching..." : "Refresh"}
         </button>
-      </button>
+      </div>
 
       {/* Body */}
       {expanded && research && (

@@ -56,6 +56,12 @@ const WORK_MODELS = [
 
 const SALARY_STEPS = [0, 50000, 75000, 100000, 125000, 150000, 175000, 200000, 250000, 300000];
 
+// Sentinel for the Status/Source <Select>s' "no filter" item. Base UI's
+// <Select> warns if `value` flips between undefined and defined across
+// renders, so we keep it defined at all times — empty filter is represented
+// by this sentinel in the controlled value and mapped to "" in the URL.
+const ALL_FILTER_VALUE = "all";
+
 function formatSalaryLabel(value: number): string {
   if (value === 0) return "Any";
   return `$${value / 1000}K+`;
@@ -421,14 +427,16 @@ export function JobsToolbar() {
         />
 
         <Select
-          value={currentStatus || undefined}
-          onValueChange={(v) => updateParams({ status: v === "all" ? "" : (v ?? "") })}
+          value={currentStatus || ALL_FILTER_VALUE}
+          onValueChange={(v) =>
+            updateParams({ status: v === ALL_FILTER_VALUE ? "" : (v ?? "") })
+          }
         >
           <SelectTrigger className="w-[130px]">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value={ALL_FILTER_VALUE}>All statuses</SelectItem>
             {ALL_STATUSES.map((s) => (
               <SelectItem key={s} value={s}>
                 {STATUS_CONFIG[s].label}
@@ -721,14 +729,16 @@ export function JobsToolbar() {
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Source</label>
                 <Select
-                  value={currentSource || undefined}
-                  onValueChange={(v) => updateParams({ source: v === "all" ? "" : (v ?? "") })}
+                  value={currentSource || ALL_FILTER_VALUE}
+                  onValueChange={(v) =>
+                    updateParams({ source: v === ALL_FILTER_VALUE ? "" : (v ?? "") })
+                  }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="All sources" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All sources</SelectItem>
+                    <SelectItem value={ALL_FILTER_VALUE}>All sources</SelectItem>
                     {ALL_SOURCES.map((s) => (
                       <SelectItem key={s} value={s}>
                         {SOURCE_CONFIG[s].label}

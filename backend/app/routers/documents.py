@@ -374,6 +374,44 @@ async def generate_research_entry_endpoint(
     return {"entry": entry, "document": DocumentRead.model_validate(updated_doc)}
 
 
+@router.post("/documents/{doc_id}/add-research-entry")
+async def add_research_entry_endpoint(
+    doc_id: uuid.UUID,
+    body: ResearchEntryRequest,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession = Depends(get_session),
+):
+    """Generate a tailored research entry from an accomplishment and append
+    it to ``selected_research``. Mirrors ``generate-research-entry`` but
+    appends instead of swapping (``body.index`` is ignored)."""
+    doc = await document_service.get_document(session, doc_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if doc.content_json is None:
+        raise HTTPException(status_code=400, detail="Document has no JSON content")
+    if doc.job_id is None:
+        raise HTTPException(status_code=400, detail="Document has no associated job")
+
+    entry = await generate_research_entry(session, body.accomplishment_id, doc.job_id)
+    new_array = list(doc.content_json.get("selected_research", [])) + [entry]
+
+    updated_doc = await document_service.update_resume_section(
+        session, doc_id, "selected_research", new_array
+    )
+    if updated_doc is None:
+        raise HTTPException(status_code=500, detail="Failed to update document")
+
+    from app.ai.resume_builder import _build_markdown
+
+    updated_doc.content_markdown = _build_markdown(updated_doc.content_json)
+    await session.commit()
+    await session.refresh(updated_doc)
+
+    background_tasks.add_task(_regenerate_docx, doc_id)
+
+    return {"entry": entry, "document": DocumentRead.model_validate(updated_doc)}
+
+
 @router.post("/documents/{doc_id}/generate-bullet")
 async def generate_bullet_endpoint(
     doc_id: uuid.UUID,

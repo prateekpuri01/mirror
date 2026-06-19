@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useMemo } from "react";
-import { Send, Trash2, X } from "lucide-react";
-import { ChatMessageRead, ProfileWorkHistory } from "@/lib/types";
+import { Send, Trash2, X, Zap } from "lucide-react";
+import { ActionCardRead, ChatMessageRead, ProfileWorkHistory } from "@/lib/types";
+import { ActionCard } from "@/components/action-card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -11,11 +12,14 @@ import { Badge } from "@/components/ui/badge";
 // Section label display (static entries + dynamic from work history)
 // ---------------------------------------------------------------------------
 
-function buildSectionDisplay(workHistory?: ProfileWorkHistory[]): Record<string, string> {
+function buildSectionDisplay(
+  workHistory?: ProfileWorkHistory[],
+  selectedResearchTitle?: string,
+): Record<string, string> {
   const base: Record<string, string> = {
     tagline: "Tagline",
     summary: "Summary",
-    selected_research: "Selected Research",
+    selected_research: selectedResearchTitle || "Selected Research",
     publications: "Publications",
     technical_skills: "Technical Skills",
     "technical_skills.ai_systems": "AI Systems Skills",
@@ -65,25 +69,133 @@ function getSectionLabel(path: string, sectionDisplay: Record<string, string>): 
 }
 
 // ---------------------------------------------------------------------------
+// Renders an assistant message body, splicing in ActionCard components at the
+// [[ACTION_CARD:<index>]] marker positions emitted by the brainstorm handler.
+// ---------------------------------------------------------------------------
+
+const ACTION_CARD_MARKER = /\[\[ACTION_CARD:(\d+)\]\]/g;
+
+interface AssistantMessageBodyProps {
+  content: string;
+  cards: ActionCardRead[];
+  onApplyCard: (cardId: string) => void;
+  onDismissCard: (cardId: string) => void;
+  onRefineCard: (cardId: string, refinement: string) => void;
+  busyCardIds: Set<string>;
+}
+
+function AssistantMessageBody({
+  content,
+  cards,
+  onApplyCard,
+  onDismissCard,
+  onRefineCard,
+  busyCardIds,
+}: AssistantMessageBodyProps) {
+  const cardsByIndex = useMemo(() => {
+    const map = new Map<number, ActionCardRead>();
+    for (const c of cards) map.set(c.card_index, c);
+    return map;
+  }, [cards]);
+
+  // If the message has no markers but does have cards (e.g. a re-render
+  // after reload from DB where markers were already stripped), append the
+  // cards at the bottom instead.
+  if (!ACTION_CARD_MARKER.test(content) && cards.length > 0) {
+    return (
+      <div>
+        <div className="whitespace-pre-wrap">{content}</div>
+        {cards.map((card) => (
+          <ActionCard
+            key={card.id}
+            card={card}
+            onApply={() => onApplyCard(card.id)}
+            onDismiss={() => onDismissCard(card.id)}
+            onRefine={(r) => onRefineCard(card.id, r)}
+            busy={busyCardIds.has(card.id)}
+          />
+        ))}
+      </div>
+    );
+  }
+
+  // Reset lastIndex (regex above was consumed by `.test`).
+  ACTION_CARD_MARKER.lastIndex = 0;
+
+  const segments: Array<{ type: "text" | "card"; value: string; idx?: number }> = [];
+  let cursor = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ACTION_CARD_MARKER.exec(content)) !== null) {
+    if (match.index > cursor) {
+      segments.push({ type: "text", value: content.slice(cursor, match.index) });
+    }
+    segments.push({ type: "card", value: match[0], idx: Number(match[1]) });
+    cursor = match.index + match[0].length;
+  }
+  if (cursor < content.length) {
+    segments.push({ type: "text", value: content.slice(cursor) });
+  }
+
+  return (
+    <div>
+      {segments.map((seg, i) => {
+        if (seg.type === "text") {
+          const trimmed = seg.value.trim();
+          if (!trimmed) return null;
+          return (
+            <div key={i} className="whitespace-pre-wrap">
+              {seg.value.replace(/^\n+|\n+$/g, "")}
+            </div>
+          );
+        }
+        const card = seg.idx !== undefined ? cardsByIndex.get(seg.idx) : undefined;
+        if (!card) return null;
+        return (
+          <ActionCard
+            key={card.id}
+            card={card}
+            onApply={() => onApplyCard(card.id)}
+            onDismiss={() => onDismissCard(card.id)}
+            onRefine={(r) => onRefineCard(card.id, r)}
+            busy={busyCardIds.has(card.id)}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Chat panel
 // ---------------------------------------------------------------------------
 
 interface ChatPanelProps {
   messages: ChatMessageRead[];
+  actionCardsByMessage: Record<string, ActionCardRead[]>;
   isSending: boolean;
   isLoading: boolean;
   error: string | null;
   disabled: boolean;
   selectedSection: string | null;
-  onSend: (content: string, sectionContext?: string | null) => void;
+  onSend: (
+    content: string,
+    sectionContext?: string | null,
+    intentOverride?: string | null,
+  ) => void;
   onProofread?: () => void;
+  onApplyCard: (cardId: string) => void;
+  onDismissCard: (cardId: string) => void;
+  onRefineCard: (cardId: string, refinement: string) => void;
+  busyCardIds: Set<string>;
   onClear: () => void;
   onDeselectSection: () => void;
   workHistory?: ProfileWorkHistory[];
+  selectedResearchTitle?: string;
 }
 
 export function ChatPanel({
   messages,
+  actionCardsByMessage,
   isSending,
   isLoading,
   error,
@@ -91,13 +203,25 @@ export function ChatPanel({
   selectedSection,
   onSend,
   onProofread,
+  onApplyCard,
+  onDismissCard,
+  onRefineCard,
+  busyCardIds,
   onClear,
   onDeselectSection,
   workHistory,
+  selectedResearchTitle,
 }: ChatPanelProps) {
-  const sectionDisplay = useMemo(() => buildSectionDisplay(workHistory), [workHistory]);
+  const sectionDisplay = useMemo(
+    () => buildSectionDisplay(workHistory, selectedResearchTitle),
+    [workHistory, selectedResearchTitle],
+  );
   const [input, setInput] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  // Quick-edit is a one-shot modifier: when on, the next send bypasses the
+  // brainstorm card flow and commits the edit directly via edit_section.
+  // Resets after each send.
+  const [quickEdit, setQuickEdit] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -108,8 +232,9 @@ export function ChatPanel({
 
   const handleSend = () => {
     if (!input.trim() || disabled || isSending) return;
-    onSend(input.trim(), selectedSection);
+    onSend(input.trim(), selectedSection, quickEdit ? "quick_edit" : null);
     setInput("");
+    setQuickEdit(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -125,6 +250,23 @@ export function ChatPanel({
       <div className="flex items-center justify-between px-3 py-2 border-b shrink-0">
         <span className="text-xs font-semibold text-muted-foreground">Chat</span>
         <div className="flex items-center gap-1">
+          {!disabled && !showClearConfirm && (
+            <Button
+              size="sm"
+              variant={quickEdit ? "default" : "ghost"}
+              className={`h-6 px-2 text-[11px] ${
+                quickEdit
+                  ? "bg-amber-500 hover:bg-amber-600 text-white"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              disabled={isSending}
+              onClick={() => setQuickEdit((v) => !v)}
+              title="Quick edit: bypass the action card and commit the next edit directly. One-shot — resets after send."
+            >
+              <Zap className="h-3 w-3 mr-1" />
+              {quickEdit ? "Quick edit: next send" : "Quick edit"}
+            </Button>
+          )}
           {onProofread && !disabled && !showClearConfirm && (
             <Button
               size="sm"
@@ -176,6 +318,14 @@ export function ChatPanel({
         </div>
       </div>
 
+      {/* Quick-edit banner (only when active) */}
+      {quickEdit && !disabled && (
+        <div className="px-3 py-1.5 bg-amber-50 border-b border-amber-200 text-[11px] text-amber-900">
+          <strong>Quick edit armed</strong> — next message commits directly,
+          no Yes/No card. Resets after send.
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-2 min-h-0">
         {isLoading && messages.length === 0 && (
@@ -196,29 +346,43 @@ export function ChatPanel({
           </div>
         )}
 
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+        {messages.map((msg) => {
+          const cards = actionCardsByMessage[msg.id] || [];
+          return (
             <div
-              className={`max-w-[85%] rounded-lg px-3 py-1.5 text-xs leading-relaxed ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-800"
-              }`}
+              key={msg.id}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {msg.section_context && msg.role === "user" && (
-                <div className="mb-1">
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500 text-blue-100">
-                    {getSectionLabel(msg.section_context, sectionDisplay)}
-                  </Badge>
-                </div>
-              )}
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              <div
+                className={`max-w-[85%] rounded-lg px-3 py-1.5 text-xs leading-relaxed ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {msg.section_context && msg.role === "user" && (
+                  <div className="mb-1">
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-blue-500 text-blue-100">
+                      {getSectionLabel(msg.section_context, sectionDisplay)}
+                    </Badge>
+                  </div>
+                )}
+                {msg.role === "assistant" ? (
+                  <AssistantMessageBody
+                    content={msg.content}
+                    cards={cards}
+                    onApplyCard={onApplyCard}
+                    onDismissCard={onDismissCard}
+                    onRefineCard={onRefineCard}
+                    busyCardIds={busyCardIds}
+                  />
+                ) : (
+                  <div className="whitespace-pre-wrap">{msg.content}</div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
         {isSending && (!messages.length || messages[messages.length - 1]?.content === "") && (
           <div className="flex justify-start items-center gap-2">
@@ -246,16 +410,19 @@ export function ChatPanel({
 
       {/* Selected section badge */}
       {selectedSection && !disabled && (
-        <div className="px-3 py-1 border-t bg-blue-50 flex items-center gap-1.5">
+        <div className="px-3 py-1.5 border-t bg-blue-50 flex items-center gap-2">
           <span className="text-[10px] text-blue-600 font-medium">Editing:</span>
           <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
             {getSectionLabel(selectedSection, sectionDisplay)}
           </Badge>
           <button
             onClick={onDeselectSection}
-            className="ml-auto text-blue-400 hover:text-blue-600"
+            type="button"
+            title="Clear section scope — next message won't be anchored to this section"
+            className="ml-auto inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 hover:text-blue-900 transition-colors"
           >
             <X className="h-3 w-3" />
+            Clear scope
           </button>
         </div>
       )}
@@ -271,9 +438,13 @@ export function ChatPanel({
             placeholder={
               disabled
                 ? "Generate a resume first..."
-                : selectedSection
-                  ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}...`
-                  : "Ask me to edit your resume..."
+                : quickEdit
+                  ? selectedSection
+                    ? `Quick-edit ${getSectionLabel(selectedSection, sectionDisplay)} — commits immediately`
+                    : "Quick edit — commits immediately, no card"
+                  : selectedSection
+                    ? `Edit ${getSectionLabel(selectedSection, sectionDisplay)}, or ask about it...`
+                    : "Ask, propose, or edit..."
             }
             disabled={disabled || isSending}
             className="resize-none min-h-[36px] max-h-[100px] text-xs flex-1"

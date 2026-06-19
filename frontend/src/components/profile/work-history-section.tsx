@@ -62,7 +62,7 @@ export function WorkHistorySection({ data, onChange }: WorkHistorySectionProps) 
                 </label>
                 <input
                   type="text"
-                  value={wh.employer}
+                  value={wh.employer ?? ""}
                   onChange={(e) => update(i, "employer", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="Company Name"
@@ -74,7 +74,7 @@ export function WorkHistorySection({ data, onChange }: WorkHistorySectionProps) 
                 </label>
                 <input
                   type="text"
-                  value={wh.title}
+                  value={wh.title ?? ""}
                   onChange={(e) => update(i, "title", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="Job Title"
@@ -86,7 +86,7 @@ export function WorkHistorySection({ data, onChange }: WorkHistorySectionProps) 
                 </label>
                 <input
                   type="text"
-                  value={wh.start}
+                  value={wh.start ?? ""}
                   onChange={(e) => update(i, "start", e.target.value)}
                   className="w-full rounded border px-2 py-1 text-sm"
                   placeholder="2022"

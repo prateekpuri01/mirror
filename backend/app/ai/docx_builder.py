@@ -1009,8 +1009,13 @@ def _render_summary(ctx: BuildContext, doc, summary: str) -> None:
     _set_run(ctx, run, size=ctx.size.body)
 
 
-def _render_selected_research(ctx: BuildContext, doc, research_entries: list) -> None:
-    _render_section_header(ctx, doc, "Selected Research")
+def _render_selected_research(
+    ctx: BuildContext,
+    doc,
+    research_entries: list,
+    section_title: str = "Selected Research",
+) -> None:
+    _render_section_header(ctx, doc, section_title)
     for entry in research_entries:
         p = doc.add_paragraph()
         p.paragraph_format.space_before = Pt(4)
@@ -1289,6 +1294,22 @@ def _build_layout_banner(ctx: BuildContext, doc, resume_data: dict, profile_data
 def _build_layout_compact(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
     _render_compact_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
     _render_ordered_sections(ctx, doc, resume_data, profile_data, "compact")
+
+
+def _build_layout_centered_clean(
+    ctx: BuildContext, doc, resume_data: dict, profile_data: dict
+) -> None:
+    """Clean centered layout — no colored band, no date gutter.
+
+    Pairs the two-tone centered header (``_render_centered_header``: light-gray
+    first name + dark last name + orange tagline with hairline underline) with
+    the banner's body structure (separate Experience and Education sections).
+    Good fit for academic / policy CVs where the designer band feels too
+    heavy and the timeline's combined experience+education table doesn't
+    match the user's intent.
+    """
+    _render_centered_header(ctx, doc, profile_data, resume_data.get("tagline", ""))
+    _render_ordered_sections(ctx, doc, resume_data, profile_data, "centered_clean")
 
 
 def _build_layout_timeline(ctx: BuildContext, doc, resume_data: dict, profile_data: dict) -> None:
@@ -1747,6 +1768,7 @@ _LAYOUT_DISPATCH = {
     "compact": _build_layout_compact,
     "two_column": _build_layout_two_column,
     "timeline": _build_layout_timeline,
+    "centered_clean": _build_layout_centered_clean,
 }
 
 

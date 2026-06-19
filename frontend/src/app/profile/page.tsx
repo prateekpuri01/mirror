@@ -176,38 +176,100 @@ function ProfileContent() {
 
   // Streaming Scholar import: when the onboarding flow kicked one off and
   // the user landed here mid-stream, fold each newly-arrived publication
-  // into localPublications + trigger the debounced save. Dedup by title so
-  // pubs the resume already extracted aren't doubled. Once the stream is
-  // done, reset() so subsequent visits to /profile don't replay stale
-  // state from context.
+  // into localPublications + trigger the debounced save.
+  //
+  // Merge semantics on title collision (instead of "first-wins" skip):
+  //   - resume-extracted pubs often have empty or speculative abstracts
+  //     ("Analyzes safety challenges...") because the LLM was paraphrasing
+  //     the resume text, not the real paper.
+  //   - Scholar/Semantic-Scholar pubs carry the real abstract.
+  //   - First-wins skip kept the resume's bad version. So instead, when a
+  //     streamed pub matches an existing title, we prefer the streamed
+  //     values for fields where source data is authoritative — abstract
+  //     (longer wins), citation_count, doi, url — and keep the existing
+  //     for anything the user may have edited (id, relevance_weight,
+  //     skills_demonstrated, related_publication_ids, etc.).
+  //
+  // Once the stream is done, reset() so subsequent visits to /profile
+  // don't replay stale state from context.
   const pubImport = usePublicationsImport();
   useEffect(() => {
     if (pubImport.publications.length === 0) return;
     if (localPublications === null) return; // still loading from DB
     setLocalPublications((prev) => {
       const prevList = prev || [];
-      const prevTitles = new Set(
-        prevList.map((p) => (p.title || "").toLowerCase().trim()),
+      const prevByTitle = new Map(
+        prevList.map((p) => [(p.title || "").toLowerCase().trim(), p] as const),
       );
-      const fresh = pubImport.publications.filter(
-        (p) => !prevTitles.has((p.title || "").toLowerCase().trim()),
+      let touched = false;
+
+      // First pass: walk prev pubs, merge in streamed values when a streamed
+      // pub matches by title. Preserves order and any user-only entries.
+      const streamedByTitle = new Map(
+        pubImport.publications.map(
+          (p) => [(p.title || "").toLowerCase().trim(), p] as const,
+        ),
       );
-      if (fresh.length === 0) return prevList;
-      const merged = [...prevList, ...fresh];
-      savePublications(merged);
-      return merged;
+      const next = prevList.map((existing) => {
+        const key = (existing.title || "").toLowerCase().trim();
+        const streamed = streamedByTitle.get(key);
+        if (!streamed) return existing;
+
+        const existingAbs = existing.abstract || "";
+        const streamedAbs = streamed.abstract || "";
+        const newAbs =
+          streamedAbs.length > existingAbs.length ? streamedAbs : existingAbs;
+        const merged = {
+          ...existing,
+          abstract: newAbs,
+          // Source-of-truth fields from Semantic Scholar always overwrite.
+          citation_count: streamed.citation_count ?? existing.citation_count,
+          doi: streamed.doi || existing.doi,
+          url: streamed.url || existing.url,
+        };
+        // Note: returning a fresh object even when nothing materially
+        // changed is fine — React.memo isn't in this path.
+        if (
+          merged.abstract !== existing.abstract
+          || merged.citation_count !== existing.citation_count
+          || merged.doi !== existing.doi
+          || merged.url !== existing.url
+        ) {
+          touched = true;
+        }
+        return merged;
+      });
+
+      // Second pass: append streamed pubs whose titles weren't in prev at all.
+      const prevTitles = new Set(prevByTitle.keys());
+      for (const streamed of pubImport.publications) {
+        const key = (streamed.title || "").toLowerCase().trim();
+        if (!prevTitles.has(key)) {
+          next.push(streamed);
+          touched = true;
+        }
+      }
+
+      if (!touched) return prevList;
+      savePublications(next);
+      return next;
     });
   }, [pubImport.publications, localPublications, savePublications]);
 
   useEffect(() => {
-    if (pubImport.phase === "done" || pubImport.phase === "error") {
-      // Give the debounced save a beat to flush, then drop the context
-      // state. Without this, navigating back to /profile after a previous
-      // import would re-merge old streamed entries.
+    // Errors auto-reset (no banner shown).
+    if (pubImport.phase === "error") {
       const t = setTimeout(() => pubImport.reset(), 1500);
       return () => clearTimeout(t);
     }
-  }, [pubImport.phase, pubImport]);
+    // On "done" we DELAY the reset until the user has acknowledged the
+    // verify banner. Once acknowledged, drop the context state so the
+    // banner doesn't reappear on the next visit.
+    if (pubImport.phase === "done" && pubImport.acknowledged) {
+      const t = setTimeout(() => pubImport.reset(), 500);
+      return () => clearTimeout(t);
+    }
+  }, [pubImport.phase, pubImport.acknowledged, pubImport]);
 
   if (isLoading || completeLoading) {
     return (
@@ -318,16 +380,6 @@ function ProfileContent() {
 
         {activeTab === "skills" && (
           <>
-            <ProfileSection title="Target Roles" saveStatus={targetRolesStatus}>
-              <TargetRolesSection
-                data={p.target_roles || []}
-                onChange={(data) => {
-                  setLocalProfile({ ...p, target_roles: data });
-                  saveTargetRoles(data);
-                }}
-              />
-            </ProfileSection>
-
             <ProfileSection title="Domains" saveStatus={domainsStatus}>
               <DomainsSection
                 data={p.domains || []}
@@ -347,20 +399,31 @@ function ProfileContent() {
                 }}
               />
             </ProfileSection>
-
           </>
         )}
 
         {activeTab === "preferences" && (
-          <ProfileSection title="Search Preferences" saveStatus={prefsStatus}>
-            <SearchPreferencesSection
-              data={p.search_preferences || {}}
-              onChange={(data) => {
-                setLocalProfile({ ...p, search_preferences: data });
-                savePrefs(data);
-              }}
-            />
-          </ProfileSection>
+          <>
+            <ProfileSection title="Target Roles" saveStatus={targetRolesStatus}>
+              <TargetRolesSection
+                data={p.target_roles || []}
+                onChange={(data) => {
+                  setLocalProfile({ ...p, target_roles: data });
+                  saveTargetRoles(data);
+                }}
+              />
+            </ProfileSection>
+
+            <ProfileSection title="Search Preferences" saveStatus={prefsStatus}>
+              <SearchPreferencesSection
+                data={p.search_preferences || {}}
+                onChange={(data) => {
+                  setLocalProfile({ ...p, search_preferences: data });
+                  savePrefs(data);
+                }}
+              />
+            </ProfileSection>
+          </>
         )}
 
         {activeTab === "publications" && (
@@ -389,11 +452,66 @@ function ProfileContent() {
                 Scholar import failed: {pubImport.errorMessage}
               </div>
             )}
+            {/* Verify banner: shown after the streaming import completes,
+                until the user explicitly keeps or clears. Lets the user
+                catch a wrong-person match (common with common names). */}
+            {pubImport.phase === "done"
+              && !pubImport.acknowledged
+              && pubImport.publications.length > 0 && (
+              <div className="flex items-start gap-3 text-xs bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5 mb-2">
+                <div className="flex-1 text-amber-900">
+                  <div className="font-medium">
+                    Found {pubImport.publications.length} publication
+                    {pubImport.publications.length === 1 ? "" : "s"}
+                    {pubImport.authorQueried ? ` attributed to "${pubImport.authorQueried}"` : ""}.
+                    Are these yours?
+                  </div>
+                  <div className="text-amber-700/90 mt-0.5">
+                    Common names can match multiple authors — confirm or clear
+                    if these don&apos;t look right.
+                  </div>
+                </div>
+                <div className="flex gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => pubImport.acknowledge()}
+                    className="text-[11px] font-medium bg-amber-600 text-white hover:bg-amber-700 rounded px-2.5 py-1"
+                  >
+                    Keep them
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Drop just the imported titles from localPublications;
+                      // other (manually-added or resume-extracted) pubs stay.
+                      const importedTitles = new Set(
+                        pubImport.publications.map((p) =>
+                          (p.title || "").toLowerCase().trim(),
+                        ),
+                      );
+                      const filtered = (localPublications || []).filter(
+                        (p) =>
+                          !importedTitles.has(
+                            (p.title || "").toLowerCase().trim(),
+                          ),
+                      );
+                      setLocalPublications(filtered);
+                      savePublications(filtered);
+                      pubImport.acknowledge();
+                    }}
+                    className="text-[11px] font-medium bg-white border border-amber-300 text-amber-800 hover:bg-amber-100 rounded px-2.5 py-1"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              </div>
+            )}
             <PublicationsSection
               data={localPublications || []}
               accomplishments={localAccomplishments || []}
               workHistory={p.work_history || []}
               hasScholarUrl={!!p.personal?.google_scholar}
+              profile={p}
               onChange={(data) => {
                 setLocalPublications(data);
                 savePublications(data);

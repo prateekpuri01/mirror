@@ -70,25 +70,56 @@ async def scrape_scholar_publications(
 
     try:
         async with async_playwright() as pw:
-            browser = await pw.chromium.launch(headless=True)
+            # Anti-bot bypass: Google Scholar's anti-headless heuristics
+            # have gotten more aggressive — the default headless=True browser
+            # gets served a stripped/captcha page that never renders the
+            # gsc_a_tr citation rows. New-mode headless + disabling the
+            # AutomationControlled blink feature is the cheapest robust fix.
+            browser = await pw.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--disable-features=IsolateOrigins,site-per-process",
+                    "--disable-dev-shm-usage",
+                    "--no-sandbox",
+                ],
+            )
             context = await browser.new_context(
                 user_agent=(
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
                     "Chrome/120.0.0.0 Safari/537.36"
                 ),
+                viewport={"width": 1280, "height": 900},
+                locale="en-US",
+                timezone_id="America/Los_Angeles",
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": (
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,"
+                        "image/avif,image/webp,*/*;q=0.8"
+                    ),
+                },
                 ignore_https_errors=True,
             )
             page = await context.new_page()
+            # Mask navigator.webdriver — the most commonly-checked
+            # automation signal. Done via init script so it runs before
+            # any Scholar JS executes.
+            await page.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            )
 
             try:
                 await page.goto(
                     profile_url,
                     wait_until="domcontentloaded",
-                    timeout=20000,
+                    timeout=30000,
                 )
-                # Let the publication table render
-                await page.wait_for_selector("tr.gsc_a_tr", timeout=8000)
+                # Let the publication table render. Increased from 8s -> 20s
+                # because the anti-detection landing sometimes adds 5-10s
+                # to the initial table render.
+                await page.wait_for_selector("tr.gsc_a_tr", timeout=20000)
             except PlaywrightTimeout:
                 await browser.close()
                 logger.warning(

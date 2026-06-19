@@ -84,6 +84,9 @@ docs/resume_style.yaml
 docs/*.mine
 docs/TICKETS.local.md
 resume/
+# Personal resumes dropped in repo root for testing — never commit.
+/*.docx
+/*.pdf
 
 # ---- Demo source recordings (huge raw captures — never commit) ----
 screen_recording*.mov

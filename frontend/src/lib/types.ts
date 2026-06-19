@@ -170,8 +170,9 @@ export interface ExperienceBlock {
 export interface ResumeJson {
   tagline: string;
   summary: string;
-  section_order?: string[];        // user-defined section ordering
   selected_research: ResearchEntry[];
+  selected_research_section_title?: string;
+  role_lane?: string;
   experience: Record<string, ExperienceBlock>;
   publications: { citation: string; publication_id?: string }[];
   technical_skills: {
@@ -186,29 +187,6 @@ export interface ResumeJson {
   _research?: CompanyResearch;
 }
 
-export const LAYOUT_DEFAULT_ORDER: Record<string, string[]> = {
-  banner:         ["summary", "selected_research", "experience", "publications",
-                   "technical_skills", "education", "awards"],
-  compact:        ["summary", "selected_research", "experience", "publications",
-                   "technical_skills", "education", "awards"],
-  centered_clean: ["summary", "selected_research", "experience", "publications",
-                   "technical_skills", "education", "awards"],
-  timeline:       ["summary", "experience_education", "selected_research",
-                   "technical_skills", "publications", "awards"],
-  two_column:     ["summary", "experience", "selected_research", "publications", "awards"],
-};
-
-export const SECTION_LABELS: Record<string, string> = {
-  summary:              "Summary",
-  experience:           "Experience",
-  experience_education: "Experience & Education",
-  selected_research:    "Selected Research",
-  publications:         "Publications",
-  technical_skills:     "Technical Skills",
-  education:            "Education",
-  awards:               "Awards",
-};
-
 // ---------------------------------------------------------------------------
 // Chat messages
 // ---------------------------------------------------------------------------
@@ -220,6 +198,23 @@ export interface ChatMessageRead {
   content: string;
   section_context: string | null;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Action cards (brainstorm-emitted edit suggestions)
+// ---------------------------------------------------------------------------
+
+export type ActionCardStatus = "pending" | "applied" | "dismissed";
+
+export interface ActionCardRead {
+  id: string;
+  message_id: string;
+  card_index: number;
+  kind: string; // "rewrite_section" | "replace_selected_research" | "add_bullet" | "remove_section"
+  section_path: string | null;
+  rationale: string | null;
+  proposed_value: string;
+  status: ActionCardStatus;
 }
 
 export interface JobUpdate {
@@ -439,6 +434,12 @@ export interface ProfileWorkHistory {
 export interface ProfileSearchPreferences {
   looking_for?: string;
   not_looking_for?: string;
+  // Set true when the corresponding field was auto-drafted by the AI
+  // (during onboarding assembly or the on-mount fallback). Cleared the
+  // moment the user edits the text, so the "AI" badge fades after the
+  // first character change.
+  looking_for_ai_generated?: boolean;
+  not_looking_for_ai_generated?: boolean;
   positive_signals?: string[];
   exclusions?: string[];
   salary_minimum?: number | null;
@@ -457,7 +458,8 @@ export type ResumeLayoutId =
   | "banner"
   | "compact"
   | "two_column"
-  | "timeline";
+  | "timeline"
+  | "centered_clean";
 
 export type ResumeColorSchemeId =
   | "navy"
@@ -538,6 +540,11 @@ export const LAYOUT_PRESETS: LayoutPresetMeta[] = [
     label: "Timeline",
     description: "Date gutter on the left with a vertical accent rule; experience flows to the right. Editorial / contemporary.",
   },
+  {
+    id: "centered_clean",
+    label: "Centered Clean",
+    description: "Two-tone centered name (light first / dark last), tagline with hairline rule, separate Experience and Education sections. Academic / policy-CV aesthetic.",
+  },
 ];
 
 export const COLOR_PRESETS: ColorPresetMeta[] = [
@@ -601,7 +608,12 @@ export interface ProfilePublication {
   type?: string;
   url?: string;
   abstract?: string;
+  citation_count?: number;
   first_author?: boolean;
+  // Deprecated narrative fields (kept for back-compat with old DB rows;
+  // the deterministic publication enricher emits them as empty strings /
+  // empty lists). Don't write to these from new code — the downstream
+  // resume + scoring agents now read ``abstract`` directly.
   impact_summary?: string;
   so_what?: string;
   quantitative_specifics?: string[];

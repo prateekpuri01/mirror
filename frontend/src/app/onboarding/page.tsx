@@ -334,15 +334,18 @@ function StepProcessing({
   const [waitingForPaste, setWaitingForPaste] = useState(false);
   const linkedinUrl = urls.find((u) => u.type === "linkedin")?.url;
 
-  // Start crawl on mount
+  // Start crawl on mount. If there are no URLs (or kicking off the crawl
+  // itself fails), fall through to doAssembly() instead of onSkip — assemble
+  // now has a critical side effect (looking_for auto-suggest) we always
+  // want to run, even with no URL data to merge.
   useEffect(() => {
     if (urls.length === 0) {
-      onSkip();
+      doAssembly();
       return;
     }
     crawlMutation.mutate(urls, {
       onSuccess: (data) => setTaskId(data.task_id),
-      onError: () => onSkip(),
+      onError: () => doAssembly(),
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -376,10 +379,10 @@ function StepProcessing({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crawlStatus?.status]);
 
-  // If crawl failed entirely
+  // If crawl failed entirely, still run assemble (its side effects matter).
   useEffect(() => {
     if (crawlStatus?.status === "failed") {
-      onSkip();
+      doAssembly();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crawlStatus?.status]);
@@ -397,11 +400,10 @@ function StepProcessing({
       }
     }
 
-    if (Object.keys(urlTexts).length === 0) {
-      onSkip();
-      return;
-    }
-
+    // Always call assemble even when there's no URL text to merge in.
+    // Assembly is no longer a pure URL-merge step — it also runs the
+    // looking_for auto-suggester against the resume data alone, so
+    // short-circuiting on empty urlTexts would skip that whole feature.
     assembleMutation.mutate(
       {
         resume_text: resumeText,
@@ -563,15 +565,17 @@ function StepReview({
     setProfile((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Auto-start the Scholar import once on review entry if conditions are
-  // right (URL present, no existing pubs, importer idle, profile name set).
-  // Re-mount on tab-switch-back is harmless: state lives in the context
-  // provider at app root, so phase != idle on return and start() is a noop.
+  // Auto-start the Scholar import on review entry. Fires if we have
+  // EITHER a Scholar URL or an author name (backend falls back to author
+  // search on Semantic Scholar when no URL is present). Always fires
+  // even when the resume already lists some pubs — Scholar typically has
+  // many more than what's on a resume, and the dedup-by-title pass in
+  // profile/page.tsx prevents double-adding the overlap.
   useEffect(() => {
     const url = profile.personal?.google_scholar;
-    const hasExistingPubs = (initialComplete?.publications?.length || 0) > 0;
-    if (url && !hasExistingPubs && pubImport.phase === "idle") {
-      pubImport.start(profile, url);
+    const name = profile.personal?.name;
+    if ((url || name) && pubImport.phase === "idle") {
+      pubImport.start(profile, url || undefined);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -775,14 +779,17 @@ export default function OnboardingPage() {
       queryClient.invalidateQueries({ queryKey: ["profile-complete"] });
       queryClient.invalidateQueries({ queryKey: ["onboarding-status"] });
 
-      // If the assembled profile has a Scholar URL and no publications
-      // yet, kick off the streaming Scholar import. Stream state lives in
-      // PublicationsImportContext at app root, so navigation away from
-      // /onboarding doesn't abort it — the /profile page picks it up.
+      // Kick off the streaming Scholar import on a brand-new profile.
+      // Triggers on EITHER a Scholar URL or an author name (backend
+      // falls back to name-based Semantic Scholar lookup). We fire even
+      // when the resume already lists some pubs — Scholar typically has
+      // many more, and dedup-by-title in profile/page.tsx prevents
+      // doubling. Stream state lives in PublicationsImportContext at
+      // app root, so navigation away doesn't abort the stream.
       const scholarUrl = profile.personal?.google_scholar;
-      const hasPubs = (complete?.publications?.length || 0) > 0;
-      if (scholarUrl && !hasPubs && pubImport.phase === "idle") {
-        pubImport.start(profile, scholarUrl);
+      const authorName = profile.personal?.name;
+      if ((scholarUrl || authorName) && pubImport.phase === "idle") {
+        pubImport.start(profile, scholarUrl || undefined);
       }
 
       router.push("/profile");

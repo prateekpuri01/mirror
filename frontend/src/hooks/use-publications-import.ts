@@ -29,9 +29,17 @@ interface PublicationsImportState {
   // Captured at start so the consumer (onboarding review screen) can tell
   // which scholar URL this batch belongs to and avoid double-starting.
   scholarUrl: string | null;
+  // Author name we queried (set on start, used in the verify banner so
+  // the user knows what name produced the matches).
+  authorQueried: string | null;
+  // True after the user has explicitly acknowledged (or cleared) the
+  // imported batch via the verify banner. Until acknowledged, the
+  // Profile page won't auto-reset the context so the banner stays put.
+  acknowledged: boolean;
   start: (profile: ProfileData, scholarUrl?: string) => void;
   stop: () => void;
   reset: () => void;
+  acknowledge: () => void;
 }
 
 const PublicationsImportContext = createContext<PublicationsImportState>({
@@ -42,9 +50,12 @@ const PublicationsImportContext = createContext<PublicationsImportState>({
   total: 0,
   skipped: [],
   scholarUrl: null,
+  authorQueried: null,
+  acknowledged: false,
   start: () => {},
   stop: () => {},
   reset: () => {},
+  acknowledge: () => {},
 });
 
 export function usePublicationsImport() {
@@ -61,6 +72,8 @@ export function usePublicationsImportProvider(): PublicationsImportState {
   const [total, setTotal] = useState(0);
   const [skipped, setSkipped] = useState<{ title: string; reason: string }[]>([]);
   const [scholarUrl, setScholarUrl] = useState<string | null>(null);
+  const [authorQueried, setAuthorQueried] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const stop = useCallback(() => {
@@ -79,6 +92,12 @@ export function usePublicationsImportProvider(): PublicationsImportState {
     setTotal(0);
     setSkipped([]);
     setScholarUrl(null);
+    setAuthorQueried(null);
+    setAcknowledged(false);
+  }, []);
+
+  const acknowledge = useCallback(() => {
+    setAcknowledged(true);
   }, []);
 
   const start = useCallback(
@@ -102,6 +121,8 @@ export function usePublicationsImportProvider(): PublicationsImportState {
       setTotal(0);
       setSkipped([]);
       setScholarUrl(targetUrl);
+      setAuthorQueried(profile.personal?.name || null);
+      setAcknowledged(false);
 
       (async () => {
         try {
@@ -213,8 +234,11 @@ export function usePublicationsImportProvider(): PublicationsImportState {
     total,
     skipped,
     scholarUrl,
+    authorQueried,
+    acknowledged,
     start,
     stop,
     reset,
+    acknowledge,
   };
 }

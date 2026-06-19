@@ -8,14 +8,15 @@ import {
   Plus,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import type {
   ProfileAccomplishment,
+  ProfileData,
   ProfilePublication,
   ProfileWorkHistory,
 } from "@/lib/types";
-import { lookupPublication, importScholarPublications } from "@/lib/api";
+import { lookupPublication } from "@/lib/api";
+import { usePublicationsImport } from "@/hooks/use-publications-import";
 
 // ---------------------------------------------------------------------------
 // Publication Lookup Modal (inline)
@@ -108,13 +109,13 @@ function PublicationLookup({
             {(result.authors || []).join(", ")} — {result.venue},{" "}
             {result.year}
           </div>
-          {result.impact_summary && (
-            <div className="text-[10px] text-gray-600">
-              {result.impact_summary}
+          {result.abstract && (
+            <div className="text-[10px] text-gray-600 line-clamp-3">
+              {result.abstract}
             </div>
           )}
-          <span className="text-[9px] bg-amber-200 text-amber-800 px-1 py-0.5 rounded">
-            AI-generated
+          <span className="text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded">
+            From Semantic Scholar
           </span>
           <div className="flex gap-2 mt-1">
             <button
@@ -163,87 +164,39 @@ function PublicationLookup({
 // ---------------------------------------------------------------------------
 
 function ScholarImportPanel({
-  onAdd,
+  profile,
   hasScholarUrl,
 }: {
-  onAdd: (pubs: ProfilePublication[]) => void;
+  profile: ProfileData | null;
   hasScholarUrl: boolean;
 }) {
-  const [loading, setLoading] = useState(false);
-  const [drafts, setDrafts] = useState<ProfilePublication[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Uses the streaming PublicationsImportContext (same one used during
+  // onboarding) so the import runs as a background task — the user can
+  // navigate to other tabs / pages and pubs continue streaming in. The
+  // verify banner on /profile's Publications tab handles confirmation
+  // after streaming completes. Auto-save into localPublications happens
+  // in the Profile page's useEffect (see profile/page.tsx:185).
+  const pubImport = usePublicationsImport();
+  const isRunning =
+    pubImport.phase === "fetching" || pubImport.phase === "enriching";
 
-  if (!hasScholarUrl) return null;
-
-  const doImport = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await importScholarPublications();
-      if (resp.success && resp.publications.length > 0) {
-        setDrafts(resp.publications);
-      } else {
-        setError(
-          resp.error ||
-            "Could not find your publications — try looking up individual titles instead"
-        );
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Import failed");
-    } finally {
-      setLoading(false);
-    }
+  const doImport = () => {
+    if (!profile || isRunning) return;
+    // Reset any previous stream state before kicking off a new one.
+    pubImport.reset();
+    pubImport.start(profile);
   };
 
-  if (drafts && drafts.length > 0) {
-    return (
-      <div className="border rounded p-3 bg-amber-50 space-y-2">
-        <div className="text-xs font-semibold text-amber-800">
-          Scholar Import: {drafts.length} publication
-          {drafts.length !== 1 ? "s" : ""} found
-        </div>
-        {drafts.map((d, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between bg-white border border-amber-200 rounded px-2 py-1.5"
-          >
-            <div className="text-xs min-w-0 truncate">
-              <span className="font-medium">{d.title}</span>
-              <span className="text-gray-500"> ({d.year || "?"})</span>
-            </div>
-            <div className="flex gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  onAdd([d]);
-                  setDrafts(drafts.filter((_, idx) => idx !== i));
-                }}
-                className="text-[10px] text-green-600 hover:text-green-800 font-medium"
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                onClick={() => setDrafts(drafts.filter((_, idx) => idx !== i))}
-                className="text-[10px] text-gray-400 hover:text-gray-600"
-              >
-                Skip
-              </button>
-            </div>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            onAdd(drafts);
-            setDrafts(null);
-          }}
-          className="text-[10px] text-green-600 hover:text-green-800 font-medium"
-        >
-          Add All
-        </button>
-      </div>
-    );
+  let label: string;
+  if (isRunning) {
+    label =
+      pubImport.total > 0
+        ? `Importing… ${pubImport.publications.length} / ${pubImport.total}`
+        : "Starting import…";
+  } else if (hasScholarUrl) {
+    label = "Import from Google Scholar";
+  } else {
+    label = "Find publications by name";
   }
 
   return (
@@ -251,17 +204,26 @@ function ScholarImportPanel({
       <button
         type="button"
         onClick={doImport}
-        disabled={loading}
-        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+        disabled={isRunning || !profile}
+        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
+        title={
+          isRunning
+            ? "Import is running in the background — feel free to navigate away"
+            : ""
+        }
       >
-        {loading ? (
+        {isRunning ? (
           <Loader2 className="h-3 w-3 animate-spin" />
         ) : (
           <Plus className="h-3 w-3" />
         )}
-        {loading ? "Searching Semantic Scholar..." : "Import from Google Scholar"}
+        {label}
       </button>
-      {error && <span className="text-[10px] text-red-500">{error}</span>}
+      {pubImport.phase === "error" && pubImport.errorMessage && (
+        <span className="text-[10px] text-red-500">
+          {pubImport.errorMessage}
+        </span>
+      )}
     </div>
   );
 }
@@ -286,47 +248,9 @@ function PublicationCard({
   onRemove: (index: number) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
-  const [quantInput, setQuantInput] = useState("");
 
   const update = (field: keyof ProfilePublication, value: unknown) => {
     onChange(index, { ...pub, [field]: value });
-  };
-
-  const addSkill = () => {
-    const trimmed = skillInput.trim();
-    if (trimmed) {
-      update("skills_demonstrated", [
-        ...(pub.skills_demonstrated || []),
-        trimmed,
-      ]);
-      setSkillInput("");
-    }
-  };
-
-  const removeSkill = (i: number) => {
-    update(
-      "skills_demonstrated",
-      (pub.skills_demonstrated || []).filter((_, idx) => idx !== i)
-    );
-  };
-
-  const addQuant = () => {
-    const trimmed = quantInput.trim();
-    if (trimmed) {
-      update("quantitative_specifics", [
-        ...(pub.quantitative_specifics || []),
-        trimmed,
-      ]);
-      setQuantInput("");
-    }
-  };
-
-  const removeQuant = (i: number) => {
-    update(
-      "quantitative_specifics",
-      (pub.quantitative_specifics || []).filter((_, idx) => idx !== i)
-    );
   };
 
   // Find accomplishments that reference this pub
@@ -340,12 +264,12 @@ function PublicationCard({
     <div
       className={`border rounded ${pub.auto_populated ? "border-amber-300 bg-amber-50/50" : "bg-gray-50"}`}
     >
-      <button
-        type="button"
-        className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-gray-100"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center gap-2 text-left min-w-0">
+      <div className="flex items-center justify-between text-sm hover:bg-gray-100">
+        <button
+          type="button"
+          className="flex-1 flex items-center gap-2 text-left min-w-0 px-3 py-2"
+          onClick={() => setExpanded(!expanded)}
+        >
           {expanded ? (
             <ChevronDown className="h-3.5 w-3.5 text-gray-500 shrink-0" />
           ) : (
@@ -357,18 +281,16 @@ function PublicationCard({
               AI
             </span>
           )}
-        </div>
+        </button>
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove(index);
-          }}
-          className="text-gray-400 hover:text-red-500 p-0.5 shrink-0"
+          onClick={() => onRemove(index)}
+          className="text-gray-400 hover:text-red-500 px-3 py-2 shrink-0"
+          aria-label="Remove publication"
         >
           <Trash2 className="h-3 w-3" />
         </button>
-      </button>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 space-y-2 border-t pt-2">
@@ -501,140 +423,15 @@ function PublicationCard({
 
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">
-              Your Contribution
+              Abstract
             </label>
             <textarea
               value={pub.abstract || ""}
               onChange={(e) => update("abstract", e.target.value)}
               className="w-full rounded border px-2 py-1 text-sm resize-none"
-              rows={3}
-              placeholder="What was your role and contribution to this work?"
+              rows={5}
+              placeholder="Pulled from Semantic Scholar — edit if needed. The resume agent reads this to understand the work."
             />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Impact Summary
-            </label>
-            <textarea
-              value={pub.impact_summary || ""}
-              onChange={(e) => update("impact_summary", e.target.value)}
-              className="w-full rounded border px-2 py-1 text-sm resize-none"
-              rows={2}
-              placeholder="Job-search-relevant description of this publication's impact"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              So What?
-            </label>
-            <textarea
-              value={pub.so_what || ""}
-              onChange={(e) => update("so_what", e.target.value)}
-              className="w-full rounded border px-2 py-1 text-sm resize-none"
-              rows={2}
-              placeholder="Why does this publication matter for your target roles?"
-            />
-          </div>
-
-          {/* Quantitative Specifics */}
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Quantitative Specifics
-            </label>
-            <div className="space-y-1 mb-1">
-              {(pub.quantitative_specifics || []).map((q, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={q}
-                    onChange={(e) => {
-                      const updated = [...(pub.quantitative_specifics || [])];
-                      updated[i] = e.target.value;
-                      update("quantitative_specifics", updated);
-                    }}
-                    className="flex-1 rounded border px-2 py-0.5 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeQuant(i)}
-                    className="text-gray-400 hover:text-red-500"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={quantInput}
-                onChange={(e) => setQuantInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addQuant();
-                  }
-                }}
-                className="flex-1 rounded border px-2 py-0.5 text-xs"
-                placeholder="Add metric..."
-              />
-              <button
-                type="button"
-                onClick={addQuant}
-                disabled={!quantInput.trim()}
-                className="text-xs text-blue-600 disabled:opacity-50"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">
-              Skills Demonstrated
-            </label>
-            <div className="flex flex-wrap gap-1 mb-1">
-              {(pub.skills_demonstrated || []).map((s, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-0.5 bg-gray-200 text-gray-700 text-[10px] px-1.5 py-0.5 rounded-full"
-                >
-                  {s}
-                  <button
-                    type="button"
-                    onClick={() => removeSkill(i)}
-                    className="hover:text-red-500"
-                  >
-                    <X className="h-2.5 w-2.5" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-1.5">
-              <input
-                type="text"
-                value={skillInput}
-                onChange={(e) => setSkillInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    addSkill();
-                  }
-                }}
-                className="flex-1 rounded border px-2 py-0.5 text-xs"
-                placeholder="Add skill..."
-              />
-              <button
-                type="button"
-                onClick={addSkill}
-                disabled={!skillInput.trim()}
-                className="text-xs text-blue-600 disabled:opacity-50"
-              >
-                <Plus className="h-3 w-3" />
-              </button>
-            </div>
           </div>
 
           {/* Linked accomplishments (read-only) */}
@@ -690,6 +487,9 @@ interface PublicationsSectionProps {
   accomplishments: ProfileAccomplishment[];
   workHistory: ProfileWorkHistory[];
   hasScholarUrl: boolean;
+  // Full profile (needed by the streaming import — passed straight through
+  // to pubImport.start()).
+  profile: ProfileData | null;
   onChange: (data: ProfilePublication[]) => void;
 }
 
@@ -697,6 +497,7 @@ export function PublicationsSection({
   data,
   accomplishments,
   workHistory,
+  profile,
   hasScholarUrl,
   onChange,
 }: PublicationsSectionProps) {
@@ -721,7 +522,6 @@ export function PublicationsSection({
         abstract: "",
         first_author: false,
         relevance_weight: 0.5,
-        skills_demonstrated: [],
       },
     ]);
   };
@@ -742,7 +542,7 @@ export function PublicationsSection({
       <div className="flex items-center gap-3 flex-wrap">
         <PublicationLookup onAdd={(pub) => handleAddPubs([pub])} />
         <ScholarImportPanel
-          onAdd={handleAddPubs}
+          profile={profile}
           hasScholarUrl={hasScholarUrl}
         />
       </div>

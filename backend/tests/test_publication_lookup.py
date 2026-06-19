@@ -109,10 +109,18 @@ async def test_search_publication_returns_none_on_empty():
 
 @pytest.mark.asyncio
 async def test_enrich_publication_returns_complete_dict():
-    """enrich_publication returns a complete ProfilePublication dict."""
+    """enrich_publication returns a complete ProfilePublication dict.
+
+    The enricher is now deterministic — no LLM call. Verifies:
+      * first_author detected via authors[0] substring match
+      * work_history_key matched by paper year against work_history ranges
+      * relevance_weight is a sensible float in (0, 1]
+      * dropped narrative fields are empty placeholders (back-compat)
+      * abstract passes through from the source
+    """
     paper = {
         "title": "Test Paper",
-        "authors": ["Jane Doe", "Jane Doe"],
+        "authors": ["Jane Doe", "Bob Smith"],
         "venue": "Test Venue",
         "year": "2025",
         "abstract": "This paper tests things.",
@@ -124,30 +132,57 @@ async def test_enrich_publication_returns_complete_dict():
 
     profile = {
         "personal": {"name": "Jane Doe"},
-        "skills": {"technical": ["Python", "machine learning"], "communication": [], "tools": []},
-        "target_roles": [{"title": "Data Scientist"}],
-        "domains": ["AI"],
-        "work_history": [{"key": "acme_ai", "employer": "Acme AI", "start": "2022", "end": ""}],
+        "work_history": [
+            {"key": "acme_ai", "employer": "Acme AI", "start": "2022", "end": "present"},
+            {"key": "old_lab", "employer": "Old Lab", "start": "2018", "end": "2021"},
+        ],
     }
 
-    mock_response = MagicMock()
-    mock_response.choices = [
-        MagicMock(
-            message=MagicMock(
-                content='{"impact_summary":"Led testing","so_what":"Shows testing skills","skills_demonstrated":["Python"],"quantitative_specifics":["10 citations"],"relevance_weight":0.8,"work_history_key":"rand_corporation","type":"journal"}'
-            )
-        )
-    ]
+    result = await enrich_publication(paper, profile)
 
-    mock_client = AsyncMock()
-    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
-
-    with patch("app.ai.publication_enricher.get_openai_client", return_value=mock_client):
-        result = await enrich_publication(paper, profile)
-
-    assert result["auto_populated"] is True
+    # Pass-through from the source paper
     assert result["title"] == "Test Paper"
-    assert result["first_author"] is True
-    assert result["impact_summary"] == "Led testing"
-    assert result["work_history_key"] == "rand_corporation"
-    assert "Python" in result["skills_demonstrated"]
+    assert result["abstract"] == "This paper tests things."
+    assert result["doi"] == "10.1234/test"
+    assert result["citation_count"] == 10
+    assert result["auto_populated"] is True
+
+    # Deterministic computations
+    assert result["first_author"] is True  # "jane doe" in authors[0]
+    assert result["work_history_key"] == "acme_ai"  # 2025 falls in 2022-present
+    assert 0.0 < result["relevance_weight"] <= 1.0
+
+    # Dropped narrative fields remain as empty placeholders for back-compat
+    assert result["impact_summary"] == ""
+    assert result["so_what"] == ""
+    assert result["skills_demonstrated"] == []
+    assert result["quantitative_specifics"] == []
+
+
+@pytest.mark.asyncio
+async def test_enrich_publication_no_first_author_match():
+    """When the user name isn't authors[0], first_author should be False."""
+    paper = {
+        "title": "Other Paper",
+        "authors": ["Bob Smith", "Jane Doe"],
+        "year": "2024",
+        "citation_count": 0,
+    }
+    profile = {"personal": {"name": "Jane Doe"}, "work_history": []}
+    result = await enrich_publication(paper, profile)
+    assert result["first_author"] is False
+    assert result["work_history_key"] is None
+
+
+@pytest.mark.asyncio
+async def test_relevance_weight_orders_papers_correctly():
+    """Recent first-author papers should outrank old non-first papers."""
+    recent_fa = await enrich_publication(
+        {"title": "A", "authors": ["Jane Doe"], "year": "2025", "citation_count": 5},
+        {"personal": {"name": "Jane Doe"}},
+    )
+    old_non_fa = await enrich_publication(
+        {"title": "B", "authors": ["Bob", "Jane Doe"], "year": "2010", "citation_count": 5},
+        {"personal": {"name": "Jane Doe"}},
+    )
+    assert recent_fa["relevance_weight"] > old_non_fa["relevance_weight"]

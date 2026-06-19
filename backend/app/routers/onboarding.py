@@ -1,5 +1,6 @@
 """Onboarding API: resume upload, URL crawling, and profile assembly."""
 
+import asyncio
 import json
 import logging
 import uuid
@@ -10,6 +11,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.ai.profile_suggester import suggest_profile_section
 from app.ai.publication_enricher import enrich_publication
 from app.ai.resume_extractor import (
     assemble_profile_from_sources,
@@ -195,7 +197,14 @@ async def crawl_status(task_id: str):
 
 @router.post("/assemble-profile")
 async def assemble_profile(request: AssembleProfileRequest):
-    """Merge resume extraction + URL crawl results via LLM."""
+    """Merge resume extraction + URL crawl results via LLM.
+
+    Also auto-drafts ``looking_for`` / ``not_looking_for`` paragraphs from
+    the assembled profile so the user lands on a populated Search
+    Preferences section. The two fields are flagged with
+    ``*_ai_generated: true`` so the UI can show an "AI" badge that clears
+    when the user edits the text.
+    """
     try:
         profile, complete = await assemble_profile_from_sources(
             resume_text=request.resume_text,
@@ -206,6 +215,33 @@ async def assemble_profile(request: AssembleProfileRequest):
     except Exception as e:
         logger.exception("Profile assembly failed")
         raise HTTPException(status_code=422, detail=f"Profile assembly failed: {str(e)}")
+
+    # Auto-draft search-preferences text from the assembled profile. Bounded
+    # by a 20s timeout — if the LLM is slow, we don't want to block the
+    # onboarding flow. The on-mount fallback in search-preferences-section
+    # will re-attempt when the user lands on /profile.
+    try:
+        full_data = {**profile, "complete_profile": complete}
+        looking = await asyncio.wait_for(
+            suggest_profile_section("looking_for", full_data),
+            timeout=20.0,
+        )
+        if "error" not in looking:
+            search_prefs = profile.setdefault("search_preferences", {})
+            if not (search_prefs.get("looking_for") or "").strip() and looking.get("looking_for"):
+                search_prefs["looking_for"] = looking["looking_for"]
+                search_prefs["looking_for_ai_generated"] = True
+            if not (search_prefs.get("not_looking_for") or "").strip() and looking.get(
+                "not_looking_for"
+            ):
+                search_prefs["not_looking_for"] = looking["not_looking_for"]
+                search_prefs["not_looking_for_ai_generated"] = True
+    except TimeoutError:
+        logger.warning(
+            "Auto-suggest of looking_for timed out after 20s — on-mount fallback will handle"
+        )
+    except Exception:
+        logger.warning("Auto-suggest of looking_for during assembly failed", exc_info=True)
 
     return {"profile": profile, "complete_profile": complete}
 
@@ -278,29 +314,46 @@ async def import_publications_stream(
             total_data = json.dumps({"total": len(papers)})
             yield f"event: total\ndata: {total_data}\n\n"
 
+            # Enrich up to N papers concurrently. Each enrichment is a
+            # single LLM call (~10-50s depending on backend load) — running
+            # them sequentially makes a 28-paper author take 20+ minutes
+            # and SSE connections often drop mid-stream. Parallelism
+            # cuts wall-clock 4-5x while staying under provider rate limits.
+            CONCURRENCY = 4
+            sem = asyncio.Semaphore(CONCURRENCY)
+
+            async def enrich_one(idx: int, paper: dict):
+                async with sem:
+                    try:
+                        pub = await enrich_publication(paper, body.profile)
+                        pub["auto_populated"] = True
+                        return ("ok", idx, paper, pub)
+                    except Exception:
+                        logger.warning(
+                            "Failed to enrich Scholar paper '%s' during streaming import",
+                            paper.get("title", ""),
+                        )
+                        return ("skip", idx, paper, None)
+
+            tasks = [asyncio.create_task(enrich_one(i, p)) for i, p in enumerate(papers)]
             imported = 0
-            for i, paper in enumerate(papers):
-                try:
-                    pub = await enrich_publication(paper, body.profile)
-                    pub["auto_populated"] = True
+            for coro in asyncio.as_completed(tasks):
+                kind, idx, paper, pub = await coro
+                if kind == "ok":
                     payload = json.dumps(
                         {
                             "publication": pub,
-                            "index": i,
+                            "index": idx,
                             "total": len(papers),
                         }
                     )
                     yield f"event: publication\ndata: {payload}\n\n"
                     imported += 1
-                except Exception:
-                    logger.warning(
-                        "Failed to enrich Scholar paper '%s' during streaming import",
-                        paper.get("title", ""),
-                    )
+                else:
                     skip = json.dumps(
                         {
                             "title": paper.get("title", "unknown"),
-                            "index": i,
+                            "index": idx,
                             "total": len(papers),
                             "reason": "Enrichment failed",
                         }
