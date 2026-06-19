@@ -977,8 +977,10 @@ async def broad_rewrite(state: AgentState) -> dict:
 Apply the revision instruction. Output the COMPLETE updated resume as valid JSON."""
 
     result = await _call_openai_json(system, user_content, max_tokens=4000)
-    # Restore section_order — re-attach the user's custom ordering
-    if saved_order is not None:
+    # Restore section_order — re-attach the user's custom ordering. Guard on
+    # isinstance: a malformed LLM response may return a non-dict, which would
+    # crash on item assignment.
+    if saved_order is not None and isinstance(result, dict):
         result["section_order"] = saved_order
     return {
         "updated_json": result,

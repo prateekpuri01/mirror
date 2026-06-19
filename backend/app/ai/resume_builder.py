@@ -505,7 +505,9 @@ async def revise_resume(session: AsyncSession, doc_id, instruction: str) -> Docu
 
         # Call LLM with revision prompt
         logger.info("Revising resume for doc %s: %s", doc_id, instruction[:100])
-        # Strip section_order — LLM must not see or overwrite it
+        # Strip section_order — LLM must not see or overwrite it. Copy first
+        # so .pop() doesn't mutate the caller's loaded dict (mirrors broad_rewrite).
+        current_resume = dict(current_resume)
         saved_order = current_resume.pop("section_order", None)
         messages = build_revision_prompt(
             current_resume_json=json.dumps(current_resume, indent=2),
