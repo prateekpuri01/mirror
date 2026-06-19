@@ -1,29 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Download, GripVertical, Loader2, Plus, RotateCcw, X } from "lucide-react";
-import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  useSortable,
-  verticalListSortingStrategy,
-  arrayMove,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
+import { AlertTriangle, Download, Loader2 } from "lucide-react";
 import {
   COLOR_PRESETS,
   DEFAULT_RESUME_DESIGN,
   FONT_PRESETS,
-  LAYOUT_DEFAULT_ORDER,
   LAYOUT_PRESETS,
-  SECTION_LABELS,
   type ResumeDesign,
 } from "@/lib/types";
 import { downloadResumeDesignSample } from "@/lib/api";
@@ -174,10 +157,8 @@ export function ResumeDesignSection({ data, onChange }: ResumeDesignSectionProps
         </div>
       </div>
 
-      {/* Sections — reorder + show/hide. Sets resume_design.section_order,
-          which becomes the template for job resumes you haven't manually
-          reordered. */}
-      <SectionsControl design={design} onChange={update} />
+      {/* Section reorder/hide lives inline on the Live Preview (drag the ⠿
+          handle, ✕ to hide) — see ResumePreview / the profile page. */}
 
       {/* Download sample */}
       <div className="border-t pt-4">
@@ -207,142 +188,6 @@ export function ResumeDesignSection({ data, onChange }: ResumeDesignSectionProps
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Sections control — reorder (drag) and show/hide the resume's sections for
-// the current layout. Edits design.section_order (the template).
-// ---------------------------------------------------------------------------
-
-function SectionsControl({
-  design,
-  onChange,
-}: {
-  design: ResumeDesign;
-  onChange: (patch: Partial<ResumeDesign>) => void;
-}) {
-  const layoutOrder = LAYOUT_DEFAULT_ORDER[design.layout] ?? LAYOUT_DEFAULT_ORDER.banner;
-  // Visible sections in their current order; hidden = in the layout but absent.
-  const order = design.section_order ?? layoutOrder;
-  const visible = order.filter((id) => layoutOrder.includes(id));
-  const hidden = layoutOrder.filter((id) => !visible.includes(id));
-  const isCustomized = design.section_order !== undefined;
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-  );
-
-  function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIdx = visible.indexOf(active.id as string);
-      const newIdx = visible.indexOf(over.id as string);
-      onChange({ section_order: arrayMove(visible, oldIdx, newIdx) });
-    }
-  }
-
-  return (
-    <div className="border-t pt-4">
-      <div className="flex items-center justify-between mb-2">
-        <h3 className="text-sm font-semibold">Sections</h3>
-        {isCustomized && (
-          <button
-            type="button"
-            onClick={() => onChange({ section_order: undefined })}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Reset to default
-          </button>
-        )}
-      </div>
-      <p className="text-xs text-muted-foreground mb-3">
-        Drag to reorder. Hidden sections won&apos;t appear in your resumes (the
-        content is still generated). This sets the default for job resumes you
-        haven&apos;t manually arranged.
-      </p>
-
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={visible} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1.5">
-            {visible.map((id) => (
-              <SortableSectionRow
-                key={id}
-                id={id}
-                label={SECTION_LABELS[id] ?? id}
-                onHide={
-                  // Keep at least one section visible.
-                  visible.length > 1
-                    ? () => onChange({ section_order: visible.filter((s) => s !== id) })
-                    : undefined
-                }
-              />
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
-
-      {hidden.length > 0 && (
-        <div className="mt-3">
-          <div className="text-xs font-medium text-muted-foreground mb-1.5">Hidden</div>
-          <div className="flex flex-wrap gap-1.5">
-            {hidden.map((id) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onChange({ section_order: [...visible, id] })}
-                className="inline-flex items-center gap-1 px-2 py-1 text-xs border border-dashed border-gray-300 rounded-md text-muted-foreground hover:border-gray-400 hover:text-foreground"
-              >
-                <Plus className="h-3 w-3" />
-                {SECTION_LABELS[id] ?? id}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SortableSectionRow({
-  id,
-  label,
-  onHide,
-}: {
-  id: string;
-  label: string;
-  onHide?: () => void;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id });
-  return (
-    <div
-      ref={setNodeRef}
-      style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }}
-      className="flex items-center gap-2 border border-gray-200 rounded-md bg-white px-2 py-1.5"
-    >
-      <button
-        type="button"
-        className="cursor-grab text-gray-400 hover:text-gray-600 touch-none"
-        aria-label={`Drag ${label}`}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <span className="flex-1 text-sm">{label}</span>
-      {onHide && (
-        <button
-          type="button"
-          onClick={onHide}
-          aria-label={`Hide ${label}`}
-          className="text-gray-400 hover:text-red-600 rounded p-0.5"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      )}
     </div>
   );
 }

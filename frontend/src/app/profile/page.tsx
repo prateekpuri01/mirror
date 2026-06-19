@@ -21,7 +21,8 @@ import { PublicationsSection } from "@/components/profile/publications-section";
 import { WritingStyleSection } from "@/components/profile/writing-style-section";
 import { ResumeDesignSection } from "@/components/profile/resume-design-section";
 import { ResumePreview } from "@/components/profile/resume-preview";
-import { DEFAULT_RESUME_DESIGN } from "@/lib/types";
+import { DEFAULT_RESUME_DESIGN, LAYOUT_DEFAULT_ORDER, SECTION_LABELS } from "@/lib/types";
+import { Plus, RotateCcw } from "lucide-react";
 import { fetchResumeDesignPreviewContent } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { usePublicationsImport } from "@/hooks/use-publications-import";
@@ -567,20 +568,41 @@ function ResumeDesignTab({
       </ProfileSection>
 
       <div className="xl:sticky xl:top-4 xl:self-start">
-        <div className="text-xs font-semibold mb-2 text-muted-foreground uppercase tracking-wider">
-          Live Preview
+        <div className="flex items-center justify-between mb-2">
+          <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+            Live Preview
+          </div>
+          {design.section_order !== undefined && (
+            <button
+              type="button"
+              onClick={() => onChange({ ...design, section_order: undefined })}
+              className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset sections
+            </button>
+          )}
         </div>
         {previewContent.isLoading ? (
           <div className="border border-gray-200 rounded-lg bg-white p-6 text-xs text-muted-foreground">
             Loading preview…
           </div>
         ) : previewContent.data ? (
-          <ResumePreview
-            design={design}
-            resume={previewContent.data.resume}
-            profile={previewContent.data.profile}
-            isSample={previewContent.data.is_sample}
-          />
+          <>
+            <ResumePreview
+              design={design}
+              resume={previewContent.data.resume}
+              profile={previewContent.data.profile}
+              isSample={previewContent.data.is_sample}
+              onSectionsChange={(o) => onChange({ ...design, section_order: o })}
+            />
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Hover a section and drag the ⠿ handle to reorder, or ✕ to hide it.
+              This sets the default for job resumes you haven&apos;t manually
+              arranged.
+            </p>
+            <HiddenSectionsBar design={design} onChange={onChange} />
+          </>
         ) : (
           <div className="border border-red-200 bg-red-50 rounded-lg p-3 text-xs text-red-700">
             Couldn&apos;t load preview content.{" "}
@@ -588,6 +610,37 @@ function ResumeDesignTab({
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Re-add chips for sections hidden from the template (the preview can only
+// hide; this is how you bring one back).
+function HiddenSectionsBar({
+  design,
+  onChange,
+}: {
+  design: ResumeDesign;
+  onChange: (d: ResumeDesign) => void;
+}) {
+  const layoutDefault = LAYOUT_DEFAULT_ORDER[design.layout] ?? LAYOUT_DEFAULT_ORDER.banner;
+  const order = (design.section_order ?? layoutDefault).filter((id) => layoutDefault.includes(id));
+  const hidden = layoutDefault.filter((id) => !order.includes(id));
+  if (hidden.length === 0) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className="text-[11px] font-medium text-muted-foreground">Hidden:</span>
+      {hidden.map((id) => (
+        <button
+          key={id}
+          type="button"
+          onClick={() => onChange({ ...design, section_order: [...order, id] })}
+          className="inline-flex items-center gap-1 px-2 py-0.5 text-[11px] border border-dashed border-gray-300 rounded-md text-muted-foreground hover:border-gray-400 hover:text-foreground"
+        >
+          <Plus className="h-3 w-3" />
+          {SECTION_LABELS[id] ?? id}
+        </button>
+      ))}
     </div>
   );
 }
