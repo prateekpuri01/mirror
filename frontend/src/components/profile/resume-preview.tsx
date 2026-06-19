@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import {
   COLOR_PRESETS,
   FONT_PRESETS,
+  LAYOUT_DEFAULT_ORDER,
   type ResumeDesign,
   type ResumeJson,
 } from "@/lib/types";
@@ -42,7 +43,14 @@ export function ResumePreview({ design, resume, profile, isSample }: ResumePrevi
     [design.font],
   );
 
-  const common = { resume, profile, scheme, fontFamily, isSample };
+  // Effective section order/visibility for this layout: the user's template
+  // (design.section_order) wins; otherwise the layout default. Sections absent
+  // from the list are hidden. Filtered to ids valid for the layout so a stale
+  // template can't inject sections the layout doesn't render.
+  const layoutDefault = LAYOUT_DEFAULT_ORDER[design.layout] ?? LAYOUT_DEFAULT_ORDER.banner;
+  const order = (design.section_order ?? layoutDefault).filter((id) => layoutDefault.includes(id));
+
+  const common = { resume, profile, scheme, fontFamily, isSample, order };
 
   if (design.layout === "two_column") return <TwoColumnPreview {...common} />;
   if (design.layout === "banner") return <BannerPreview {...common} />;
@@ -163,29 +171,48 @@ function ContactLine({
 
 type SectionHeaderComponent = React.ComponentType<{ children: React.ReactNode; scheme: Scheme }>;
 
-function ResumeSections({
-  resume,
-  profile,
-  scheme,
-  Header,
-  ExperienceComponent,
-}: {
+type SectionCtx = {
   resume: ResumeJson;
   profile: PreviewProfile;
   scheme: Scheme;
   Header: SectionHeaderComponent;
-  ExperienceComponent?: React.ComponentType<{ resume: ResumeJson; profile: PreviewProfile; scheme: Scheme }>;
-}) {
-  const Experience = ExperienceComponent ?? ExperienceList;
-  return (
-    <>
-      {resume.summary && (
+  experienceLabel?: string;
+  ExperienceComponent?: React.ComponentType<{
+    resume: ResumeJson;
+    profile: PreviewProfile;
+    scheme: Scheme;
+  }>;
+  // two_column renders the summary as a bare paragraph (no section header).
+  summaryAsHeader?: boolean;
+};
+
+// Render a single resume section by id. Returns null when the section has no
+// content. Shared by every layout preview so reorder/hide is honored uniformly.
+function renderSection(id: string, ctx: SectionCtx): React.ReactNode {
+  const {
+    resume,
+    profile,
+    scheme,
+    Header,
+    experienceLabel = "Professional Experience",
+    ExperienceComponent = ExperienceList,
+    summaryAsHeader = true,
+  } = ctx;
+
+  switch (id) {
+    case "summary":
+      if (!resume.summary) return null;
+      return summaryAsHeader ? (
         <section>
           <Header scheme={scheme}>Summary</Header>
           <p className="text-[11px]" style={{ color: scheme.body }}>{resume.summary}</p>
         </section>
-      )}
-      {resume.selected_research?.length ? (
+      ) : (
+        <p className="text-[11px] mb-2" style={{ color: scheme.body }}>{resume.summary}</p>
+      );
+    case "selected_research":
+      if (!resume.selected_research?.length) return null;
+      return (
         <section>
           <Header scheme={scheme}>{resume.selected_research_section_title || "Selected Research"}</Header>
           {resume.selected_research.map((entry, i) => (
@@ -200,37 +227,76 @@ function ResumeSections({
             </div>
           ))}
         </section>
-      ) : null}
-      {resume.experience && Object.keys(resume.experience).length ? (
+      );
+    case "experience": {
+      if (!resume.experience || !Object.keys(resume.experience).length) return null;
+      const Experience = ExperienceComponent;
+      return (
         <section>
-          <Header scheme={scheme}>Professional Experience</Header>
+          <Header scheme={scheme}>{experienceLabel}</Header>
           <Experience resume={resume} profile={profile} scheme={scheme} />
         </section>
-      ) : null}
-      {resume.publications?.length ? (
+      );
+    }
+    case "experience_education": {
+      const hasTimeline =
+        (resume.experience && Object.keys(resume.experience).length > 0) ||
+        (profile.education?.length ?? 0) > 0;
+      if (!hasTimeline) return null;
+      return (
+        <section>
+          <Header scheme={scheme}>Experience &amp; Education</Header>
+          <TimelineExperienceEducation resume={resume} profile={profile} scheme={scheme} />
+        </section>
+      );
+    }
+    case "publications":
+      if (!resume.publications?.length) return null;
+      return (
         <section>
           <Header scheme={scheme}>Selected Publications</Header>
           <Bullets items={resume.publications.map((p) => p.citation)} color={scheme.body} />
         </section>
-      ) : null}
-      {resume.technical_skills && Object.keys(resume.technical_skills).length ? (
+      );
+    case "technical_skills":
+      if (!resume.technical_skills || !Object.keys(resume.technical_skills).length) return null;
+      return (
         <section>
           <Header scheme={scheme}>Technical Skills</Header>
           <SkillsList skills={resume.technical_skills} scheme={scheme} />
         </section>
-      ) : null}
-      {profile.education?.length ? (
+      );
+    case "education":
+      if (!profile.education?.length) return null;
+      return (
         <section>
           <Header scheme={scheme}>Education</Header>
           <EducationList items={profile.education} scheme={scheme} />
         </section>
-      ) : null}
-      {resume.awards && (
+      );
+    case "awards":
+      if (!resume.awards) return null;
+      return (
         <section>
-          <Header scheme={scheme}>Awards & Honors</Header>
+          <Header scheme={scheme}>Awards &amp; Honors</Header>
           <p className="text-[11px]" style={{ color: scheme.body }}>{resume.awards}</p>
         </section>
-      )}
+      );
+    default:
+      return null;
+  }
+}
+
+function ResumeSections({
+  order,
+  ...ctx
+}: SectionCtx & { order: string[] }) {
+  return (
+    <>
+      {order.map((id) => {
+        const node = renderSection(id, ctx);
+        return node ? <Fragment key={id}>{node}</Fragment> : null;
+      })}
     </>
   );
 }
@@ -245,12 +311,14 @@ function BannerPreview({
   scheme,
   fontFamily,
   isSample,
+  order,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
   scheme: Scheme;
   fontFamily: string;
   isSample?: boolean;
+  order: string[];
 }) {
   const personal = (profile.personal || {}) as { name?: string; email?: string; phone?: string; linkedin?: string };
   return (
@@ -275,6 +343,7 @@ function BannerPreview({
       <div className="px-6 pt-3 pb-5">
         <ContactLine personal={personal} color="#555" className="mb-1" />
         <ResumeSections
+          order={order}
           resume={resume}
           profile={profile}
           scheme={scheme}
@@ -295,12 +364,14 @@ function CompactPreview({
   scheme,
   fontFamily,
   isSample,
+  order,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
   scheme: Scheme;
   fontFamily: string;
   isSample?: boolean;
+  order: string[];
 }) {
   const personal = (profile.personal || {}) as { name?: string; email?: string; phone?: string; linkedin?: string };
   return (
@@ -332,6 +403,7 @@ function CompactPreview({
       </div>
 
       <ResumeSections
+        order={order}
         resume={resume}
         profile={profile}
         scheme={scheme}
@@ -351,12 +423,14 @@ function TimelinePreview({
   scheme,
   fontFamily,
   isSample,
+  order,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
   scheme: Scheme;
   fontFamily: string;
   isSample?: boolean;
+  order: string[];
 }) {
   const personal = (profile.personal || {}) as {
     name?: string;
@@ -366,10 +440,6 @@ function TimelinePreview({
     location?: string;
   };
   const grid = buildContactGrid(personal);
-
-  const hasTimeline =
-    (resume.experience && Object.keys(resume.experience).length > 0) ||
-    (profile.education?.length ?? 0) > 0;
 
   return (
     <div
@@ -422,60 +492,15 @@ function TimelinePreview({
         )}
       </div>
 
-      {/* V1 section ordering — summary → timeline → research → skills → pubs → awards */}
+      {/* Section order/visibility honored via the shared dispatcher. */}
       <div className="px-6 pt-3 pb-5">
-        {resume.summary && (
-          <section>
-            <SectionHeaderRule scheme={scheme}>Summary</SectionHeaderRule>
-            <p className="text-[11px]" style={{ color: scheme.body }}>{resume.summary}</p>
-          </section>
-        )}
-        {hasTimeline && (
-          <section>
-            <SectionHeaderRule scheme={scheme}>Experience &amp; Education</SectionHeaderRule>
-            <TimelineExperienceEducation resume={resume} profile={profile} scheme={scheme} />
-          </section>
-        )}
-        {resume.selected_research?.length ? (
-          <section>
-            <SectionHeaderRule scheme={scheme}>{resume.selected_research_section_title || "Selected Research"}</SectionHeaderRule>
-            {resume.selected_research.map((entry, i) => (
-              <div key={i} className="mb-1.5">
-                <div className="text-[11px]">
-                  <span className="font-bold" style={{ color: scheme.accent }}>
-                    {entry.category_label?.toUpperCase()} —{" "}
-                  </span>
-                  <span className="font-semibold" style={{ color: scheme.body }}>
-                    {entry.title}
-                  </span>
-                </div>
-                {entry.description && (
-                  <p className="text-[11px] ml-3" style={{ color: scheme.body }}>
-                    {entry.description}
-                  </p>
-                )}
-              </div>
-            ))}
-          </section>
-        ) : null}
-        {resume.technical_skills && Object.keys(resume.technical_skills).length ? (
-          <section>
-            <SectionHeaderRule scheme={scheme}>Technical Skills</SectionHeaderRule>
-            <SkillsList skills={resume.technical_skills} scheme={scheme} />
-          </section>
-        ) : null}
-        {resume.publications?.length ? (
-          <section>
-            <SectionHeaderRule scheme={scheme}>Selected Publications</SectionHeaderRule>
-            <Bullets items={resume.publications.map((p) => p.citation)} color={scheme.body} />
-          </section>
-        ) : null}
-        {resume.awards && (
-          <section>
-            <SectionHeaderRule scheme={scheme}>Awards &amp; Honors</SectionHeaderRule>
-            <p className="text-[11px]" style={{ color: scheme.body }}>{resume.awards}</p>
-          </section>
-        )}
+        <ResumeSections
+          order={order}
+          resume={resume}
+          profile={profile}
+          scheme={scheme}
+          Header={SectionHeaderRule}
+        />
       </div>
     </div>
   );
@@ -611,12 +636,14 @@ function TwoColumnPreview({
   scheme,
   fontFamily,
   isSample,
+  order,
 }: {
   resume: ResumeJson;
   profile: PreviewProfile;
   scheme: Scheme;
   fontFamily: string;
   isSample?: boolean;
+  order: string[];
 }) {
   const personal = (profile.personal || {}) as {
     name?: string;
@@ -704,43 +731,18 @@ function TwoColumnPreview({
               {resume.tagline}
             </p>
           )}
-          {resume.summary && (
-            <p className="text-[11px] mb-2" style={{ color: scheme.body }}>{resume.summary}</p>
-          )}
-          {resume.experience && Object.keys(resume.experience).length > 0 && (
-            <section>
-              <SectionHeaderRule scheme={scheme}>Work History</SectionHeaderRule>
-              <TwoColumnExperience resume={resume} profile={profile} scheme={scheme} />
-            </section>
-          )}
-          {resume.selected_research?.length > 0 && (
-            <section>
-              <SectionHeaderRule scheme={scheme}>{resume.selected_research_section_title || "Selected Research"}</SectionHeaderRule>
-              {resume.selected_research.map((entry, i) => (
-                <div key={i} className="mb-1.5">
-                  <div className="text-[11px]">
-                    <span className="font-bold" style={{ color: scheme.accent }}>{entry.category_label?.toUpperCase()} — </span>
-                    <span className="font-semibold" style={{ color: scheme.body }}>{entry.title}</span>
-                  </div>
-                  {entry.description && (
-                    <p className="text-[11px]" style={{ color: scheme.body }}>{entry.description}</p>
-                  )}
-                </div>
-              ))}
-            </section>
-          )}
-          {resume.publications?.length > 0 && (
-            <section>
-              <SectionHeaderRule scheme={scheme}>Selected Publications</SectionHeaderRule>
-              <Bullets items={resume.publications.map((p) => p.citation)} color={scheme.body} />
-            </section>
-          )}
-          {resume.awards && (
-            <section>
-              <SectionHeaderRule scheme={scheme}>Awards & Honors</SectionHeaderRule>
-              <p className="text-[11px]">{resume.awards}</p>
-            </section>
-          )}
+          {/* Main-column sections in template order. technical_skills and
+              education live in the sidebar, so they're never in this order. */}
+          <ResumeSections
+            order={order}
+            resume={resume}
+            profile={profile}
+            scheme={scheme}
+            Header={SectionHeaderRule}
+            summaryAsHeader={false}
+            experienceLabel="Work History"
+            ExperienceComponent={TwoColumnExperience}
+          />
         </main>
       </div>
     </div>

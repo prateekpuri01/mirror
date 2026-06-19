@@ -94,6 +94,67 @@ def test_unknown_section_ids_skipped(monkeypatch):
     assert rendered == ["summary"]
 
 
+def _patch_all_renders(monkeypatch):
+    """Patch every section render fn to record its id; return the list."""
+    rendered = []
+    patches = {
+        "_render_summary": "summary",
+        "_render_selected_research": "selected_research",
+        "_render_experience": "experience",
+        "_render_experience_education_timeline": "experience_education",
+        "_render_publications": "publications",
+        "_render_skills": "technical_skills",
+        "_render_education": "education",
+        "_render_awards": "awards",
+    }
+    for fn_name, sid in patches.items():
+        monkeypatch.setattr(db, fn_name, lambda *a, sid=sid, **kw: rendered.append(sid))
+    return rendered
+
+
+def test_template_section_order_used_when_no_resume_order(monkeypatch):
+    """A resume with no section_order falls back to the profile's design
+    template (resume_design.section_order), not the raw layout default."""
+    rendered = _patch_all_renders(monkeypatch)
+    profile = {"resume_design": {"section_order": ["awards", "summary", "experience"]}}
+
+    _render_ordered_sections(object(), object(), {}, profile, "banner")
+
+    assert rendered == ["awards", "summary", "experience"]
+
+
+def test_resume_order_wins_over_template(monkeypatch):
+    """A document's own section_order takes precedence over the template."""
+    rendered = _patch_all_renders(monkeypatch)
+    profile = {"resume_design": {"section_order": ["awards", "summary"]}}
+
+    _render_ordered_sections(object(), object(), {"section_order": ["summary"]}, profile, "banner")
+
+    assert rendered == ["summary"]
+
+
+def test_template_filtered_to_layout(monkeypatch):
+    """Template ids not valid for the active layout are dropped (e.g. a
+    banner template can't inject the timeline-only experience_education)."""
+    rendered = _patch_all_renders(monkeypatch)
+    profile = {"resume_design": {"section_order": ["summary", "experience_education", "awards"]}}
+
+    _render_ordered_sections(object(), object(), {}, profile, "banner")
+
+    assert rendered == ["summary", "awards"]
+
+
+def test_empty_template_falls_back_to_layout_default(monkeypatch):
+    """An empty/absent template uses the layout default (the Sections control
+    never lets a user hide everything)."""
+    rendered = _patch_all_renders(monkeypatch)
+    profile = {"resume_design": {"section_order": []}}
+
+    _render_ordered_sections(object(), object(), {}, profile, "banner")
+
+    assert rendered == LAYOUT_DEFAULT_ORDER["banner"]
+
+
 @pytest.mark.asyncio
 async def test_broad_rewrite_preserves_section_order(monkeypatch):
     """The user's section_order survives the LLM round-trip even when the

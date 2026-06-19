@@ -1249,12 +1249,22 @@ duplicate them. Don't "fix" the apparent omission.
 
 
 def _render_ordered_sections(ctx, container, resume_data, profile_data, layout):
-    # Use `is None` rather than truthiness so an explicit empty list
-    # (section_order: []) renders nothing instead of silently falling back
-    # to the layout default.
+    # Section order precedence:
+    #   1. this resume's own section_order (user dragged it on the job)
+    #   2. the user's design template (profile resume_design.section_order)
+    #   3. the layout default
+    # Use `is None` (not truthiness) for the per-resume order so an explicit
+    # empty list still renders nothing instead of falling back.
     order = resume_data.get("section_order")
     if order is None:
-        order = LAYOUT_DEFAULT_ORDER.get(layout, LAYOUT_DEFAULT_ORDER["banner"])
+        default = LAYOUT_DEFAULT_ORDER.get(layout, LAYOUT_DEFAULT_ORDER["banner"])
+        template = ((profile_data or {}).get("resume_design") or {}).get("section_order")
+        if template:
+            # Filter to ids valid for this layout in case the template was set
+            # under a different layout.
+            order = [s for s in template if s in default]
+        else:
+            order = default
     for section_id in order:
         if section_id == "summary":
             _render_summary(ctx, container, resume_data.get("summary", ""))

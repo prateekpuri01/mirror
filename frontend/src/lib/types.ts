@@ -189,17 +189,35 @@ export interface ResumeJson {
 }
 
 // ---------------------------------------------------------------------------
-// Chat messages
+// Section ordering — must stay in sync with backend LAYOUT_DEFAULT_ORDER in
+// backend/app/ai/docx_builder.py. A resume's section_order (per-document) or
+// the user's resume_design.section_order (template) overrides these defaults.
 // ---------------------------------------------------------------------------
 export const LAYOUT_DEFAULT_ORDER: Record<string, string[]> = {
-  banner:     ["summary", "selected_research", "experience", "publications",
-               "technical_skills", "education", "awards"],
-  compact:    ["summary", "selected_research", "experience", "publications",
-               "technical_skills", "education", "awards"],
-  timeline:   ["summary", "experience_education", "selected_research",
-               "technical_skills", "publications", "awards"],
-  two_column: ["summary", "experience", "selected_research", "publications", "awards"],
+  banner:         ["summary", "selected_research", "experience", "publications",
+                   "technical_skills", "education", "awards"],
+  compact:        ["summary", "selected_research", "experience", "publications",
+                   "technical_skills", "education", "awards"],
+  centered_clean: ["summary", "selected_research", "experience", "publications",
+                   "technical_skills", "education", "awards"],
+  timeline:       ["summary", "experience_education", "selected_research",
+                   "technical_skills", "publications", "awards"],
+  two_column:     ["summary", "experience", "selected_research", "publications", "awards"],
 };
+
+// Human-readable labels for each section id, used by the design-tab Sections
+// control and any section-reorder UI.
+export const SECTION_LABELS: Record<string, string> = {
+  summary: "Summary",
+  selected_research: "Selected Research",
+  experience: "Professional Experience",
+  experience_education: "Experience & Education",
+  publications: "Publications",
+  technical_skills: "Technical Skills",
+  education: "Education",
+  awards: "Awards & Honors",
+};
+
 export interface ChatMessageRead {
   id: string;
   job_id: string;
@@ -488,6 +506,12 @@ export interface ResumeDesign {
   layout: ResumeLayoutId;
   color_scheme: ResumeColorSchemeId;
   font: ResumeFontId;
+  // Template section order + visibility for the chosen layout. When set, it
+  // becomes the default order for every job resume the user hasn't manually
+  // reordered (a per-document section_order still wins). Sections omitted from
+  // this array are hidden from the rendered resume. Undefined → use
+  // LAYOUT_DEFAULT_ORDER[layout]. Reset to undefined when the layout changes.
+  section_order?: string[];
   version: number;
 }
 
