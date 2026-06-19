@@ -303,10 +303,20 @@ export function ResumeEditor({
   };
 
   // --- Section ordering ---
+  // Precedence: this document's own section_order (if the user dragged it here)
+  // → the user's design template (design.section_order) → the layout default.
+  // The template propagates to every job resume the user hasn't manually
+  // reordered. The template is filtered to ids valid for the layout in case it
+  // was set under a different layout.
   const effectiveOrder = useMemo(() => {
     const layout = design.layout ?? "banner";
-    return resumeJson.section_order ?? LAYOUT_DEFAULT_ORDER[layout] ?? LAYOUT_DEFAULT_ORDER["banner"];
-  }, [resumeJson.section_order, design.layout]);
+    const layoutDefault = LAYOUT_DEFAULT_ORDER[layout] ?? LAYOUT_DEFAULT_ORDER["banner"];
+    if (resumeJson.section_order) return resumeJson.section_order;
+    if (design.section_order) {
+      return design.section_order.filter((id) => layoutDefault.includes(id));
+    }
+    return layoutDefault;
+  }, [resumeJson.section_order, design.layout, design.section_order]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
